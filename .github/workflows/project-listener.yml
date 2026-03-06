@@ -1,0 +1,149 @@
+name: Project Listener
+
+on:
+  workflow_call:
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: savvy-web
+
+      - name: Get repository properties
+        id: repo-props
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const { data: repoData } = await github.rest.repos.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            const customProps = repoData.custom_properties || {};
+            const projectTracking = customProps['project-tracking'];
+            const projectNumber = customProps['project-number'];
+
+            console.log(`Repository: ${repoData.full_name}`);
+            console.log('Custom properties:', JSON.stringify(customProps, null, 2));
+
+            const enabled = projectTracking === true || projectTracking === 'true';
+
+            if (!enabled) {
+              console.log('⏭️  Project tracking not enabled for this repository');
+              core.summary.addRaw('⏭️ Project tracking not enabled for this repository');
+              await core.summary.write();
+            } else if (!projectNumber) {
+              console.log('⚠️  No project-number property set, defaulting to project #1');
+            }
+
+            core.setOutput('enabled', enabled);
+            core.setOutput('project-number', projectNumber || '1');
+
+      - name: Add to project
+        if: steps.repo-props.outputs.enabled == 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const projectNumber = parseInt('${{ steps.repo-props.outputs.project-number }}');
+            const org = 'savvy-web';
+            const issuePR = context.payload.issue || context.payload.pull_request;
+            const contentId = issuePR.node_id;
+            const itemNumber = issuePR.number;
+            const itemType = context.payload.issue ? 'Issue' : 'Pull Request';
+
+            console.log(`Attempting to add ${itemType} #${itemNumber} from ${context.repo.repo} to project #${projectNumber}`);
+
+            try {
+              // Get project ID - note: using organization login explicitly
+              console.log('Step 1: Looking up organization project...');
+              const projectQuery = await github.graphql(`
+                query($org: String!, $number: Int!) {
+                  organization(login: $org) {
+                    projectV2(number: $number) {
+                      id
+                      title
+                      closed
+                    }
+                  }
+                }
+              `, { org, number: projectNumber });
+              
+              if (!projectQuery.organization) {
+                throw new Error(`Organization '${org}' not found`);
+              }
+              
+              if (!projectQuery.organization.projectV2) {
+                throw new Error(`Project #${projectNumber} not found in organization '${org}'`);
+              }
+              
+              const project = projectQuery.organization.projectV2;
+              
+              if (project.closed) {
+                console.log(`⚠️  Project "${project.title}" is closed, skipping`);
+                core.summary.addRaw(`⚠️ Project "${project.title}" is closed`);
+                await core.summary.write();
+                return;
+              }
+              
+              console.log(`Step 2: Found project "${project.title}" (${project.id})`);
+              console.log(`Step 3: Adding ${itemType} ${contentId}...`);
+              
+              // Add item to project
+              const addResult = await github.graphql(`
+                mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemById(input: {
+                    projectId: $projectId
+                    contentId: $contentId
+                  }) {
+                    item {
+                      id
+                    }
+                  }
+                }
+              `, { 
+                projectId: project.id, 
+                contentId: contentId 
+              });
+              
+              console.log(`✅ Successfully added ${itemType} #${itemNumber} to project "${project.title}"`);
+              
+              core.summary.addRaw(
+                `✅ Added ${itemType} [#${itemNumber}](${issuePR.html_url}) ` +
+                `to [${project.title}](https://github.com/orgs/${org}/projects/${projectNumber})`
+              );
+              await core.summary.write();
+              
+            } catch (error) {
+              console.error('Error details:', error);
+              
+              if (error.message && error.message.includes('already exists')) {
+                console.log(`ℹ️  ${itemType} #${itemNumber} is already in the project`);
+                core.summary.addRaw(`ℹ️ ${itemType} #${itemNumber} is already in the project`);
+                await core.summary.write();
+              } else if (error.message && error.message.includes('Could not resolve to a ProjectV2')) {
+                console.error(`❌ Could not access project #${projectNumber}`);
+                console.error('Possible causes:');
+                console.error('  1. GitHub App lacks "Projects: Read & Write" organization permission');
+                console.error('  2. Project number is incorrect');
+                console.error('  3. Project has been deleted');
+                console.error('');
+                console.error('To fix:');
+                console.error(`  1. Go to: https://github.com/organizations/${org}/settings/apps`);
+                console.error('  2. Configure your GitHub App');
+                console.error('  3. Under "Organization permissions", set "Projects" to "Read and write"');
+                console.error('  4. Save and accept the new permissions');
+                
+                core.setFailed(`Cannot access project #${projectNumber}. Check GitHub App permissions.`);
+              } else {
+                console.error(`❌ Unexpected error: ${error.message}`);
+                core.setFailed(`Failed to add to project: ${error.message}`);
+              }
+            }
