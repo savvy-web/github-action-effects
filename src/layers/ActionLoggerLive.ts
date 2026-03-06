@@ -16,7 +16,10 @@ export const setLogLevel = (level: ActionLogLevel): Effect.Effect<void> => Fiber
 
 // -- Internal helpers --
 
-const formatMessage = (message: unknown): string => (typeof message === "string" ? message : JSON.stringify(message));
+const formatMessage = (message: unknown): string => {
+	const value = Array.isArray(message) && message.length === 1 ? message[0] : message;
+	return typeof value === "string" ? value : JSON.stringify(value);
+};
 
 const shouldEmitUserFacing = (effectLevel: LogLevel.LogLevel, actionLevel: ActionLogLevel): boolean => {
 	if (actionLevel === "debug") {
