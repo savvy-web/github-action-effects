@@ -18,14 +18,14 @@ importers:
   .:
     devDependencies:
       '@savvy-web/changesets':
-        specifier: ^0.4.1
-        version: 0.4.1(90f96bfd30791aac0637213b9912286a)
+        specifier: ^0.4.2
+        version: 0.4.2(90f96bfd30791aac0637213b9912286a)
       '@savvy-web/commitlint':
         specifier: ^0.4.0
         version: 0.4.0(28e9ec833c41eed3c9378324993f21aa)
       '@savvy-web/lint-staged':
-        specifier: ^0.5.0
-        version: 0.5.0(0701f098f7a0de03829c0b95ac7a0672)
+        specifier: ^0.5.1
+        version: 0.5.1(0701f098f7a0de03829c0b95ac7a0672)
       '@savvy-web/rslib-builder':
         specifier: ^0.16.0
         version: 0.16.0(@microsoft/api-extractor@7.57.6(@types/node@25.3.3))(@pnpm/logger@1001.0.1)(@rslib/core@0.19.6(@microsoft/api-extractor@7.57.6(@types/node@25.3.3))(@typescript/native-preview@7.0.0-dev.20260304.1)(typescript@5.9.3))(@types/node@25.3.3)(@typescript/native-preview@7.0.0-dev.20260304.1)(jiti@2.6.1)(typescript@5.9.3)
@@ -1134,8 +1134,8 @@ packages:
   '@rushstack/ts-command-line@5.3.3':
     resolution: {integrity: sha512-c+ltdcvC7ym+10lhwR/vWiOhsrm/bP3By2VsFcs5qTKv+6tTmxgbVrtJ5NdNjANiV5TcmOZgUN+5KYQ4llsvEw==}
 
-  '@savvy-web/changesets@0.4.1':
-    resolution: {integrity: sha512-QXzhK8G5F7gtvfShwftIrzezj7H+2mO+7IXQ/eJ6EZfZXsV7gPYzmdhnlv1Yd2rNOewU80HqFCa7js9FdClaxA==}
+  '@savvy-web/changesets@0.4.2':
+    resolution: {integrity: sha512-ZWFqbVPbCn/OX9gbsr553EnsJzLuhD26ioLdWIWR6QwH6qK2JvVOSvhVMe50zla1cZgWf58E6GoSaiaf1sLqKw==}
     engines: {node: '>=24.0.0'}
     hasBin: true
     peerDependencies:
@@ -1153,8 +1153,8 @@ packages:
       commitizen:
         optional: true
 
-  '@savvy-web/lint-staged@0.5.0':
-    resolution: {integrity: sha512-LVDTkNRzn5ha0SGxgxfSf+hopx2FIy7QzX5+xFHJY5OEUeHxpcGuV/Hxp7UcLAWeifVGW3J5qRtKgpscFjl7hQ==}
+  '@savvy-web/lint-staged@0.5.1':
+    resolution: {integrity: sha512-Ype+/YRbj6aRdT6WTp9FICw0DyaQUz4OvhzUQ0HbW2FpXuQipS6ot2M6CaeTz3e/dkmWiNCfwJ51AaRoHHb2yg==}
     engines: {node: '>=24.0.0'}
     hasBin: true
     peerDependencies:
@@ -1488,8 +1488,8 @@ packages:
     resolution: {integrity: sha512-pbnl5XzGBdrFU/wT4jqmJVPn2B6UHPBOhzMQkY/SPUPB6QtUXtmBHBIwCbXJol93mOpGMnQyP/+BB19q04xj7g==}
     engines: {node: '>=4'}
 
-  bole@5.0.27:
-    resolution: {integrity: sha512-Hv/NnQSWwgo0yZ1tSi8B8fd2qk9LFRNqtpms7P6dZI67A7HTCy7MP1fwfmZgCbMNURf9+tdHHbbsORp/r0NjJA==}
+  bole@5.0.28:
+    resolution: {integrity: sha512-l+yybyZLV7zTD6EuGxoXsilpER1ctMCpdOqjSYNigJJma39ha85fzCtYccPx06oR1u7uCQLOcUAFFzvfXVBmuQ==}
 
   brace-expansion@5.0.4:
     resolution: {integrity: sha512-h+DEnpVvxmfVefa4jFbCf5HdH5YMDXRsmKflpf1pILZWRFlTbJpxeU55nJl4Smt5HQaGzg1o6RHFPJaOqnmBDg==}
@@ -2261,8 +2261,8 @@ packages:
   jsonfile@6.2.0:
     resolution: {integrity: sha512-FGuPw30AdOIUTRMC2OMRtQV+jkVj2cfPqSeWXv1NEAJ1qZ5zb1X6z1mFhbfOB/iy3ssJCD+3KuZ8r8C3uVFlAg==}
 
-  katex@0.16.33:
-    resolution: {integrity: sha512-q3N5u+1sY9Bu7T4nlXoiRBXWfwSefNGoKeOwekV+gw0cAXQlz2Ww6BLcmBxVDeXBMUDQv6fK5bcNaJLxob3ZQA==}
+  katex@0.16.37:
+    resolution: {integrity: sha512-TIGjO2cCGYono+uUzgkE7RFF329mLLWGuHUlSr6cwIVj9O8f0VQZ783rsanmJpFUo32vvtj7XT04NGRPh+SZFg==}
     hasBin: true
 
   keyv@4.5.4:
@@ -4204,7 +4204,7 @@ snapshots:
 
   '@pnpm/logger@1001.0.1':
     dependencies:
-      bole: 5.0.27
+      bole: 5.0.28
       split2: 4.2.0
 
   '@pnpm/manifest-utils@1002.0.4(@pnpm/logger@1001.0.1)':
@@ -4466,7 +4466,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
 
-  '@savvy-web/changesets@0.4.1(90f96bfd30791aac0637213b9912286a)':
+  '@savvy-web/changesets@0.4.2(90f96bfd30791aac0637213b9912286a)':
     dependencies:
       '@changesets/cli': 2.30.0(@types/node@25.3.3)
       '@changesets/get-github-info': 0.8.0
@@ -4516,7 +4516,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@savvy-web/lint-staged@0.5.0(0701f098f7a0de03829c0b95ac7a0672)':
+  '@savvy-web/lint-staged@0.5.1(0701f098f7a0de03829c0b95ac7a0672)':
     dependencies:
       '@effect/cli': 0.73.2(@effect/platform@0.94.5(effect@3.19.19))(@effect/printer-ansi@0.47.0(@effect/typeclass@0.38.0(effect@3.19.19))(effect@3.19.19))(@effect/printer@0.47.0(@effect/typeclass@0.38.0(effect@3.19.19))(effect@3.19.19))(effect@3.19.19)
       '@effect/platform': 0.94.5(effect@3.19.19)
@@ -4884,7 +4884,7 @@ snapshots:
     dependencies:
       is-windows: 1.0.2
 
-  bole@5.0.27:
+  bole@5.0.28:
     dependencies:
       fast-safe-stringify: 2.1.1
       individual: 3.0.0
@@ -5669,7 +5669,7 @@ snapshots:
     optionalDependencies:
       graceful-fs: 4.2.11
 
-  katex@0.16.33:
+  katex@0.16.37:
     dependencies:
       commander: 8.3.0
 
@@ -6017,7 +6017,7 @@ snapshots:
     dependencies:
       '@types/katex': 0.16.8
       devlop: 1.1.0
-      katex: 0.16.33
+      katex: 0.16.37
       micromark-factory-space: 2.0.1
       micromark-util-character: 2.1.1
       micromark-util-symbol: 2.0.1
