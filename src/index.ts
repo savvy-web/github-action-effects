@@ -21,7 +21,7 @@ export {
 	makeActionLogger,
 	setLogLevel,
 } from "./layers/ActionLoggerLive.js";
-export { ActionLoggerTest, type ActionLoggerTestState } from "./layers/ActionLoggerTest.js";
+export { ActionLoggerTest, type ActionLoggerTestState, type TestAnnotationType } from "./layers/ActionLoggerTest.js";
 export { ActionOutputsLive } from "./layers/ActionOutputsLive.js";
 export { ActionOutputsTest, type ActionOutputsTestState } from "./layers/ActionOutputsTest.js";
 

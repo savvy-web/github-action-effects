@@ -71,24 +71,46 @@ describe("ActionLoggerTest", () => {
 		});
 	});
 
-	describe("annotation", () => {
-		it("records annotation without properties", async () => {
+	describe("annotationError", () => {
+		it("records error annotation without properties", async () => {
 			const state = ActionLoggerTest.empty();
 			await run(
 				state,
-				Effect.flatMap(ActionLogger, (svc) => svc.annotation("test msg")),
+				Effect.flatMap(ActionLogger, (svc) => svc.annotationError("test msg")),
 			);
-			expect(state.annotations).toEqual([{ message: "test msg" }]);
+			expect(state.annotations).toEqual([{ type: "error", message: "test msg" }]);
 		});
 
-		it("records annotation with properties", async () => {
+		it("records error annotation with properties", async () => {
 			const state = ActionLoggerTest.empty();
 			const props = { file: "test.ts", startLine: 5 };
 			await run(
 				state,
-				Effect.flatMap(ActionLogger, (svc) => svc.annotation("msg", props)),
+				Effect.flatMap(ActionLogger, (svc) => svc.annotationError("msg", props)),
 			);
-			expect(state.annotations).toEqual([{ message: "msg", properties: props }]);
+			expect(state.annotations).toEqual([{ type: "error", message: "msg", properties: props }]);
+		});
+	});
+
+	describe("annotationWarning", () => {
+		it("records warning annotation", async () => {
+			const state = ActionLoggerTest.empty();
+			await run(
+				state,
+				Effect.flatMap(ActionLogger, (svc) => svc.annotationWarning("warn msg")),
+			);
+			expect(state.annotations).toEqual([{ type: "warning", message: "warn msg" }]);
+		});
+	});
+
+	describe("annotationNotice", () => {
+		it("records notice annotation", async () => {
+			const state = ActionLoggerTest.empty();
+			await run(
+				state,
+				Effect.flatMap(ActionLogger, (svc) => svc.annotationNotice("note msg")),
+			);
+			expect(state.annotations).toEqual([{ type: "notice", message: "note msg" }]);
 		});
 	});
 });

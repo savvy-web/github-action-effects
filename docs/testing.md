@@ -83,7 +83,7 @@ logging behavior.
 | --- | --- | --- |
 | `entries` | `Array<{ level: string, message: string }>` | Individual log entries |
 | `groups` | `Array<{ name: string, entries: Array<{ level, message }> }>` | Log groups opened via `group` |
-| `annotations` | `Array<{ message: string, properties?: AnnotationProperties }>` | File/line annotations |
+| `annotations` | `Array<{ type: string, message: string, properties?: AnnotationProperties }>` | File/line annotations (type is `"error"`, `"warning"`, or `"notice"`) |
 | `flushedBuffers` | `Array<{ label: string, entries: Array<string> }>` | Buffers flushed on failure via `withBuffer` |
 
 ## Composing Test Layers
@@ -248,7 +248,8 @@ describe("withBuffer", () => {
 ### Testing annotations
 
 Annotations attach messages to specific files and lines in the GitHub Actions
-UI.
+UI. The three methods (`annotationError`, `annotationWarning`,
+`annotationNotice`) each record a `type` field in the captured state.
 
 ```typescript
 import { Effect } from "effect"
@@ -256,11 +257,11 @@ import { describe, expect, it } from "vitest"
 import { ActionLogger, ActionLoggerTest } from "@savvy-web/github-action-effects"
 
 describe("annotations", () => {
-  it("records annotation with properties", async () => {
+  it("records error annotation with properties", async () => {
     const state = ActionLoggerTest.empty()
     await Effect.gen(function* () {
       const logger = yield* ActionLogger
-      yield* logger.annotation("Check failed", {
+      yield* logger.annotationError("Check failed", {
         file: "src/index.ts",
         startLine: 10,
       })
@@ -268,20 +269,42 @@ describe("annotations", () => {
 
     expect(state.annotations).toEqual([
       {
+        type: "error",
         message: "Check failed",
         properties: { file: "src/index.ts", startLine: 10 },
       },
     ])
   })
 
-  it("records annotation without properties", async () => {
+  it("records warning annotation", async () => {
     const state = ActionLoggerTest.empty()
     await Effect.gen(function* () {
       const logger = yield* ActionLogger
-      yield* logger.annotation("Something happened")
+      yield* logger.annotationWarning("Deprecated usage", {
+        file: "src/helpers.ts",
+        startLine: 42,
+      })
     }).pipe(Effect.provide(ActionLoggerTest.layer(state)), Effect.runPromise)
 
-    expect(state.annotations).toEqual([{ message: "Something happened" }])
+    expect(state.annotations).toEqual([
+      {
+        type: "warning",
+        message: "Deprecated usage",
+        properties: { file: "src/helpers.ts", startLine: 42 },
+      },
+    ])
+  })
+
+  it("records notice annotation without properties", async () => {
+    const state = ActionLoggerTest.empty()
+    await Effect.gen(function* () {
+      const logger = yield* ActionLogger
+      yield* logger.annotationNotice("Something happened")
+    }).pipe(Effect.provide(ActionLoggerTest.layer(state)), Effect.runPromise)
+
+    expect(state.annotations).toEqual([
+      { type: "notice", message: "Something happened" },
+    ])
   })
 })
 ```

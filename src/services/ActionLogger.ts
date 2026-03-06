@@ -26,9 +26,19 @@ export interface ActionLogger {
 	readonly withBuffer: <A, E, R>(label: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 
 	/**
-	 * Emit a file/line annotation.
+	 * Emit an error annotation (red, blocks PR checks).
 	 */
-	readonly annotation: (message: string, properties?: AnnotationProperties) => Effect.Effect<void>;
+	readonly annotationError: (message: string, properties?: AnnotationProperties) => Effect.Effect<void>;
+
+	/**
+	 * Emit a warning annotation (yellow, informational).
+	 */
+	readonly annotationWarning: (message: string, properties?: AnnotationProperties) => Effect.Effect<void>;
+
+	/**
+	 * Emit a notice annotation (blue, informational).
+	 */
+	readonly annotationNotice: (message: string, properties?: AnnotationProperties) => Effect.Effect<void>;
 }
 
 /**

@@ -5,6 +5,11 @@ import { ActionLogger } from "../services/ActionLogger.js";
 import { CurrentLogLevel } from "./ActionLoggerLive.js";
 
 /**
+ * Annotation type captured by the test layer.
+ */
+export type TestAnnotationType = "error" | "warning" | "notice";
+
+/**
  * In-memory state captured by the test logger.
  */
 export interface ActionLoggerTestState {
@@ -14,6 +19,7 @@ export interface ActionLoggerTestState {
 		readonly entries: Array<{ readonly level: string; readonly message: string }>;
 	}>;
 	readonly annotations: Array<{
+		readonly type: TestAnnotationType;
 		readonly message: string;
 		readonly properties?: AnnotationProperties;
 	}>;
@@ -22,6 +28,16 @@ export interface ActionLoggerTestState {
 		readonly entries: Array<string>;
 	}>;
 }
+
+const makeAnnotation =
+	(state: ActionLoggerTestState, type: TestAnnotationType) => (message: string, properties?: AnnotationProperties) =>
+		Effect.sync(() => {
+			state.annotations.push({
+				type,
+				message,
+				...(properties !== undefined ? { properties } : {}),
+			});
+		});
 
 /**
  * Test implementation that captures log operations in memory.
@@ -60,26 +76,18 @@ export const ActionLoggerTest = {
 						if (level !== "info") {
 							return effect;
 						}
-						const bufferEntries: Array<string> = [];
 						return effect.pipe(
 							Effect.tapErrorCause(() =>
 								Effect.sync(() => {
-									state.flushedBuffers.push({
-										label,
-										entries: bufferEntries,
-									});
+									state.flushedBuffers.push({ label, entries: [] });
 								}),
 							),
 						);
 					}),
 				) as Effect.Effect<A, E, Exclude<R, Scope>>,
 
-			annotation: (message, properties) =>
-				Effect.sync(() => {
-					state.annotations.push({
-						message,
-						...(properties !== undefined ? { properties } : {}),
-					});
-				}),
+			annotationError: makeAnnotation(state, "error"),
+			annotationWarning: makeAnnotation(state, "warning"),
+			annotationNotice: makeAnnotation(state, "notice"),
 		}),
 } as const;

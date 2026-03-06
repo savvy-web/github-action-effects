@@ -49,7 +49,9 @@ Logger handles. The core log-level routing is handled separately by
 | --- | --- | --- |
 | `group` | `(name, effect) => Effect<A, E, R>` | Run an effect inside a collapsible log group |
 | `withBuffer` | `(label, effect) => Effect<A, E, R>` | Run an effect with buffered logging (buffer-on-failure pattern) |
-| `annotation` | `(message, properties?) => Effect<void>` | Emit a file/line annotation via `core.error` |
+| `annotationError` | `(message, properties?) => Effect<void>` | Emit a file/line annotation via `core.error` (red, blocks PR checks) |
+| `annotationWarning` | `(message, properties?) => Effect<void>` | Emit a file/line annotation via `core.warning` (yellow) |
+| `annotationNotice` | `(message, properties?) => Effect<void>` | Emit a file/line annotation via `core.notice` (blue) |
 
 ### ActionOutputs
 
@@ -85,7 +87,7 @@ There is an important distinction between two exports from
 `ActionLoggerLive.ts`:
 
 * **`ActionLoggerLive`** is a `Layer<ActionLogger>` that provides the service
-  (group, withBuffer, annotation).
+  (group, withBuffer, annotationError, annotationWarning, annotationNotice).
 * **`ActionLoggerLayer`** is a `Layer<never>` that replaces Effect's default
   `Logger` with a GitHub Actions-aware logger. It does not provide a service
   to the context; it reconfigures how `Effect.log` and friends behave.
@@ -217,7 +219,8 @@ Each service has a corresponding test implementation in `src/layers/`:
 * `ActionInputsTest(inputs)` -- accepts a `Record<string, string>` and
   returns a layer that reads from it instead of `@actions/core`.
 * `ActionLoggerTest` -- namespace with `empty()` and `layer(state)`. Captures
-  groups, annotations, and flushed buffers in `ActionLoggerTestState`.
+  groups, annotations (with type), and flushed buffers in
+  `ActionLoggerTestState`.
 * `ActionOutputsTest` -- namespace with `empty()` and `layer(state)`. Captures
   outputs, summaries, exported variables, and paths in
   `ActionOutputsTestState`.

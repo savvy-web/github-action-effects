@@ -1,4 +1,4 @@
-import { debug, endGroup, error, info, startGroup, warning } from "@actions/core";
+import { debug, endGroup, error, info, notice, startGroup, warning } from "@actions/core";
 import { Effect, FiberRef } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionLogger } from "../services/ActionLogger.js";
@@ -9,6 +9,7 @@ vi.mock("@actions/core", () => ({
 	info: vi.fn(),
 	warning: vi.fn(),
 	error: vi.fn(),
+	notice: vi.fn(),
 	startGroup: vi.fn(),
 	endGroup: vi.fn(),
 }));
@@ -132,16 +133,42 @@ describe("ActionLoggerLive", () => {
 		});
 	});
 
-	describe("annotation", () => {
-		it("emits annotation without properties", async () => {
-			await run(Effect.flatMap(ActionLogger, (svc) => svc.annotation("test annotation")));
-			expect(error).toHaveBeenCalledWith("test annotation");
+	describe("annotationError", () => {
+		it("emits error annotation without properties", async () => {
+			await run(Effect.flatMap(ActionLogger, (svc) => svc.annotationError("test error")));
+			expect(error).toHaveBeenCalledWith("test error");
 		});
 
-		it("emits annotation with properties", async () => {
+		it("emits error annotation with properties", async () => {
 			const props = { file: "test.ts", startLine: 10 };
-			await run(Effect.flatMap(ActionLogger, (svc) => svc.annotation("test annotation", props)));
-			expect(error).toHaveBeenCalledWith("test annotation", props);
+			await run(Effect.flatMap(ActionLogger, (svc) => svc.annotationError("test error", props)));
+			expect(error).toHaveBeenCalledWith("test error", props);
+		});
+	});
+
+	describe("annotationWarning", () => {
+		it("emits warning annotation", async () => {
+			await run(Effect.flatMap(ActionLogger, (svc) => svc.annotationWarning("test warning")));
+			expect(warning).toHaveBeenCalledWith("test warning");
+		});
+
+		it("emits warning annotation with properties", async () => {
+			const props = { file: "test.ts", startLine: 5 };
+			await run(Effect.flatMap(ActionLogger, (svc) => svc.annotationWarning("test warning", props)));
+			expect(warning).toHaveBeenCalledWith("test warning", props);
+		});
+	});
+
+	describe("annotationNotice", () => {
+		it("emits notice annotation", async () => {
+			await run(Effect.flatMap(ActionLogger, (svc) => svc.annotationNotice("test notice")));
+			expect(notice).toHaveBeenCalledWith("test notice");
+		});
+
+		it("emits notice annotation with properties", async () => {
+			const props = { file: "test.ts", startLine: 1 };
+			await run(Effect.flatMap(ActionLogger, (svc) => svc.annotationNotice("test notice", props)));
+			expect(notice).toHaveBeenCalledWith("test notice", props);
 		});
 	});
 });

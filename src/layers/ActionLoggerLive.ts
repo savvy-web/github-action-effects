@@ -119,12 +119,18 @@ export const ActionLoggerLive: Layer.Layer<ActionLogger> = Layer.succeed(ActionL
 			}),
 		) as Effect.Effect<A, E, Exclude<R, Scope>>,
 
-	annotation: (message, properties) =>
+	annotationError: (message, properties) =>
 		Effect.sync(() => {
-			if (properties !== undefined) {
-				core.error(message, properties);
-			} else {
-				core.error(message);
-			}
+			properties !== undefined ? core.error(message, properties) : core.error(message);
+		}),
+
+	annotationWarning: (message, properties) =>
+		Effect.sync(() => {
+			properties !== undefined ? core.warning(message, properties) : core.warning(message);
+		}),
+
+	annotationNotice: (message, properties) =>
+		Effect.sync(() => {
+			properties !== undefined ? core.notice(message, properties) : core.notice(message);
 		}),
 });

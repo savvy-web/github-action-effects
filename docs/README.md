@@ -34,7 +34,7 @@ npm install @effect/platform @effect/platform-node
 | Service | Purpose |
 | --- | --- |
 | ActionInputs | Schema-validated input reading (get, getOptional, getSecret, getJson) |
-| ActionLogger | Structured logging with group, withBuffer, annotation |
+| ActionLogger | Structured logging with group, withBuffer, annotationError/Warning/Notice |
 | ActionOutputs | Typed outputs (set, setJson, summary, exportVariable, addPath) |
 | GFM Builders | Pure functions for tables, checklists, details, status icons |
 

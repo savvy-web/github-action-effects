@@ -5,7 +5,7 @@ category: architecture
 created: 2026-03-06
 updated: 2026-03-06
 last-synced: 2026-03-06
-completeness: 90
+completeness: 95
 related: []
 dependencies: []
 ---
@@ -65,14 +65,15 @@ GitHub Actions development suffers from four recurring pain points:
 
 ### System Components
 
-All core services are implemented and tested (34 tests passing across 4 test
-files). The `ci:build` passes with both dev and prod outputs.
+All core services are implemented and tested (77 tests passing across 8 test
+files, 95%+ coverage). The `ci:build` passes with both dev and prod outputs.
 
 | Component | Status | Files |
 | --- | --- | --- |
 | ActionInputs service | Complete | `services/ActionInputs.ts`, `layers/ActionInputsLive.ts`, `layers/ActionInputsTest.ts` |
 | ActionLogger service | Complete | `services/ActionLogger.ts`, `layers/ActionLoggerLive.ts`, `layers/ActionLoggerTest.ts` |
 | ActionOutputs service | Complete | `services/ActionOutputs.ts`, `layers/ActionOutputsLive.ts`, `layers/ActionOutputsTest.ts` |
+| Shared decode helpers | Complete | `layers/internal/decodeInput.ts` |
 | ActionInputError | Complete | `errors/ActionInputError.ts` |
 | ActionOutputError | Complete | `errors/ActionOutputError.ts` |
 | GithubMarkdown utils | Complete | `utils/GithubMarkdown.ts` |
@@ -181,7 +182,14 @@ Reads and validates GitHub Action inputs using Effect Schema.
 - `getSecret(name, schema)` — Read input, mark as secret (masked in logs)
 - `getJson(name, schema)` — Read input as JSON string, parse and validate
 
-**Backed by:** `@actions/core.getInput()`, `@actions/core.getBooleanInput()`
+**Backed by:** `@actions/core.getInput()`, `@actions/core.setSecret()` — all
+`core.*` calls in `ActionInputsLive` are wrapped in `Effect.sync()` to
+follow Effect's laziness contract (side effects are deferred until the
+Effect is run, never called eagerly during layer construction).
+
+**Shared decode helpers:** `decodeInput` and `decodeJsonInput` are extracted
+to `layers/internal/decodeInput.ts` and shared by both `ActionInputsLive`
+and `ActionInputsTest`, eliminating duplication of schema validation logic.
 
 **Error type:** `ActionInputError` — tagged error with input name, raw value,
 and schema validation issues
@@ -237,8 +245,20 @@ inputs:
 - Implements `Effect.Logger` — plugs into Effect's logging system
 - `group(name, effect)` — Wraps an effect in a collapsible log group
   (`core.startGroup()` / `core.endGroup()`)
-- `withBuffer(effect)` — Captures verbose output in memory; flushes on failure
-- `annotation(message, properties)` — Emits file/line annotations
+- `withBuffer(label, effect)` — Captures verbose output in memory; flushes on failure
+- `annotationError(message, properties?)` — Emits an error annotation via
+  `core.error()` (red, blocks PR checks)
+- `annotationWarning(message, properties?)` — Emits a warning annotation via
+  `core.warning()` (yellow, informational)
+- `annotationNotice(message, properties?)` — Emits a notice annotation via
+  `core.notice()` (blue, informational)
+
+**Message Formatting:**
+
+`ActionLoggerLive` uses an internal `formatMessage` helper that unwraps
+single-element arrays from Effect's `Logger.make` callback (which wraps the
+message in an array) before converting to string. This ensures clean log
+output without extraneous brackets.
 
 **Buffer Behavior (info level):**
 
@@ -298,11 +318,12 @@ Each service has a `Live` layer backed by real `@actions/core` calls and
 a `Test` layer backed by in-memory state for unit testing.
 
 ```text
-ActionInputsLive   — reads from @actions/core.getInput
+ActionInputsLive   — reads from @actions/core.getInput (deferred via Effect.sync)
 ActionInputsTest   — reads from provided Record<string, string>
+  (both share decodeInput/decodeJsonInput from layers/internal/decodeInput.ts)
 
 ActionLoggerLive   — routes to @actions/core log functions
-ActionLoggerTest   — captures log entries in memory
+ActionLoggerTest   — captures log entries in memory (annotations include type field)
 
 ActionOutputsLive  — writes to @actions/core outputs
 ActionOutputsTest  — captures outputs in memory
@@ -372,15 +393,22 @@ ActionOutputs.summary(gfm)
 Primary integration for input reading, output setting, logging, and
 annotations. All interactions wrapped in Effect services.
 
-### @actions/github (peer)
+### @actions/github (optional peer)
 
 Provides authenticated Octokit for future check-run and PR-comment services.
-Not required for initial implementation — GithubMarkdown is pure.
+Not required for initial implementation — GithubMarkdown is pure. Marked
+`optional: true` in `peerDependenciesMeta`.
 
-### @actions/exec (peer)
+### @actions/exec (optional peer)
 
 For future command-running services (e.g., the `npm pack --dry-run --json`
-pattern). Not required for initial implementation.
+pattern). Not required for initial implementation. Marked `optional: true`
+in `peerDependenciesMeta`.
+
+### @effect/platform and @effect/platform-node (optional peers)
+
+Added as optional peer dependencies for future platform-specific services
+(e.g., filesystem, HTTP client). Not required by any current service.
 
 ### effect (peer)
 
@@ -413,15 +441,23 @@ ergonomic test setup:
 - `ActionOutputsTest.empty()` / `ActionOutputsTest.layer(state)` — namespace
   object with in-memory state capture
 
-**What is tested (34 tests across 4 files):**
+**What is tested (77 tests across 8 files, 95%+ coverage):**
 
 - Schema validation: valid inputs decode, invalid inputs produce clear errors
+- Input laziness: `ActionInputsLive` defers `core.getInput()`/`core.setSecret()`
+  via `Effect.sync()`, verified in dedicated live-layer tests
 - Logger buffering: buffer captures on success, flushes on failure
 - Logger two-channel behavior: always writes to debug, conditionally to info
+- Logger annotations: three explicit methods (`annotationError`,
+  `annotationWarning`, `annotationNotice`) tested via the test layer which
+  captures a `type` field (`"error"` | `"warning"` | `"notice"`) on each entry
 - FiberRef log level: level propagation and resolution
 - Output setting: values are captured by test layer
+- Output live layer: `core.setOutput()`, `core.exportVariable()`, `core.addPath()`,
+  and `core.summary` interactions
 - GFM builders: pure function output matches expected markdown strings
 - GFM schemas: Status, ChecklistItem, CapturedOutput encode/decode
+- LogLevel schemas: parsing and round-trip validation
 
 ### Integration Tests
 

@@ -203,12 +203,26 @@ At `verbose` or `debug` level, `withBuffer` is a no-op passthrough.
 
 ### Annotations
 
-Emit file-level annotations that appear inline on PRs:
+Emit file-level annotations that appear inline on PRs. Three methods map to
+the three annotation severity levels in GitHub Actions:
 
 ```typescript
-yield* logger.annotation("Outdated dependency found", {
+// Error annotation (red) -- blocks PR checks
+yield* logger.annotationError("Outdated dependency found", {
   file: "src/index.ts",
   startLine: 10,
+})
+
+// Warning annotation (yellow)
+yield* logger.annotationWarning("Deprecated API usage", {
+  file: "src/helpers.ts",
+  startLine: 42,
+})
+
+// Notice annotation (blue)
+yield* logger.annotationNotice("Consider upgrading to v2", {
+  file: "src/config.ts",
+  startLine: 5,
 })
 ```
 
@@ -403,7 +417,8 @@ service, it must be applied with a separate `Effect.provide` call after the
 service layer.
 
 `ActionLoggerLive` is a separate `Layer<ActionLogger>` that provides the
-`ActionLogger` service (groups, buffering, annotations). Both are needed:
+`ActionLogger` service (groups, buffering, annotation methods). Both are
+needed:
 
 * `ActionLoggerLive` -- provides the `ActionLogger` service for
   `yield* ActionLogger`
