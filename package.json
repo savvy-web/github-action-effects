@@ -1,12 +1,12 @@
 {
-	"name": "@savvy-web/pnpm-module-template",
+	"name": "@savvy-web/github-action-effects",
 	"version": "0.0.0",
 	"private": true,
-	"description": "A template repository for developing and deploying Node.js modules from a pnpm monorepo structure.",
-	"homepage": "https://github.com/spencerbeggs/pnpm-module-template#readme",
+	"description": "Effect-based utility library for building robust, well-logged, and schema-validated GitHub Actions.",
+	"homepage": "https://github.com/savvy-web/github-action-effects#readme",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/spencerbeggs/pnpm-module-template.git"
+		"url": "https://github.com/savvy-web/github-action-effects.git"
 	},
 	"license": "MIT",
 	"author": {
@@ -41,11 +41,35 @@
 		"types:check": "tsgo --noEmit"
 	},
 	"devDependencies": {
-		"@savvy-web/changesets": "^0.4.1",
+		"@actions/core": "^3.0.0",
+		"@actions/exec": "^3.0.0",
+		"@actions/github": "^9.0.0",
+		"@savvy-web/changesets": "^0.4.2",
 		"@savvy-web/commitlint": "^0.4.0",
-		"@savvy-web/lint-staged": "^0.5.0",
+		"@savvy-web/lint-staged": "^0.5.1",
 		"@savvy-web/rslib-builder": "^0.16.0",
-		"@savvy-web/vitest": "^0.2.0"
+		"@savvy-web/vitest": "^0.2.0",
+		"effect": "^3.19.19"
+	},
+	"peerDependencies": {
+		"@actions/core": "^3.0.0",
+		"@actions/exec": "^3.0.0",
+		"@actions/github": "^9.0.0",
+		"effect": "^3.19.0"
+	},
+	"peerDependenciesMeta": {
+		"@actions/core": {
+			"optional": false
+		},
+		"@actions/exec": {
+			"optional": false
+		},
+		"@actions/github": {
+			"optional": false
+		},
+		"effect": {
+			"optional": false
+		}
 	},
 	"packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017",
 	"devEngines": {
