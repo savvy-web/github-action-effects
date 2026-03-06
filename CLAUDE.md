@@ -5,10 +5,18 @@ code in this repository.
 
 ## Project Status
 
-This is a **base template repository** in initial state. The design
-documentation system (`.claude/` skills and agents) is included but no design
-docs exist yet. To begin planning and documenting architecture decisions, run
-`/design-init` to create your first design document.
+Effect-based utility library for building robust, well-logged, and
+schema-validated GitHub Actions. Core services (ActionInputs, ActionLogger,
+ActionOutputs) and GithubMarkdown utilities are implemented and tested.
+
+## Design Documentation
+
+**For architecture, service interfaces, and data flow:**
+-> `@./.claude/design/github-action-effects/github-action-effects.md`
+
+Load when making architectural changes, adding new services, modifying layer
+composition, or understanding design decisions.
+**Do NOT load unless directly relevant to your task.**
 
 ## Commands
 
@@ -34,30 +42,36 @@ pnpm run build:prod        # Build production/npm output only
 ### Running a Single Test
 
 ```bash
-# Run tests for a specific package
-pnpm run test -- --filter=@savvy-web/ecma-module
-
 # Run a specific test file
-pnpm vitest run pkgs/ecma-module/src/index.test.ts
+pnpm vitest run src/services/ActionInputs.test.ts
 ```
 
 ## Architecture
 
-### Monorepo Structure
+### Package Structure
 
-- **Package Manager**: pnpm with workspaces
+- **Package Manager**: pnpm
+- **Build**: Rslib with dual output (`dist/dev/` and `dist/npm/`)
 - **Build Orchestration**: Turbo for caching and task dependencies
-- **Packages**: Located in `pkgs/` directory
-- **Shared Configs**: Located in `lib/configs/`
+- **Core Dependency**: Effect-TS for service composition, error handling, and schema validation
 
-### Package Build Pipeline
+### Source Layout
 
-Each package uses Rslib with dual output:
+```text
+src/
+  services/    -- Effect service definitions (ActionInputs, ActionLogger, ActionOutputs)
+  layers/      -- Live and Test layer implementations
+  errors/      -- Tagged error types (Data.TaggedError)
+  schemas/     -- Effect Schema definitions (LogLevel, GithubMarkdown)
+  utils/       -- Pure utility functions (GithubMarkdown builders)
+```
 
-1. `dist/dev/` - Development build with source maps
-2. `dist/npm/` - Production build for npm publishing
+### Key Patterns
 
-Turbo tasks define dependencies: `typecheck` depends on `build` completing first.
+- Services use `Context.GenericTag<Interface>("name")` (not class-based `Context.Tag`)
+- Error base classes marked `@internal` for api-extractor compatibility
+- Live layers wrap `@actions/core`; Test layers use in-memory state
+- Test layers use namespace object pattern: `ActionLoggerTest.empty()` / `ActionLoggerTest.layer(state)`
 
 ### Code Quality
 
@@ -79,8 +93,7 @@ Turbo tasks define dependencies: `typecheck` depends on `build` completing first
 
 - **Framework**: Vitest with v8 coverage
 - **Pool**: Uses forks (not threads) for Effect-TS compatibility
-- **Config**: `vitest.config.ts` supports project-based filtering via
-  `--project` flag
+- **Coverage**: 80% threshold for lines, functions, statements, branches
 
 ## Conventions
 
@@ -89,6 +102,7 @@ Turbo tasks define dependencies: `typecheck` depends on `build` completing first
 - Use `.js` extensions for relative imports (ESM requirement)
 - Use `node:` protocol for Node.js built-ins
 - Separate type imports: `import type { Foo } from './bar.js'`
+- No barrel exports in subdirectories; only `src/index.ts` re-exports
 
 ### Commits
 

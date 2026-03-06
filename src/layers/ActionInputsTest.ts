@@ -1,22 +1,8 @@
-import { Effect, Layer, Option, Schema } from "effect";
+import type { Schema } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { ActionInputError } from "../errors/ActionInputError.js";
 import { ActionInputs } from "../services/ActionInputs.js";
-
-const decodeInput = <A, I>(
-	name: string,
-	raw: string,
-	schema: Schema.Schema<A, I, never>,
-): Effect.Effect<A, ActionInputError> =>
-	Schema.decode(schema)(raw as unknown as I).pipe(
-		Effect.mapError(
-			(parseError) =>
-				new ActionInputError({
-					inputName: name,
-					reason: `Input "${name}" validation failed: ${parseError.message}`,
-					rawValue: raw,
-				}),
-		),
-	);
+import { decodeInput, decodeJsonInput } from "./internal/decodeInput.js";
 
 const missingInput = (name: string): ActionInputError =>
 	new ActionInputError({
@@ -59,27 +45,6 @@ export const ActionInputsTest = (inputs: Record<string, string>): Layer.Layer<Ac
 			if (raw === undefined) {
 				return Effect.fail(missingInput(name));
 			}
-			return Effect.try({
-				try: () => JSON.parse(raw) as unknown,
-				catch: (error) =>
-					new ActionInputError({
-						inputName: name,
-						reason: `Input "${name}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-						rawValue: raw,
-					}),
-			}).pipe(
-				Effect.flatMap((parsed) =>
-					Schema.decode(schema)(parsed as I).pipe(
-						Effect.mapError(
-							(parseError) =>
-								new ActionInputError({
-									inputName: name,
-									reason: `Input "${name}" JSON validation failed: ${parseError.message}`,
-									rawValue: raw,
-								}),
-						),
-					),
-				),
-			);
+			return decodeJsonInput(name, raw, schema);
 		},
 	});
