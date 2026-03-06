@@ -7,7 +7,7 @@ import { ActionInputs } from "./ActionInputs.js";
 // -- Shared provide helper (eliminates duplication between run/runExit) --
 
 const provide = <A, E>(inputs: Record<string, string>, effect: Effect.Effect<A, E, ActionInputs>) =>
-	Effect.provide(effect, ActionInputsTest(inputs));
+	Effect.provide(effect, ActionInputsTest.layer(inputs));
 
 const run = <A, E>(inputs: Record<string, string>, effect: Effect.Effect<A, E, ActionInputs>) =>
 	Effect.runPromise(provide(inputs, effect));

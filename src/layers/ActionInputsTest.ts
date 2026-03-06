@@ -13,38 +13,45 @@ const missingInput = (name: string): ActionInputError =>
 
 /**
  * Test implementation that reads from a provided record.
+ *
+ * @example
+ * ```ts
+ * const layer = ActionInputsTest.layer({ "package-name": "my-pkg" });
+ * ```
  */
-export const ActionInputsTest = (inputs: Record<string, string>): Layer.Layer<ActionInputs> =>
-	Layer.succeed(ActionInputs, {
-		get: <A, I>(name: string, schema: Schema.Schema<A, I, never>) => {
-			const raw = inputs[name];
-			if (raw === undefined) {
-				return Effect.fail(missingInput(name));
-			}
-			return decodeInput(name, raw, schema);
-		},
+export const ActionInputsTest = {
+	layer: (inputs: Record<string, string>): Layer.Layer<ActionInputs> =>
+		Layer.succeed(ActionInputs, {
+			get: <A, I>(name: string, schema: Schema.Schema<A, I, never>) => {
+				const raw = inputs[name];
+				if (raw === undefined) {
+					return Effect.fail(missingInput(name));
+				}
+				return decodeInput(name, raw, schema);
+			},
 
-		getOptional: <A, I>(name: string, schema: Schema.Schema<A, I, never>) => {
-			const raw = inputs[name];
-			if (raw === undefined || raw === "") {
-				return Effect.succeed(Option.none<A>());
-			}
-			return decodeInput(name, raw, schema).pipe(Effect.map((a) => Option.some(a)));
-		},
+			getOptional: <A, I>(name: string, schema: Schema.Schema<A, I, never>) => {
+				const raw = inputs[name];
+				if (raw === undefined || raw === "") {
+					return Effect.succeed(Option.none<A>());
+				}
+				return decodeInput(name, raw, schema).pipe(Effect.map((a) => Option.some(a)));
+			},
 
-		getSecret: <A, I>(name: string, schema: Schema.Schema<A, I, never>) => {
-			const raw = inputs[name];
-			if (raw === undefined) {
-				return Effect.fail(missingInput(name));
-			}
-			return decodeInput(name, raw, schema);
-		},
+			getSecret: <A, I>(name: string, schema: Schema.Schema<A, I, never>) => {
+				const raw = inputs[name];
+				if (raw === undefined) {
+					return Effect.fail(missingInput(name));
+				}
+				return decodeInput(name, raw, schema);
+			},
 
-		getJson: <A, I>(name: string, schema: Schema.Schema<A, I, never>) => {
-			const raw = inputs[name];
-			if (raw === undefined) {
-				return Effect.fail(missingInput(name));
-			}
-			return decodeJsonInput(name, raw, schema);
-		},
-	});
+			getJson: <A, I>(name: string, schema: Schema.Schema<A, I, never>) => {
+				const raw = inputs[name];
+				if (raw === undefined) {
+					return Effect.fail(missingInput(name));
+				}
+				return decodeJsonInput(name, raw, schema);
+			},
+		}),
+} as const;
