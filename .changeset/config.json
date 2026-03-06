@@ -3,7 +3,7 @@
 	"changelog": [
 		"@savvy-web/changesets/changelog",
 		{
-			"repo": "savvy-web/pnpm-module-template"
+			"repo": "savvy-web/github-action-effects"
 		}
 	],
 	"commit": false,

@@ -1,18 +1,50 @@
 /**
- * \@savvy-web/example-module
+ * \@savvy-web/github-action-effects
  *
- * Version-aware type definition registry for TypeScript documentation with Twoslash.
- * Built with Effect for robust error handling and composable async operations.
+ * Effect-based utility library for building robust, well-logged,
+ * and schema-validated GitHub Actions.
  *
  * @packageDocumentation
  */
 
-export interface Foo {
-	baz: number;
-}
+// -- Errors --
+export { ActionInputError, ActionInputErrorBase } from "./errors/ActionInputError.js";
+export { ActionOutputError, ActionOutputErrorBase } from "./errors/ActionOutputError.js";
 
-export class Bar {
-	qux(): Foo {
-		return { baz: 42 };
-	}
-}
+// -- Layers --
+export { ActionInputsLive } from "./layers/ActionInputsLive.js";
+export { ActionInputsTest } from "./layers/ActionInputsTest.js";
+export {
+	ActionLoggerLayer,
+	ActionLoggerLive,
+	CurrentLogLevel,
+	makeActionLogger,
+	setLogLevel,
+} from "./layers/ActionLoggerLive.js";
+export { ActionLoggerTest, type ActionLoggerTestState, type TestAnnotationType } from "./layers/ActionLoggerTest.js";
+export { ActionOutputsLive } from "./layers/ActionOutputsLive.js";
+export { ActionOutputsTest, type ActionOutputsTestState } from "./layers/ActionOutputsTest.js";
+
+// -- Schemas --
+export { CapturedOutput, ChecklistItem, Status } from "./schemas/GithubMarkdown.js";
+export { ActionLogLevel, LogLevelInput, resolveLogLevel } from "./schemas/LogLevel.js";
+
+// -- Services --
+export { ActionInputs } from "./services/ActionInputs.js";
+export { ActionLogger } from "./services/ActionLogger.js";
+export { ActionOutputs } from "./services/ActionOutputs.js";
+
+// -- GFM Builders (pure functions) --
+export {
+	bold,
+	checklist,
+	code,
+	codeBlock,
+	details,
+	heading,
+	link,
+	list,
+	rule,
+	statusIcon,
+	table,
+} from "./utils/GithubMarkdown.js";
