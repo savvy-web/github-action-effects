@@ -5,7 +5,7 @@ category: architecture
 created: 2026-03-06
 updated: 2026-03-07
 last-synced: 2026-03-07
-completeness: 95
+completeness: 97
 related: []
 dependencies: []
 ---
@@ -180,18 +180,42 @@ size-constrained like browser bundles.
 
 ### Service Overview
 
-Five core service modules plus standalone helpers, each independently usable:
+Five core service modules plus two namespace objects, each independently usable:
 
 ```text
 @savvy-web/github-action-effects
-├── ActionInputs      — Schema-validated input reading
-├── ActionLogger      — Structured logging with buffering
-├── ActionOutputs     — Typed output setting and step summaries
-├── ActionState       — Schema-serialized state for multi-phase actions
-├── GithubMarkdown    — GFM table/summary builders (pure functions)
-├── parseAllInputs()  — Batch input reading from a config record
-└── runAction()       — Top-level convenience for wiring layers and error handling
+├── ActionInputs        — Schema-validated input reading
+├── ActionLogger        — Structured logging with buffering
+├── ActionOutputs       — Typed output setting and step summaries
+├── ActionState         — Schema-serialized state for multi-phase actions
+├── Action.*            — Namespace: run, parseInputs, makeLogger, setLogLevel, resolveLogLevel
+└── GithubMarkdown.*    — Namespace: table, heading, details, bold, code, etc. (pure functions)
 ```
+
+### Namespace Objects
+
+The public API uses namespace objects to group related functions under a
+single export, reducing barrel clutter and improving discoverability.
+
+**`Action`** (from `src/Action.ts`) groups top-level action helpers:
+
+- `Action.run(program)` / `Action.run(program, layer)` — Run a GitHub Action
+  program with standard boilerplate (provides core layers, catches errors)
+- `Action.parseInputs(config, crossValidate?)` — Read and validate all inputs
+  at once from a config record
+- `Action.makeLogger()` — Create the Effect Logger for GitHub Actions
+- `Action.setLogLevel(level)` — Set action log level for current scope
+- `Action.resolveLogLevel(input)` — Resolve LogLevelInput to ActionLogLevel
+
+**`GithubMarkdown`** (from `src/utils/GithubMarkdown.ts`) groups GFM builders:
+
+- `GithubMarkdown.table`, `GithubMarkdown.heading`, `GithubMarkdown.details`,
+  `GithubMarkdown.bold`, `GithubMarkdown.code`, `GithubMarkdown.codeBlock`,
+  `GithubMarkdown.link`, `GithubMarkdown.list`, `GithubMarkdown.checklist`,
+  `GithubMarkdown.rule`, `GithubMarkdown.statusIcon`
+
+The underlying functions still exist in their source files for internal use.
+Only the barrel export changed to prefer namespace access.
 
 ### Module Details
 
@@ -214,14 +238,14 @@ Reads and validates GitHub Action inputs using Effect Schema.
 - `getBooleanOptional(name, defaultValue)` — Read boolean input or return
   default if not provided. Returns `Effect<boolean, ActionInputError>`
 
-**Standalone helper:** `parseAllInputs(config, crossValidate?)` — Read all
+**Batch helper:** `Action.parseInputs(config, crossValidate?)` — Read all
 inputs at once from a config object (`Record<string, InputConfig>`). Each
 `InputConfig` specifies `{ schema, required?, default?, multiline?, secret?,
 json? }`. After reading all inputs, passes the parsed object to an optional
 cross-validation function. Returns the fully typed parsed object. Errors from
 individual inputs and cross-validation unified under `ActionInputError`.
-Requires `ActionInputs` in the Effect context. Exported from
-`services/parseAllInputs.ts`
+Requires `ActionInputs` in the Effect context. Implementation in
+`services/parseAllInputs.ts`, exported via `Action` namespace.
 
 **Backed by:** `@actions/core.getInput()`, `@actions/core.setSecret()`,
 `@actions/core.getMultilineInput()`, `@actions/core.getBooleanInput()` — all
@@ -401,16 +425,16 @@ simulate phase ordering (e.g., pre-populate state that pre.ts would have set,
 then test main.ts logic). Follows the namespace object pattern:
 `ActionStateTest.layer(state)` and `ActionStateTest.empty()`
 
-#### runAction Helper
+#### Action.run Helper
 
 Top-level convenience function that eliminates boilerplate for wiring Effect
-programs into GitHub Action entry points.
+programs into GitHub Action entry points. Accessed via the `Action` namespace.
 
 **Signatures:**
 
 ```typescript
-runAction(program): void          // uses all standard Live layers
-runAction(program, layer): void   // merge additional layers with standard layers
+Action.run(program): void          // uses all standard Live layers
+Action.run(program, layer): void   // merge additional layers with standard layers
 ```
 
 **Behavior:**
@@ -426,7 +450,7 @@ runAction(program, layer): void   // merge additional layers with standard layer
 
 **Why this matters:** Every action entry point requires the same boilerplate:
 compose Live layers, add the ActionLoggerLayer, catch errors, call setFailed,
-run the promise. `runAction` eliminates this class of errors entirely. Note
+run the promise. `Action.run` eliminates this class of errors entirely. Note
 that `ActionStateLive` is not included in the core layers because not all
 actions need multi-phase state; users who need it pass it as the second
 `layer` argument.
@@ -450,8 +474,8 @@ ActionOutputsTest  — captures outputs in memory
 ActionStateLive    — wraps core.saveState()/core.getState() with Schema encode/decode
 ActionStateTest    — in-memory Map<string, string>, pre-populatable for phase simulation
 
-parseAllInputs     — standalone function that reads all inputs from a config record
-                     (depends on ActionInputs service, not bundled into runAction)
+Action.parseInputs — standalone function that reads all inputs from a config record
+                     (depends on ActionInputs service, not bundled into Action.run)
 ```
 
 Users compose layers as needed:

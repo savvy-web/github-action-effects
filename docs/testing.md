@@ -224,18 +224,18 @@ describe("extended input methods", () => {
 })
 ```
 
-### Testing parseAllInputs
+### Testing Action.parseInputs
 
 ```typescript
 import { Effect, Schema } from "effect"
 import { describe, expect, it } from "vitest"
-import { parseAllInputs, ActionInputsTest } from "@savvy-web/github-action-effects"
+import { Action, ActionInputsTest } from "@savvy-web/github-action-effects"
 
-describe("parseAllInputs", () => {
+describe("Action.parseInputs", () => {
   it("reads all inputs from config", async () => {
     const result = await Effect.runPromise(
       Effect.provide(
-        parseAllInputs({
+        Action.parseInputs({
           name: { schema: Schema.String, required: true },
           count: { schema: Schema.NumberFromString, default: 1 },
         }),
@@ -489,33 +489,34 @@ describe("annotations", () => {
 ## Testing GFM Builders
 
 The GFM (GitHub Flavored Markdown) builder functions are pure -- they take
-strings in and return strings out. No layers or Effect runtime needed.
+strings in and return strings out. No layers or Effect runtime needed. Access
+them via the `GithubMarkdown` namespace.
 
 ```typescript
 import { describe, expect, it } from "vitest"
-import { table, statusIcon, heading, bold, list } from "@savvy-web/github-action-effects"
+import { GithubMarkdown } from "@savvy-web/github-action-effects"
 
 describe("GFM builders", () => {
   it("builds a markdown table", () => {
-    const result = table(
+    const result = GithubMarkdown.table(
       ["Name", "Status"],
-      [["pkg-a", statusIcon("pass")]],
+      [["pkg-a", GithubMarkdown.statusIcon("pass")]],
     )
     expect(result).toContain("| Name | Status |")
     expect(result).toContain("pkg-a")
   })
 
   it("builds a heading", () => {
-    expect(heading("Results", 2)).toBe("## Results")
+    expect(GithubMarkdown.heading("Results", 2)).toBe("## Results")
   })
 
   it("builds a bulleted list", () => {
-    const result = list(["first", "second"])
+    const result = GithubMarkdown.list(["first", "second"])
     expect(result).toBe("- first\n- second")
   })
 
   it("bolds text", () => {
-    expect(bold("important")).toBe("**important**")
+    expect(GithubMarkdown.bold("important")).toBe("**important**")
   })
 })
 ```

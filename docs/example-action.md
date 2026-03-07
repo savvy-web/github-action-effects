@@ -137,15 +137,15 @@ const dryRun = yield* inputs.getBoolean("dry-run")
 const verbose = yield* inputs.getBooleanOptional("verbose", false)
 ```
 
-### Batch input reading with parseAllInputs
+### Batch input reading with Action.parseInputs
 
-Use `parseAllInputs` to read and validate all inputs at once from a
+Use `Action.parseInputs` to read and validate all inputs at once from a
 configuration record:
 
 ```typescript
-import { parseAllInputs } from "@savvy-web/github-action-effects"
+import { Action } from "@savvy-web/github-action-effects"
 
-const inputs = yield* parseAllInputs({
+const inputs = yield* Action.parseInputs({
   "package-name": { schema: Schema.String, required: true },
   "branch": { schema: Schema.String, default: "main" },
   "dry-run": { schema: Schema.Boolean, default: false },
@@ -178,11 +178,11 @@ resolves to `"debug"` when the `RUNNER_DEBUG` secret is set, and `"info"`
 otherwise.
 
 ```typescript
-import { ActionInputs, LogLevelInput, resolveLogLevel, setLogLevel } from "@savvy-web/github-action-effects"
+import { Action, ActionInputs, LogLevelInput } from "@savvy-web/github-action-effects"
 
 const logLevelInput = yield* ActionInputs.get("log-level", LogLevelInput)
-const resolvedLevel = resolveLogLevel(logLevelInput)
-yield* setLogLevel(resolvedLevel)
+const resolvedLevel = Action.resolveLogLevel(logLevelInput)
+yield* Action.setLogLevel(resolvedLevel)
 ```
 
 The three concrete levels control what appears in the Actions log:
@@ -325,35 +325,27 @@ yield* outputs.setSecret(generatedToken) // masked in all subsequent log output
 
 ## Building Reports with GFM
 
-The library exports pure functions for composing GitHub Flavored Markdown.
-These are especially useful for step summaries.
+The `GithubMarkdown` namespace exports pure functions for composing GitHub
+Flavored Markdown. These are especially useful for step summaries.
 
 ```typescript
-import {
-  table,
-  statusIcon,
-  heading,
-  details,
-  checklist,
-  bold,
-  list,
-} from "@savvy-web/github-action-effects"
+import { GithubMarkdown } from "@savvy-web/github-action-effects"
 ```
 
 ### Tables
 
 ```typescript
-const reportTable = table(
+const reportTable = GithubMarkdown.table(
   ["Package", "Status", "Version"],
   results.map((r) => [
     r.name,
-    statusIcon(r.passed ? "pass" : "fail"),
+    GithubMarkdown.statusIcon(r.passed ? "pass" : "fail"),
     r.version,
   ])
 )
 ```
 
-The `statusIcon` function maps a `Status` value to its corresponding
+`GithubMarkdown.statusIcon` maps a `Status` value to its corresponding
 indicator: `"pass"`, `"fail"`, `"skip"`, or `"warn"`.
 
 ### Composing a summary
@@ -366,13 +358,13 @@ const checklistItems = [
 ]
 
 const summaryContent = [
-  heading("Check Results", 2),
+  GithubMarkdown.heading("Check Results", 2),
   reportTable,
   "",
-  heading("Checklist", 3),
-  checklist(checklistItems),
+  GithubMarkdown.heading("Checklist", 3),
+  GithubMarkdown.checklist(checklistItems),
   "",
-  details("Full Details", detailedOutput),
+  GithubMarkdown.details("Full Details", detailedOutput),
 ].join("\n\n")
 
 yield* outputs.summary(summaryContent)
@@ -381,32 +373,29 @@ yield* outputs.summary(summaryContent)
 ### Other GFM helpers
 
 ```typescript
-bold("important text")              // **important text**
-list(["item one", "item two"])      // - item one\n- item two
-details("Click to expand", content) // <details> block
-heading("Section", 3)              // ### Section
+GithubMarkdown.bold("important text")              // **important text**
+GithubMarkdown.list(["item one", "item two"])      // - item one\n- item two
+GithubMarkdown.details("Click to expand", content) // <details> block
+GithubMarkdown.heading("Section", 3)              // ### Section
 ```
 
 ## Composing the Layer and Running
 
-### Using runAction (recommended)
+### Using Action.run (recommended)
 
-The simplest way to run an action is with `runAction`, which provides all core
-service layers, installs the Effect logger, and catches errors automatically:
+The simplest way to run an action is with `Action.run`, which provides all
+core service layers, installs the Effect logger, and catches errors
+automatically:
 
 ```typescript
 import { Effect, Schema } from "effect"
 import {
-  runAction,
+  Action,
   ActionInputs,
   ActionLogger,
   ActionOutputs,
+  GithubMarkdown,
   LogLevelInput,
-  resolveLogLevel,
-  setLogLevel,
-  heading,
-  table,
-  statusIcon,
 } from "@savvy-web/github-action-effects"
 
 const program = Effect.gen(function* () {
@@ -416,7 +405,7 @@ const program = Effect.gen(function* () {
 
   // Configure log level
   const logLevelInput = yield* inputs.get("log-level", LogLevelInput)
-  yield* setLogLevel(resolveLogLevel(logLevelInput))
+  yield* Action.setLogLevel(Action.resolveLogLevel(logLevelInput))
 
   // Read inputs
   const packageName = yield* inputs.get("package-name", Schema.String)
@@ -433,20 +422,20 @@ const program = Effect.gen(function* () {
   yield* outputs.set("status", result.passed ? "success" : "failure")
 
   // Write step summary
-  const summaryTable = table(
+  const summaryTable = GithubMarkdown.table(
     ["Package", "Status", "Version"],
-    [[packageName, statusIcon(result.passed ? "pass" : "fail"), result.version]]
+    [[packageName, GithubMarkdown.statusIcon(result.passed ? "pass" : "fail"), result.version]]
   )
 
-  yield* outputs.summary([heading("Check Results", 2), summaryTable].join("\n\n"))
+  yield* outputs.summary([GithubMarkdown.heading("Check Results", 2), summaryTable].join("\n\n"))
 
   yield* Effect.log("Action completed")
 })
 
-runAction(program)
+Action.run(program)
 ```
 
-`runAction` handles:
+`Action.run` handles:
 
 * Providing core Live layers (ActionInputsLive, ActionLoggerLive,
   ActionOutputsLive)
@@ -458,9 +447,9 @@ If your action needs additional layers (e.g., `ActionStateLive` for
 multi-phase state), pass them as the second argument:
 
 ```typescript
-import { ActionStateLive } from "@savvy-web/github-action-effects"
+import { Action, ActionStateLive } from "@savvy-web/github-action-effects"
 
-runAction(program, ActionStateLive)
+Action.run(program, ActionStateLive)
 ```
 
 ### Manual layer composition
@@ -497,7 +486,7 @@ Instead, it replaces the default Effect logger with one that routes to GitHub
 Actions log functions (`core.info`, `core.warning`, `core.error`,
 `core.debug`). Because it modifies the fiber's logger rather than providing a
 service, it must be applied with a separate `Effect.provide` call after the
-service layer. `runAction` handles this automatically.
+service layer. `Action.run` handles this automatically.
 
 `ActionLoggerLive` is a separate `Layer<ActionLogger>` that provides the
 `ActionLogger` service (groups, buffering, annotation methods). Both are
@@ -547,11 +536,11 @@ const program = Effect.gen(function* () {
 
 ### Top-level error handling
 
-The easiest approach is to use `runAction`, which catches all errors and calls
+The easiest approach is to use `Action.run`, which catches all errors and calls
 `core.setFailed` automatically:
 
 ```typescript
-runAction(program)
+Action.run(program)
 ```
 
 If you need custom error handling, compose manually:

@@ -40,12 +40,12 @@ npm install @actions/exec @actions/github @effect/platform @effect/platform-node
 | ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
 | GFM Builders | Pure functions for tables, checklists, details, status icons |
 
-## Helpers
+## Namespace Objects
 
-| Helper | Purpose |
+| Namespace | Purpose |
 | --- | --- |
-| `runAction` | Top-level convenience that provides core layers, installs the logger, and catches errors |
-| `parseAllInputs` | Batch input reading from a config record with cross-validation |
+| `Action` | Groups top-level helpers: `run`, `parseInputs`, `makeLogger`, `setLogLevel`, `resolveLogLevel` |
+| `GithubMarkdown` | Groups GFM builder functions: `table`, `heading`, `bold`, `details`, etc. |
 
 ## See Also
 

@@ -11,16 +11,16 @@ multi-phase state management through composable service layers.
 
 - **Schema-validated inputs** -- `get`, `getOptional`, `getSecret`, `getJson`,
   `getMultiline`, `getBoolean`, `getBooleanOptional`, plus batch reading with
-  `parseAllInputs`
+  `Action.parseInputs`
 - **Three-tier action logger** (info/verbose/debug) with automatic log buffering
   and buffer-on-failure
 - **Typed outputs** -- `set`, `setJson`, `summary`, `exportVariable`, `addPath`,
   `setFailed`, `setSecret`
 - **Multi-phase state** -- `ActionState` service for schema-serialized state
   across pre/main/post action phases
-- **GitHub Flavored Markdown builders** for step summaries (tables, checklists,
-  details, status icons)
-- **`runAction` helper** -- eliminates boilerplate for wiring layers and error
+- **GitHub Flavored Markdown builders** -- `GithubMarkdown.table`,
+  `GithubMarkdown.checklist`, `GithubMarkdown.details`, and more
+- **`Action.run` helper** -- eliminates boilerplate for wiring layers and error
   handling
 - **Test layers for every service** -- no mocking `@actions/core` required
 - **Full TypeScript** with strict mode and ESM
@@ -33,19 +33,17 @@ npm install @savvy-web/github-action-effects effect @actions/core
 
 ## Quick Start
 
-The simplest way to run an action is with `runAction`, which provides all core
+The simplest way to run an action is with `Action.run`, which provides all core
 service layers, installs the Effect logger, and catches errors automatically:
 
 ```typescript
 import { Effect, Schema } from "effect";
 import {
-  runAction,
+  Action,
   ActionInputs,
   ActionOutputs,
+  GithubMarkdown,
   LogLevelInput,
-  resolveLogLevel,
-  setLogLevel,
-  table,
 } from "@savvy-web/github-action-effects";
 
 const program = Effect.gen(function* () {
@@ -53,14 +51,14 @@ const program = Effect.gen(function* () {
   const outputs = yield* ActionOutputs;
 
   const level = yield* inputs.get("log-level", LogLevelInput);
-  yield* setLogLevel(resolveLogLevel(level));
+  yield* Action.setLogLevel(Action.resolveLogLevel(level));
 
   const name = yield* inputs.get("name", Schema.String);
   yield* outputs.set("greeting", `Hello, ${name}!`);
-  yield* outputs.summary(table(["Input", "Value"], [["name", name]]));
+  yield* outputs.summary(GithubMarkdown.table(["Input", "Value"], [["name", name]]));
 });
 
-runAction(program);
+Action.run(program);
 ```
 
 ### Manual layer composition
@@ -89,16 +87,16 @@ program.pipe(
 );
 ```
 
-## Batch Input Reading with parseAllInputs
+## Batch Input Reading with Action.parseInputs
 
-Read and validate all inputs in one call with `parseAllInputs`:
+Read and validate all inputs in one call with `Action.parseInputs`:
 
 ```typescript
 import { Effect, Schema } from "effect";
-import { parseAllInputs, runAction } from "@savvy-web/github-action-effects";
+import { Action } from "@savvy-web/github-action-effects";
 
 const program = Effect.gen(function* () {
-  const inputs = yield* parseAllInputs({
+  const inputs = yield* Action.parseInputs({
     "app-id": { schema: Schema.NumberFromString, required: true },
     "branch": { schema: Schema.String, default: "main" },
     "dry-run": { schema: Schema.Boolean, default: false },
@@ -110,7 +108,7 @@ const program = Effect.gen(function* () {
   // inputs is fully typed: { "app-id": number, branch: string, ... }
 });
 
-runAction(program);
+Action.run(program);
 ```
 
 Each entry in the config record specifies how to read the input: `required`,
@@ -125,7 +123,7 @@ state transfer:
 ```typescript
 import { Effect, Layer, Schema } from "effect";
 import {
-  runAction,
+  Action,
   ActionState,
   ActionStateLive,
 } from "@savvy-web/github-action-effects";
@@ -140,7 +138,7 @@ const preProgram = Effect.gen(function* () {
   yield* state.save("timing", { startedAt: Date.now() }, TimingSchema);
 });
 
-runAction(preProgram, ActionStateLive);
+Action.run(preProgram, ActionStateLive);
 
 // In main.ts:
 const mainProgram = Effect.gen(function* () {
@@ -149,10 +147,10 @@ const mainProgram = Effect.gen(function* () {
   // timing.startedAt is typed as number
 });
 
-runAction(mainProgram, ActionStateLive);
+Action.run(mainProgram, ActionStateLive);
 ```
 
-`ActionStateLive` is not included in `runAction`'s core layers because not all
+`ActionStateLive` is not included in `Action.run`'s core layers because not all
 actions need multi-phase state. Pass it as the second argument when needed.
 
 ## Documentation

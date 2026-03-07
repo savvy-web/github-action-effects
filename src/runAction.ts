@@ -31,7 +31,7 @@ const CoreLive = Layer.mergeAll(ActionInputsLive, ActionLoggerLive, ActionOutput
  * @example
  * ```ts
  * import { Effect } from "effect"
- * import { runAction, ActionInputs, ActionLogger } from "@savvy-web/github-action-effects"
+ * import { Action, ActionInputs, ActionLogger } from "@savvy-web/github-action-effects"
  *
  * const program = Effect.gen(function* () {
  *   const inputs = yield* ActionInputs
@@ -39,7 +39,7 @@ const CoreLive = Layer.mergeAll(ActionInputsLive, ActionLoggerLive, ActionOutput
  *   // ... your action logic
  * })
  *
- * runAction(program)
+ * Action.run(program)
  * ```
  *
  * @public

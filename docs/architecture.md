@@ -15,8 +15,8 @@ src/
   layers/      - Live and Test implementations of each service
   errors/      - Tagged error types
   schemas/     - Effect Schema definitions
-  utils/       - Pure utility functions (GFM builders)
-  runAction.ts - Top-level convenience helper
+  utils/       - Pure utility functions (GithubMarkdown namespace)
+  Action.ts    - Action namespace (run, parseInputs, makeLogger, setLogLevel, resolveLogLevel)
 ```
 
 ## Services
@@ -43,23 +43,22 @@ All methods that accept a `schema` parameter use `Schema.decode` to validate
 the raw string (or parsed JSON) value. Validation failures are mapped to
 `ActionInputError` with the input name, reason, and raw value.
 
-### parseAllInputs
+### Action.parseInputs
 
-`parseAllInputs` is a standalone function (not a service method) that reads
-all inputs at once from a config record. Each entry specifies `{ schema,
-required?, default?, multiline?, secret?, json? }`. An optional second
-argument accepts a cross-validation function that receives the parsed object
-and can return errors.
+`Action.parseInputs` reads all inputs at once from a config record. Each entry
+specifies `{ schema, required?, default?, multiline?, secret?, json? }`. An
+optional second argument accepts a cross-validation function that receives the
+parsed object and can return errors.
 
 ```typescript
-const inputs = yield* parseAllInputs({
+const inputs = yield* Action.parseInputs({
   "app-id": { schema: Schema.NumberFromString, required: true },
   "branch": { schema: Schema.String, default: "main" },
 });
 ```
 
-Requires `ActionInputs` in the Effect context. Exported as `parseAllInputs`
-with its `InputConfig` type.
+Requires `ActionInputs` in the Effect context. Accessed via the `Action`
+namespace; the `InputConfig` type is exported separately.
 
 ### ActionLogger
 
@@ -106,17 +105,18 @@ strings.
 | `get` | `(key, schema) => Effect<A, ActionStateError>` | Read, parse JSON, decode via Schema.decode |
 | `getOptional` | `(key, schema) => Effect<Option<A>, ActionStateError>` | Like get but returns Option.none() when key has no value |
 
-## runAction Helper
+## Action.run Helper
 
-`runAction` is a top-level convenience function that eliminates boilerplate
-for wiring Effect programs into GitHub Action entry points.
+`Action.run` is a top-level convenience function that eliminates boilerplate
+for wiring Effect programs into GitHub Action entry points. It is accessed via
+the `Action` namespace.
 
 ```typescript
 // Simplest form -- provides core layers automatically
-runAction(program);
+Action.run(program);
 
 // With additional layers (e.g., ActionStateLive)
-runAction(program, ActionStateLive);
+Action.run(program, ActionStateLive);
 ```
 
 It handles:
@@ -128,7 +128,8 @@ It handles:
 * Running with `Effect.runPromise`
 
 Note: `ActionStateLive` is not included in core layers because not all actions
-need multi-phase state. Pass it as the second `layer` argument when needed.
+need multi-phase state. Pass it as the second `layer` argument to `Action.run`
+when needed.
 
 ## Layer Composition
 
@@ -164,22 +165,22 @@ const program = myAction.pipe(
 )
 ```
 
-`runAction` handles both automatically.
+`Action.run` handles both automatically.
 
 ## Logging System
 
 The logging architecture has two parts: a custom Effect Logger (installed via
 `ActionLoggerLayer`) and the `ActionLogger` service for structural operations.
 
-### CurrentLogLevel and setLogLevel
+### CurrentLogLevel and Action.setLogLevel
 
 `CurrentLogLevel` is a `FiberRef<ActionLogLevel>` that holds the active log
-level for the current fiber. It defaults to `"info"`. Use `setLogLevel` to
-change it within a scoped region.
+level for the current fiber. It defaults to `"info"`. Use `Action.setLogLevel`
+to change it within a scoped region.
 
-### makeActionLogger
+### Action.makeLogger
 
-`makeActionLogger()` creates an `Effect.Logger` with two output channels:
+`Action.makeLogger()` creates an `Effect.Logger` with two output channels:
 
 1. **Shadow channel** -- every log message is always written to `core.debug()`.
    GitHub only displays these when `ACTIONS_STEP_DEBUG` is enabled, so this
@@ -216,11 +217,11 @@ The buffer-on-failure pattern optimizes output at `info` level:
 4. On failure (via `tapErrorCause`), the buffer is flushed to `core.info()`
    with labeled delimiters, giving full context for debugging.
 
-### LogLevelInput and resolveLogLevel
+### LogLevelInput and Action.resolveLogLevel
 
 `LogLevelInput` is an Effect Schema accepting `"info"`, `"verbose"`,
-`"debug"`, or `"auto"`. The `resolveLogLevel` function converts a
-`LogLevelInput` to a concrete `ActionLogLevel`:
+`"debug"`, or `"auto"`. `Action.resolveLogLevel` converts a `LogLevelInput`
+to a concrete `ActionLogLevel`:
 
 * `"info"`, `"verbose"`, `"debug"` pass through unchanged.
 * `"auto"` resolves to `"debug"` when `RUNNER_DEBUG` is `"1"`, otherwise
@@ -253,24 +254,25 @@ created by `Data.TaggedError(tag)`. The actual error class extends this
 base. The base is exported separately for compatibility with api-extractor,
 which requires the intermediate class to be visible.
 
-## GFM Builders
+## GithubMarkdown Namespace
 
 Pure functions in `src/utils/GithubMarkdown.ts` for building GitHub Flavored
-Markdown strings. None of these have side effects or dependencies.
+Markdown strings, accessed via the `GithubMarkdown` namespace. None of these
+have side effects or dependencies.
 
-| Function | Description |
+| Method | Description |
 | --- | --- |
-| `table(headers, rows)` | Build a GFM table from header and row arrays |
-| `heading(text, level?)` | Build a markdown heading (default level 2) |
-| `details(summary, content)` | Build a collapsible `<details>` block |
-| `checklist(items)` | Build a checkbox list from `ChecklistItem` array |
-| `statusIcon(status)` | Map a `Status` to its unicode indicator |
-| `bold(text)` | Wrap text in `**bold**` |
-| `code(text)` | Wrap text in inline backticks |
-| `codeBlock(content, language?)` | Build a fenced code block |
-| `link(text, url)` | Build an inline markdown link |
-| `list(items)` | Build a bulleted list |
-| `rule()` | Horizontal rule (`---`) |
+| `GithubMarkdown.table(headers, rows)` | Build a GFM table from header and row arrays |
+| `GithubMarkdown.heading(text, level?)` | Build a markdown heading (default level 2) |
+| `GithubMarkdown.details(summary, content)` | Build a collapsible `<details>` block |
+| `GithubMarkdown.checklist(items)` | Build a checkbox list from `ChecklistItem` array |
+| `GithubMarkdown.statusIcon(status)` | Map a `Status` to its unicode indicator |
+| `GithubMarkdown.bold(text)` | Wrap text in `**bold**` |
+| `GithubMarkdown.code(text)` | Wrap text in inline backticks |
+| `GithubMarkdown.codeBlock(content, language?)` | Build a fenced code block |
+| `GithubMarkdown.link(text, url)` | Build an inline markdown link |
+| `GithubMarkdown.list(items)` | Build a bulleted list |
+| `GithubMarkdown.rule()` | Horizontal rule (`---`) |
 
 ### Schemas
 

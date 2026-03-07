@@ -79,3 +79,30 @@ export const code = (text: string): string => `\`${text}\``;
  * Fenced code block.
  */
 export const codeBlock = (content: string, language = ""): string => `\`\`\`${language}\n${content}\n\`\`\``;
+
+/**
+ * Namespace for GitHub-Flavored Markdown builder functions.
+ *
+ * @example
+ * ```ts
+ * import { GithubMarkdown } from "@savvy-web/github-action-effects"
+ *
+ * GithubMarkdown.table(["Name", "Status"], [["build", "pass"]])
+ * GithubMarkdown.bold("hello")
+ * ```
+ *
+ * @public
+ */
+export const GithubMarkdown = {
+	bold,
+	checklist,
+	code,
+	codeBlock,
+	details,
+	heading,
+	link,
+	list,
+	rule,
+	statusIcon,
+	table,
+} as const;
