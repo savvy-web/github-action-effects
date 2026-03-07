@@ -1,6 +1,5 @@
 import * as core from "@actions/core";
-import type { NodeContext } from "@effect/platform-node";
-import { NodeContext as NodeContextLive } from "@effect/platform-node";
+import * as PlatformNode from "@effect/platform-node";
 import type { Schema } from "effect";
 import { Cause, Effect, Layer } from "effect";
 import type { ActionInputError } from "./errors/ActionInputError.js";
@@ -39,7 +38,7 @@ export interface InputConfig<S extends Schema.Schema.AnyNoContext = Schema.Schem
 }
 
 /** Core services provided automatically by {@link Action.run}. */
-export type CoreServices = ActionInputs | ActionLogger | ActionOutputs | NodeContext.NodeContext;
+export type CoreServices = ActionInputs | ActionLogger | ActionOutputs | PlatformNode.NodeContext.NodeContext;
 
 /**
  * Infer the output type from an input config record.
@@ -49,7 +48,7 @@ export type ParsedInputs<T extends Record<string, InputConfig>> = {
 };
 
 /** Standard live layer combining all core services. */
-const CoreLive = Layer.mergeAll(ActionInputsLive, ActionLoggerLive, ActionOutputsLive, NodeContextLive.layer);
+const CoreLive = Layer.mergeAll(ActionInputsLive, ActionLoggerLive, ActionOutputsLive, PlatformNode.NodeContext.layer);
 
 /**
  * Namespace for top-level GitHub Action helpers.
