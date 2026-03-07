@@ -5,6 +5,19 @@ import { ActionInputError } from "../errors/ActionInputError.js";
 import { ActionInputs } from "../services/ActionInputs.js";
 import { decodeInput, decodeJsonInput } from "./internal/decodeInput.js";
 
+const parseBoolean = (name: string, raw: string): Effect.Effect<boolean, ActionInputError> => {
+	const lower = raw.toLowerCase().trim();
+	if (lower === "true") return Effect.succeed(true);
+	if (lower === "false") return Effect.succeed(false);
+	return Effect.fail(
+		new ActionInputError({
+			inputName: name,
+			reason: `Input "${name}" is not a valid boolean: expected "true" or "false", got "${raw}"`,
+			rawValue: raw,
+		}),
+	);
+};
+
 export const ActionInputsLive: Layer.Layer<ActionInputs> = Layer.succeed(ActionInputs, {
 	get: <A, I>(name: string, schema: Schema.Schema<A, I, never>) =>
 		Effect.sync(() => core.getInput(name, { required: true })).pipe(
@@ -40,19 +53,7 @@ export const ActionInputsLive: Layer.Layer<ActionInputs> = Layer.succeed(ActionI
 		),
 
 	getBoolean: (name: string) =>
-		Effect.sync(() => core.getInput(name, { required: true })).pipe(
-			Effect.flatMap((raw) =>
-				Effect.try({
-					try: () => core.getBooleanInput(name, { required: true }),
-					catch: (error) =>
-						new ActionInputError({
-							inputName: name,
-							reason: `Input "${name}" is not a valid boolean: ${error instanceof Error ? error.message : String(error)}`,
-							rawValue: raw,
-						}),
-				}),
-			),
-		),
+		Effect.sync(() => core.getInput(name, { required: true })).pipe(Effect.flatMap((raw) => parseBoolean(name, raw))),
 
 	getBooleanOptional: (name: string, defaultValue: boolean) =>
 		Effect.sync(() => core.getInput(name, { required: false })).pipe(
@@ -60,15 +61,7 @@ export const ActionInputsLive: Layer.Layer<ActionInputs> = Layer.succeed(ActionI
 				if (raw === "") {
 					return Effect.succeed(defaultValue);
 				}
-				return Effect.try({
-					try: () => core.getBooleanInput(name, { required: false }),
-					catch: (error) =>
-						new ActionInputError({
-							inputName: name,
-							reason: `Input "${name}" is not a valid boolean: ${error instanceof Error ? error.message : String(error)}`,
-							rawValue: raw,
-						}),
-				});
+				return parseBoolean(name, raw);
 			}),
 		),
 });

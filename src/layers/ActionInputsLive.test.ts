@@ -1,4 +1,4 @@
-import { getBooleanInput, getInput, getMultilineInput, setSecret } from "@actions/core";
+import { getInput, getMultilineInput, setSecret } from "@actions/core";
 import { Effect, Option, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { ActionInputs } from "../services/ActionInputs.js";
@@ -7,7 +7,6 @@ import { ActionInputsLive } from "./ActionInputsLive.js";
 vi.mock("@actions/core", () => ({
 	getInput: vi.fn(),
 	getMultilineInput: vi.fn(),
-	getBooleanInput: vi.fn(),
 	setSecret: vi.fn(),
 }));
 
@@ -102,16 +101,12 @@ describe("ActionInputsLive", () => {
 	describe("getBoolean", () => {
 		it("reads a boolean input", async () => {
 			vi.mocked(getInput).mockReturnValue("true");
-			vi.mocked(getBooleanInput).mockReturnValue(true);
 			const result = await run(Effect.flatMap(ActionInputs, (svc) => svc.getBoolean("flag")));
 			expect(result).toBe(true);
 		});
 
 		it("fails on invalid boolean value", async () => {
 			vi.mocked(getInput).mockReturnValue("yes");
-			vi.mocked(getBooleanInput).mockImplementation(() => {
-				throw new TypeError("not a valid boolean");
-			});
 			const exit = await runExit(Effect.flatMap(ActionInputs, (svc) => svc.getBoolean("flag")));
 			expect(exit._tag).toBe("Failure");
 		});
@@ -120,7 +115,6 @@ describe("ActionInputsLive", () => {
 	describe("getBooleanOptional", () => {
 		it("reads a boolean when present", async () => {
 			vi.mocked(getInput).mockReturnValue("false");
-			vi.mocked(getBooleanInput).mockReturnValue(false);
 			const result = await run(Effect.flatMap(ActionInputs, (svc) => svc.getBooleanOptional("flag", true)));
 			expect(result).toBe(false);
 		});

@@ -11,6 +11,19 @@ const missingInput = (name: string): ActionInputError =>
 		rawValue: undefined,
 	});
 
+const parseBoolean = (name: string, raw: string): Effect.Effect<boolean, ActionInputError> => {
+	const lower = raw.toLowerCase().trim();
+	if (lower === "true") return Effect.succeed(true);
+	if (lower === "false") return Effect.succeed(false);
+	return Effect.fail(
+		new ActionInputError({
+			inputName: name,
+			reason: `Input "${name}" is not a valid boolean: expected "true" or "false", got "${raw}"`,
+			rawValue: raw,
+		}),
+	);
+};
+
 /**
  * Test implementation that reads from a provided record.
  *
@@ -71,16 +84,7 @@ export const ActionInputsTest = {
 				if (raw === undefined) {
 					return Effect.fail(missingInput(name));
 				}
-				const lower = raw.toLowerCase().trim();
-				if (lower === "true") return Effect.succeed(true);
-				if (lower === "false") return Effect.succeed(false);
-				return Effect.fail(
-					new ActionInputError({
-						inputName: name,
-						reason: `Input "${name}" is not a valid boolean: expected "true" or "false", got "${raw}"`,
-						rawValue: raw,
-					}),
-				);
+				return parseBoolean(name, raw);
 			},
 
 			getBooleanOptional: (name: string, defaultValue: boolean) => {
@@ -88,16 +92,7 @@ export const ActionInputsTest = {
 				if (raw === undefined || raw === "") {
 					return Effect.succeed(defaultValue);
 				}
-				const lower = raw.toLowerCase().trim();
-				if (lower === "true") return Effect.succeed(true);
-				if (lower === "false") return Effect.succeed(false);
-				return Effect.fail(
-					new ActionInputError({
-						inputName: name,
-						reason: `Input "${name}" is not a valid boolean: expected "true" or "false", got "${raw}"`,
-						rawValue: raw,
-					}),
-				);
+				return parseBoolean(name, raw);
 			},
 		}),
 } as const;
