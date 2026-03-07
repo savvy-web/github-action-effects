@@ -1,5 +1,17 @@
 # @savvy-web/pnpm-module-template
 
+## 0.3.0
+
+### Breaking Changes
+
+* [`30efe1c`](https://github.com/savvy-web/github-action-effects/commit/30efe1c067bb963889215a43b3d565e88831f391) `@effect/platform` and `@effect/platform-node` are now required peer dependencies.
+
+### Features
+
+* [`30efe1c`](https://github.com/savvy-web/github-action-effects/commit/30efe1c067bb963889215a43b3d565e88831f391) Provide Node.js platform services automatically in `Action.run()`.
+
+`Action.run()` now merges `NodeContext.layer` from `@effect/platform-node` into its core layers. Programs run via `Action.run()` automatically have access to `FileSystem`, `Path`, `Terminal`, `CommandExecutor`, and `WorkerManager` without manually providing them.
+
 ## 0.2.0
 
 ### Features
