@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { Action } from "../Action.js";
-import { ActionInputError } from "../errors/ActionInputError.js";
-import { ActionInputsTest } from "../layers/ActionInputsTest.js";
-import type { ActionInputs } from "./ActionInputs.js";
+import { Action } from "./Action.js";
+import { ActionInputError } from "./errors/ActionInputError.js";
+import { ActionInputsTest } from "./layers/ActionInputsTest.js";
+import type { ActionInputs } from "./services/ActionInputs.js";
 
 const provide = <A, E>(inputs: Record<string, string>, effect: Effect.Effect<A, E, ActionInputs>) =>
 	Effect.provide(effect, ActionInputsTest.layer(inputs));
