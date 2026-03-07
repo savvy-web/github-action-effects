@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import { Context, Effect, Layer } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runAction } from "./runAction.js";
+import { Action } from "./Action.js";
 
 vi.mock("@actions/core", () => ({
 	getInput: vi.fn(() => ""),
@@ -29,14 +29,14 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-describe("runAction", () => {
+describe("Action.run", () => {
 	it("runs a successful program without calling setFailed", async () => {
-		await runAction(Effect.void);
+		await Action.run(Effect.void);
 		expect(core.setFailed).not.toHaveBeenCalled();
 	});
 
 	it("calls setFailed on program failure", async () => {
-		await runAction(Effect.fail("something broke"));
+		await Action.run(Effect.fail("something broke"));
 		expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("Action failed"));
 	});
 
@@ -53,7 +53,7 @@ describe("runAction", () => {
 			}),
 		);
 
-		await runAction(program, MyServiceLive);
+		await Action.run(program, MyServiceLive);
 		expect(core.setFailed).not.toHaveBeenCalled();
 	});
 });

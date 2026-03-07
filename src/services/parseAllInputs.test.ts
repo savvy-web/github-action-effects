@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
+import { Action } from "../Action.js";
 import { ActionInputError } from "../errors/ActionInputError.js";
 import { ActionInputsTest } from "../layers/ActionInputsTest.js";
 import type { ActionInputs } from "./ActionInputs.js";
-import { parseAllInputs } from "./parseAllInputs.js";
 
 const provide = <A, E>(inputs: Record<string, string>, effect: Effect.Effect<A, E, ActionInputs>) =>
 	Effect.provide(effect, ActionInputsTest.layer(inputs));
@@ -14,11 +14,11 @@ const run = <A, E>(inputs: Record<string, string>, effect: Effect.Effect<A, E, A
 const runExit = <A, E>(inputs: Record<string, string>, effect: Effect.Effect<A, E, ActionInputs>) =>
 	Effect.runPromise(Effect.exit(provide(inputs, effect)));
 
-describe("parseAllInputs", () => {
+describe("Action.parseInputs", () => {
 	it("reads multiple inputs at once", async () => {
 		const result = await run(
 			{ "app-id": "12345", branch: "main" },
-			parseAllInputs({
+			Action.parseInputs({
 				"app-id": { schema: Schema.String, required: true },
 				branch: { schema: Schema.String, required: true },
 			}),
@@ -29,7 +29,7 @@ describe("parseAllInputs", () => {
 	it("uses default values for missing optional inputs", async () => {
 		const result = await run(
 			{ "app-id": "12345" },
-			parseAllInputs({
+			Action.parseInputs({
 				"app-id": { schema: Schema.String, required: true },
 				branch: { schema: Schema.String, default: "develop" },
 			}),
@@ -40,7 +40,7 @@ describe("parseAllInputs", () => {
 	it("fails on missing required input", async () => {
 		const exit = await runExit(
 			{},
-			parseAllInputs({
+			Action.parseInputs({
 				"app-id": { schema: Schema.String, required: true },
 			}),
 		);
@@ -50,7 +50,7 @@ describe("parseAllInputs", () => {
 	it("supports cross-validation", async () => {
 		const exit = await runExit(
 			{ a: "false", b: "false" },
-			parseAllInputs(
+			Action.parseInputs(
 				{
 					a: { schema: Schema.String },
 					b: { schema: Schema.String },
@@ -73,7 +73,7 @@ describe("parseAllInputs", () => {
 	it("reads JSON inputs with json flag", async () => {
 		const result = await run(
 			{ config: JSON.stringify({ port: 3000 }) },
-			parseAllInputs({
+			Action.parseInputs({
 				config: { schema: Schema.Struct({ port: Schema.Number }), json: true },
 			}),
 		);
@@ -83,7 +83,7 @@ describe("parseAllInputs", () => {
 	it("reads multiline inputs with multiline flag", async () => {
 		const result = await run(
 			{ deps: "foo\nbar\nbaz" },
-			parseAllInputs({
+			Action.parseInputs({
 				deps: { schema: Schema.String, multiline: true },
 			}),
 		);
@@ -93,7 +93,7 @@ describe("parseAllInputs", () => {
 	it("reads secret inputs with secret flag", async () => {
 		const result = await run(
 			{ token: "ghp_abc123" },
-			parseAllInputs({
+			Action.parseInputs({
 				token: { schema: Schema.String, secret: true },
 			}),
 		);
@@ -103,7 +103,7 @@ describe("parseAllInputs", () => {
 	it("passes cross-validation on valid inputs", async () => {
 		const result = await run(
 			{ a: "true", b: "false" },
-			parseAllInputs(
+			Action.parseInputs(
 				{
 					a: { schema: Schema.String },
 					b: { schema: Schema.String },

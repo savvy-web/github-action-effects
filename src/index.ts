@@ -7,6 +7,7 @@
  * @packageDocumentation
  */
 
+export type { CoreServices, InputConfig, ParsedInputs } from "./Action.js";
 // -- Namespaces --
 export { Action } from "./Action.js";
 // -- Errors --
@@ -33,5 +34,4 @@ export { ActionInputs } from "./services/ActionInputs.js";
 export { ActionLogger } from "./services/ActionLogger.js";
 export { ActionOutputs } from "./services/ActionOutputs.js";
 export { ActionState } from "./services/ActionState.js";
-export type { InputConfig } from "./services/parseAllInputs.js";
 export { GithubMarkdown } from "./utils/GithubMarkdown.js";

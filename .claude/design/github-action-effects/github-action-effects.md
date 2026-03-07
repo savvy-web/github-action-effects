@@ -81,8 +81,8 @@ files, 95%+ coverage). The `ci:build` passes with both dev and prod outputs.
 | GithubMarkdown utils | Complete | `utils/GithubMarkdown.ts` |
 | GithubMarkdown schemas | Complete | `schemas/GithubMarkdown.ts` |
 | LogLevel schemas | Complete | `schemas/LogLevel.ts` |
-| parseAllInputs helper | Complete | `services/parseAllInputs.ts` |
-| runAction helper | Complete | `runAction.ts` |
+| Action namespace | Complete | `Action.ts` (run, parseInputs, makeLogger, setLogLevel, resolveLogLevel) |
+| GithubMarkdown namespace | Complete | `utils/GithubMarkdown.ts` (all 11 builders inlined) |
 
 ### Current Limitations
 
@@ -214,8 +214,11 @@ single export, reducing barrel clutter and improving discoverability.
   `GithubMarkdown.link`, `GithubMarkdown.list`, `GithubMarkdown.checklist`,
   `GithubMarkdown.rule`, `GithubMarkdown.statusIcon`
 
-The underlying functions still exist in their source files for internal use.
-Only the barrel export changed to prefer namespace access.
+All functions are defined directly as properties of their namespace objects.
+They are not exported individually from the barrel -- only the namespace
+objects are exported. `src/services/parseAllInputs.ts` re-exports only the
+`InputConfig` and `ParsedInputs` types from `Action.ts` for backwards
+compatibility.
 
 ### Module Details
 
@@ -244,8 +247,9 @@ inputs at once from a config object (`Record<string, InputConfig>`). Each
 json? }`. After reading all inputs, passes the parsed object to an optional
 cross-validation function. Returns the fully typed parsed object. Errors from
 individual inputs and cross-validation unified under `ActionInputError`.
-Requires `ActionInputs` in the Effect context. Implementation in
-`services/parseAllInputs.ts`, exported via `Action` namespace.
+Requires `ActionInputs` in the Effect context. Implementation is inlined in
+`Action.ts`; `services/parseAllInputs.ts` re-exports only the `InputConfig`
+and `ParsedInputs` types.
 
 **Backed by:** `@actions/core.getInput()`, `@actions/core.setSecret()`,
 `@actions/core.getMultilineInput()`, `@actions/core.getBooleanInput()` — all
@@ -428,7 +432,8 @@ then test main.ts logic). Follows the namespace object pattern:
 #### Action.run Helper
 
 Top-level convenience function that eliminates boilerplate for wiring Effect
-programs into GitHub Action entry points. Accessed via the `Action` namespace.
+programs into GitHub Action entry points. Implementation is inlined in
+`Action.ts` and accessed via the `Action` namespace.
 
 **Signatures:**
 
@@ -474,7 +479,7 @@ ActionOutputsTest  — captures outputs in memory
 ActionStateLive    — wraps core.saveState()/core.getState() with Schema encode/decode
 ActionStateTest    — in-memory Map<string, string>, pre-populatable for phase simulation
 
-Action.parseInputs — standalone function that reads all inputs from a config record
+Action.parseInputs — inlined in Action.ts, reads all inputs from a config record
                      (depends on ActionInputs service, not bundled into Action.run)
 ```
 
@@ -629,7 +634,7 @@ ergonomic test setup:
 - ActionInputs extensions: getMultiline, getBoolean, getBooleanOptional
 - parseAllInputs: config-driven batch input reading with cross-validation
 - ActionOutputs extensions: setFailed, setSecret
-- runAction: layer composition, error handling, custom layer merging
+- Action.run: layer composition, error handling, custom layer merging
 
 ### Integration Tests
 
