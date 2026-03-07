@@ -24,6 +24,10 @@ const CoreLive = Layer.mergeAll(ActionInputsLive, ActionLoggerLive, ActionOutput
  * - Catching all errors and calling `core.setFailed`
  * - Running with `Effect.runPromise`
  *
+ * Returns a Promise that resolves when the action completes. In production
+ * the return value can be ignored (fire-and-forget). In tests, await it
+ * to avoid timing issues.
+ *
  * @example
  * ```ts
  * import { Effect } from "effect"
@@ -40,15 +44,15 @@ const CoreLive = Layer.mergeAll(ActionInputsLive, ActionLoggerLive, ActionOutput
  *
  * @public
  */
-export function runAction<E>(program: Effect.Effect<void, E, CoreServices>): void;
+export function runAction<E>(program: Effect.Effect<void, E, CoreServices>): Promise<void>;
 export function runAction<E, R>(
 	program: Effect.Effect<void, E, CoreServices | R>,
 	layer: Layer.Layer<R, never, never>,
-): void;
+): Promise<void>;
 export function runAction<E, R>(
 	program: Effect.Effect<void, E, CoreServices | R>,
 	layer?: Layer.Layer<R, never, never>,
-): void {
+): Promise<void> {
 	// biome-ignore lint/suspicious/noExplicitAny: Layer type erasure at the run boundary
 	const fullLayer: Layer.Layer<any, never, never> = layer ? Layer.mergeAll(CoreLive, layer) : CoreLive;
 
@@ -61,7 +65,7 @@ export function runAction<E, R>(
 		}),
 	);
 
-	Effect.runPromise(runnable).catch(() => {
+	return Effect.runPromise(runnable).catch(() => {
 		// Last resort — if even setFailed fails, the process should still exit
 		process.exitCode = 1;
 	});

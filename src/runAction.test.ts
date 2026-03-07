@@ -31,18 +31,16 @@ afterEach(() => {
 
 describe("runAction", () => {
 	it("runs a successful program without calling setFailed", async () => {
-		runAction(Effect.void);
-		await new Promise((r) => setTimeout(r, 10));
+		await runAction(Effect.void);
 		expect(core.setFailed).not.toHaveBeenCalled();
 	});
 
 	it("calls setFailed on program failure", async () => {
-		runAction(Effect.fail("something broke"));
-		await new Promise((r) => setTimeout(r, 10));
+		await runAction(Effect.fail("something broke"));
 		expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("Action failed"));
 	});
 
-	it("accepts additional layers via options", async () => {
+	it("accepts additional layers", async () => {
 		interface MyService {
 			readonly value: string;
 		}
@@ -55,8 +53,7 @@ describe("runAction", () => {
 			}),
 		);
 
-		runAction(program, MyServiceLive);
-		await new Promise((r) => setTimeout(r, 10));
+		await runAction(program, MyServiceLive);
 		expect(core.setFailed).not.toHaveBeenCalled();
 	});
 });

@@ -70,6 +70,36 @@ describe("parseAllInputs", () => {
 		expect(exit._tag).toBe("Failure");
 	});
 
+	it("reads JSON inputs with json flag", async () => {
+		const result = await run(
+			{ config: JSON.stringify({ port: 3000 }) },
+			parseAllInputs({
+				config: { schema: Schema.Struct({ port: Schema.Number }), json: true },
+			}),
+		);
+		expect(result).toEqual({ config: { port: 3000 } });
+	});
+
+	it("reads multiline inputs with multiline flag", async () => {
+		const result = await run(
+			{ deps: "foo\nbar\nbaz" },
+			parseAllInputs({
+				deps: { schema: Schema.String, multiline: true },
+			}),
+		);
+		expect(result).toEqual({ deps: ["foo", "bar", "baz"] });
+	});
+
+	it("reads secret inputs with secret flag", async () => {
+		const result = await run(
+			{ token: "ghp_abc123" },
+			parseAllInputs({
+				token: { schema: Schema.String, secret: true },
+			}),
+		);
+		expect(result).toEqual({ token: "ghp_abc123" });
+	});
+
 	it("passes cross-validation on valid inputs", async () => {
 		const result = await run(
 			{ a: "true", b: "false" },

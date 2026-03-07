@@ -1,4 +1,4 @@
-import { addPath, exportVariable, setOutput, summary } from "@actions/core";
+import { addPath, exportVariable, setFailed, setOutput, setSecret, summary } from "@actions/core";
 import { Effect, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { ActionOutputs } from "../services/ActionOutputs.js";
@@ -6,6 +6,8 @@ import { ActionOutputsLive } from "./ActionOutputsLive.js";
 
 vi.mock("@actions/core", () => ({
 	setOutput: vi.fn(),
+	setFailed: vi.fn(),
+	setSecret: vi.fn(),
 	exportVariable: vi.fn(),
 	addPath: vi.fn(),
 	summary: {
@@ -65,6 +67,20 @@ describe("ActionOutputsLive", () => {
 		it("calls core.addPath", async () => {
 			await run(Effect.flatMap(ActionOutputs, (svc) => svc.addPath("/usr/local/bin")));
 			expect(addPath).toHaveBeenCalledWith("/usr/local/bin");
+		});
+	});
+
+	describe("setFailed", () => {
+		it("calls core.setFailed", async () => {
+			await run(Effect.flatMap(ActionOutputs, (svc) => svc.setFailed("Build failed")));
+			expect(setFailed).toHaveBeenCalledWith("Build failed");
+		});
+	});
+
+	describe("setSecret", () => {
+		it("calls core.setSecret", async () => {
+			await run(Effect.flatMap(ActionOutputs, (svc) => svc.setSecret("ghs_token123")));
+			expect(setSecret).toHaveBeenCalledWith("ghs_token123");
 		});
 	});
 });

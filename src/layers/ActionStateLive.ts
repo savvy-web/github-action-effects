@@ -1,57 +1,13 @@
 import * as core from "@actions/core";
 import type { Schema } from "effect";
-import { Effect, Layer, Option, Schema as S } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { ActionStateError } from "../errors/ActionStateError.js";
 import { ActionState } from "../services/ActionState.js";
-
-const encode = <A, I>(
-	key: string,
-	value: A,
-	schema: Schema.Schema<A, I, never>,
-): Effect.Effect<string, ActionStateError> =>
-	S.encode(schema)(value).pipe(
-		Effect.map((encoded) => JSON.stringify(encoded)),
-		Effect.mapError(
-			(error) =>
-				new ActionStateError({
-					key,
-					reason: `State "${key}" encode failed: ${error instanceof Error ? error.message : String(error)}`,
-					rawValue: undefined,
-				}),
-		),
-	);
-
-const decodeState = <A, I>(
-	key: string,
-	raw: string,
-	schema: Schema.Schema<A, I, never>,
-): Effect.Effect<A, ActionStateError> =>
-	Effect.try({
-		try: () => JSON.parse(raw) as unknown,
-		catch: (error) =>
-			new ActionStateError({
-				key,
-				reason: `State "${key}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-				rawValue: raw,
-			}),
-	}).pipe(
-		Effect.flatMap((parsed) =>
-			S.decode(schema)(parsed as I).pipe(
-				Effect.mapError(
-					(parseError) =>
-						new ActionStateError({
-							key,
-							reason: `State "${key}" decode failed: ${parseError.message}`,
-							rawValue: raw,
-						}),
-				),
-			),
-		),
-	);
+import { decodeState, encodeState } from "./internal/decodeState.js";
 
 export const ActionStateLive: Layer.Layer<ActionState> = Layer.succeed(ActionState, {
 	save: <A, I>(key: string, value: A, schema: Schema.Schema<A, I, never>) =>
-		encode(key, value, schema).pipe(
+		encodeState(key, value, schema).pipe(
 			Effect.tap((json) => Effect.sync(() => core.saveState(key, json))),
 			Effect.asVoid,
 		),

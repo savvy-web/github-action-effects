@@ -1,7 +1,8 @@
 import type { Schema } from "effect";
-import { Effect, Layer, Option, Schema as S } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { ActionStateError } from "../errors/ActionStateError.js";
 import { ActionState } from "../services/ActionState.js";
+import { decodeState, encodeState } from "./internal/decodeState.js";
 
 /**
  * In-memory state captured by the test state layer.
@@ -35,22 +36,13 @@ export const ActionStateTest = {
 	layer: (state: ActionStateTestState): Layer.Layer<ActionState> =>
 		Layer.succeed(ActionState, {
 			save: <A, I>(key: string, value: A, schema: Schema.Schema<A, I, never>) =>
-				S.encode(schema)(value).pipe(
-					Effect.map((encoded) => JSON.stringify(encoded)),
+				encodeState(key, value, schema).pipe(
 					Effect.tap((json) =>
 						Effect.sync(() => {
 							state.entries.set(key, json);
 						}),
 					),
 					Effect.asVoid,
-					Effect.mapError(
-						(error) =>
-							new ActionStateError({
-								key,
-								reason: `State "${key}" encode failed: ${error instanceof Error ? error.message : String(error)}`,
-								rawValue: undefined,
-							}),
-					),
 				),
 
 			get: <A, I>(key: string, schema: Schema.Schema<A, I, never>) => {
@@ -64,28 +56,7 @@ export const ActionStateTest = {
 						}),
 					);
 				}
-				return Effect.try({
-					try: () => JSON.parse(raw) as unknown,
-					catch: (error) =>
-						new ActionStateError({
-							key,
-							reason: `State "${key}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-							rawValue: raw,
-						}),
-				}).pipe(
-					Effect.flatMap((parsed) =>
-						S.decode(schema)(parsed as I).pipe(
-							Effect.mapError(
-								(parseError) =>
-									new ActionStateError({
-										key,
-										reason: `State "${key}" decode failed: ${parseError.message}`,
-										rawValue: raw,
-									}),
-							),
-						),
-					),
-				);
+				return decodeState(key, raw, schema);
 			},
 
 			getOptional: <A, I>(key: string, schema: Schema.Schema<A, I, never>) => {
@@ -93,29 +64,7 @@ export const ActionStateTest = {
 				if (raw === undefined) {
 					return Effect.succeed(Option.none<A>());
 				}
-				return Effect.try({
-					try: () => JSON.parse(raw) as unknown,
-					catch: (error) =>
-						new ActionStateError({
-							key,
-							reason: `State "${key}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-							rawValue: raw,
-						}),
-				}).pipe(
-					Effect.flatMap((parsed) =>
-						S.decode(schema)(parsed as I).pipe(
-							Effect.map((a) => Option.some(a)),
-							Effect.mapError(
-								(parseError) =>
-									new ActionStateError({
-										key,
-										reason: `State "${key}" decode failed: ${parseError.message}`,
-										rawValue: raw,
-									}),
-							),
-						),
-					),
-				);
+				return decodeState(key, raw, schema).pipe(Effect.map((a) => Option.some(a)));
 			},
 		}),
 } as const;

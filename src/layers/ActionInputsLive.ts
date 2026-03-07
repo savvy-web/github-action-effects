@@ -40,15 +40,19 @@ export const ActionInputsLive: Layer.Layer<ActionInputs> = Layer.succeed(ActionI
 		),
 
 	getBoolean: (name: string) =>
-		Effect.try({
-			try: () => core.getBooleanInput(name, { required: true }),
-			catch: (error) =>
-				new ActionInputError({
-					inputName: name,
-					reason: `Input "${name}" is not a valid boolean: ${error instanceof Error ? error.message : String(error)}`,
-					rawValue: undefined,
+		Effect.sync(() => core.getInput(name, { required: true })).pipe(
+			Effect.flatMap((raw) =>
+				Effect.try({
+					try: () => core.getBooleanInput(name, { required: true }),
+					catch: (error) =>
+						new ActionInputError({
+							inputName: name,
+							reason: `Input "${name}" is not a valid boolean: ${error instanceof Error ? error.message : String(error)}`,
+							rawValue: raw,
+						}),
 				}),
-		}),
+			),
+		),
 
 	getBooleanOptional: (name: string, defaultValue: boolean) =>
 		Effect.sync(() => core.getInput(name, { required: false })).pipe(

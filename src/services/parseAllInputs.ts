@@ -6,6 +6,17 @@ import { ActionInputs } from "./ActionInputs.js";
 /**
  * Configuration for a single input in parseAllInputs.
  *
+ * Precedence rules for how an input is read:
+ * 1. `json: true` — reads as JSON string, parses and validates (always required)
+ * 2. `multiline: true` — reads as newline-delimited list (always required)
+ * 3. `secret: true` — reads and masks the value (always required)
+ * 4. `default` is set — reads as optional, falls back to default if missing
+ * 5. `required: false` — reads as optional, returns undefined if missing
+ * 6. Otherwise — reads as required (default behavior)
+ *
+ * When `json`, `multiline`, or `secret` is set, the input is always
+ * treated as required regardless of `required` or `default` values.
+ *
  * @public
  */
 export interface InputConfig<S extends Schema.Schema.AnyNoContext = Schema.Schema.AnyNoContext> {
