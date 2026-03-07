@@ -17,7 +17,7 @@ Composable [Effect](https://effect.website) services for building Node.js 24 Git
 ## Installation
 
 ```bash
-npm install @savvy-web/github-action-effects effect @actions/core
+npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node
 ```
 
 ## Quick Start
@@ -36,7 +36,7 @@ const program = Effect.gen(function* () {
 Action.run(program);
 ```
 
-`Action.run` provides all core service layers, installs the Effect logger, and catches errors with `core.setFailed` automatically.
+`Action.run` provides all core service layers (including `NodeContext.layer` for `FileSystem`, `Path`, `Terminal`, `CommandExecutor`, and `WorkerManager` from `@effect/platform`), installs the Effect logger, and catches errors with `core.setFailed` automatically.
 
 See the [full walkthrough](./docs/example-action.md) for log level configuration, batch input reading, GFM summaries, multi-phase state, and error handling.
 

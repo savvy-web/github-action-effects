@@ -13,13 +13,13 @@ npm install @savvy-web/github-action-effects
 Required peer dependencies:
 
 ```bash
-npm install effect @actions/core
+npm install effect @actions/core @effect/platform @effect/platform-node
 ```
 
 Optional peer dependencies (for future services):
 
 ```bash
-npm install @actions/exec @actions/github @effect/platform @effect/platform-node
+npm install @actions/exec @actions/github
 ```
 
 ## Table of Contents
