@@ -1,5 +1,5 @@
 ---
-"@savvy-web/github-action-effects": patch
+"@savvy-web/github-action-effects": minor
 ---
 
 ## Features
