@@ -8,7 +8,7 @@ and typed outputs.
 ## Prerequisites
 
 ```bash
-npm install @savvy-web/github-action-effects effect @actions/core
+npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node
 ```
 
 If you use `@savvy-web/github-action-builder` for bundling, it compiles
@@ -181,8 +181,9 @@ Action.run(program)
    line.
 
 8. **Action.run** — Provides `ActionInputsLive`, `ActionLoggerLive`,
-   `ActionOutputsLive`, installs the Effect logger, and catches all errors
-   with `core.setFailed`.
+   `ActionOutputsLive`, and `NodeContext.layer` (for `FileSystem`, `Path`,
+   `Terminal`, `CommandExecutor`, `WorkerManager` from `@effect/platform`),
+   installs the Effect logger, and catches all errors with `core.setFailed`.
 
 ## Using Action.parseInputs
 

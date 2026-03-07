@@ -47,6 +47,8 @@
 		"@actions/core": "^3.0.0",
 		"@actions/exec": "^3.0.0",
 		"@actions/github": "^9.0.0",
+		"@effect/platform": ">=0.94.0",
+		"@effect/platform-node": ">=0.104.0",
 		"@savvy-web/changesets": "^0.4.2",
 		"@savvy-web/commitlint": "^0.4.0",
 		"@savvy-web/lint-staged": "^0.5.1",
@@ -73,10 +75,10 @@
 			"optional": true
 		},
 		"@effect/platform": {
-			"optional": true
+			"optional": false
 		},
 		"@effect/platform-node": {
-			"optional": true
+			"optional": false
 		},
 		"effect": {
 			"optional": false

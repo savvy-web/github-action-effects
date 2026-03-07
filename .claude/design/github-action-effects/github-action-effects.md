@@ -65,7 +65,7 @@ GitHub Actions development suffers from four recurring pain points:
 
 ### System Components
 
-All core services are implemented and tested (111 tests passing across 11 test
+All core services are implemented and tested (133 tests passing across 12 test
 files, 95%+ coverage). The `ci:build` passes with both dev and prod outputs.
 
 | Component | Status | Files |
@@ -180,7 +180,11 @@ size-constrained like browser bundles.
 
 ### Service Overview
 
-Five core service modules plus two namespace objects, each independently usable:
+Five core service modules plus two namespace objects, each independently usable.
+`Action.run()` automatically provides `NodeContext.layer` from
+`@effect/platform-node`, so programs also have access to Node.js platform
+services (`FileSystem`, `Path`, `Terminal`, `CommandExecutor`, `WorkerManager`)
+without needing to provide them manually.
 
 ```text
 @savvy-web/github-action-effects
@@ -445,10 +449,14 @@ Action.run(program, layer): void   // merge additional layers with standard laye
 **Behavior:**
 
 1. Provides core Live layers (ActionInputsLive, ActionLoggerLive,
-   ActionOutputsLive) plus ActionLoggerLayer (the Effect Logger integration)
+   ActionOutputsLive, NodeContextLive.layer) plus ActionLoggerLayer (the
+   Effect Logger integration). NodeContext.layer provides Node.js platform
+   services (FileSystem, Path, Terminal, CommandExecutor, WorkerManager)
+   from `@effect/platform-node`.
 2. Catches all errors (via `Effect.catchAllCause`) and routes them to
    `core.setFailed()` with `Cause.pretty` formatting
-3. Runs the program with `Effect.runPromise()`
+3. Runs the program with `Effect.runPromise()` (not `NodeRuntime.runMain`,
+   since the action runner manages the process lifecycle)
 4. Merges any user-supplied `layer` with the core layers
 5. Last-resort catch on the promise sets `process.exitCode = 1` if even
    `setFailed` fails
@@ -478,6 +486,9 @@ ActionOutputsTest  — captures outputs in memory
 
 ActionStateLive    — wraps core.saveState()/core.getState() with Schema encode/decode
 ActionStateTest    — in-memory Map<string, string>, pre-populatable for phase simulation
+
+NodeContextLive.layer — @effect/platform-node: FileSystem, Path, Terminal,
+                        CommandExecutor, WorkerManager (provided by Action.run)
 
 Action.parseInputs — inlined in Action.ts, reads all inputs from a config record
                      (depends on ActionInputs service, not bundled into Action.run)
@@ -576,10 +587,12 @@ For future command-running services (e.g., the `npm pack --dry-run --json`
 pattern). Not required for initial implementation. Marked `optional: true`
 in `peerDependenciesMeta`.
 
-### @effect/platform and @effect/platform-node (optional peers)
+### @effect/platform and @effect/platform-node (required peers)
 
-Added as optional peer dependencies for future platform-specific services
-(e.g., filesystem, HTTP client). Not required by any current service.
+Required peer dependencies. `Action.run()` provides `NodeContext.layer` from
+`@effect/platform-node` as part of its core layers, giving all programs
+automatic access to Node.js platform services: `FileSystem`, `Path`,
+`Terminal`, `CommandExecutor`, and `WorkerManager` from `@effect/platform`.
 
 ### effect (peer)
 
@@ -612,7 +625,7 @@ ergonomic test setup:
 - `ActionOutputsTest.empty()` / `ActionOutputsTest.layer(state)` — namespace
   object with in-memory state capture
 
-**What is tested (111 tests across 11 files, 95%+ coverage):**
+**What is tested (133 tests across 12 files, 95%+ coverage):**
 
 - Schema validation: valid inputs decode, invalid inputs produce clear errors
 - Input laziness: `ActionInputsLive` defers `core.getInput()`/`core.setSecret()`

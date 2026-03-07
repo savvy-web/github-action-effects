@@ -123,6 +123,8 @@ It handles:
 
 * Providing core Live layers (ActionInputsLive, ActionLoggerLive,
   ActionOutputsLive)
+* Providing `NodeContext.layer` from `@effect/platform-node` for Node.js
+  platform services (FileSystem, Path, Terminal, CommandExecutor, WorkerManager)
 * Installing ActionLoggerLayer (routes Effect.log to core.info/debug)
 * Catching all errors via `Effect.catchAllCause` and calling `core.setFailed`
 * Running with `Effect.runPromise`
@@ -138,10 +140,13 @@ dependency injection tokens. Live layers wrap `@actions/core` functions.
 Compose them with `Layer.mergeAll` for a complete runtime:
 
 ```typescript
+import { NodeContext } from "@effect/platform-node"
+
 const MainLayer = Layer.mergeAll(
   ActionInputsLive,
   ActionOutputsLive,
   ActionLoggerLive,
+  NodeContext.layer,
 )
 ```
 
