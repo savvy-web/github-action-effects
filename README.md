@@ -2,18 +2,17 @@
 
 [![npm version](https://img.shields.io/npm/v/@savvy-web/github-action-effects)](https://www.npmjs.com/package/@savvy-web/github-action-effects)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
 
-Build GitHub Actions with [Effect](https://effect.website) -- schema-validated
-inputs, structured logging with buffered output, and type-safe outputs through
-composable service layers.
+Composable [Effect](https://effect.website) services for building Node.js 24 GitHub Actions with schema-validated inputs, structured logging, typed outputs and multi-phase state management without the boilerplate.
 
 ## Features
 
-- **Schema-validated inputs and outputs** using Effect Schema
-- **Three-tier action logger** (info/verbose/debug) with automatic log buffering
-- **GitHub Flavored Markdown builders** for step summaries
-- **Test layers for every service** -- no mocking `@actions/core` required
-- **Full TypeScript** with strict mode and ESM
+- **Schema-validated inputs** — read, parse, and validate action inputs with Effect Schema
+- **Structured logging** — three-tier logger (info/verbose/debug) with buffer-on-failure
+- **Typed outputs** — set outputs, export variables, and write GFM job summaries
+- **Multi-phase state** — transfer schema-serialized state across pre/main/post phases
+- **In-memory test layers** — test every service without mocking `@actions/core`
 
 ## Installation
 
@@ -24,49 +23,28 @@ npm install @savvy-web/github-action-effects effect @actions/core
 ## Quick Start
 
 ```typescript
-import { Effect, Layer, Schema } from "effect";
-import {
-  ActionInputs,
-  ActionInputsLive,
-  ActionOutputs,
-  ActionOutputsLive,
-  ActionLoggerLive,
-  ActionLoggerLayer,
-  LogLevelInput,
-  resolveLogLevel,
-  setLogLevel,
-  table,
-} from "@savvy-web/github-action-effects";
+import { Effect, Schema } from "effect";
+import { Action, ActionInputs, ActionOutputs } from "@savvy-web/github-action-effects";
 
 const program = Effect.gen(function* () {
   const inputs = yield* ActionInputs;
   const outputs = yield* ActionOutputs;
-
-  const level = yield* inputs.get("log-level", LogLevelInput);
-  yield* setLogLevel(resolveLogLevel(level));
-
-  const name = yield* inputs.get("name", Schema.String);
-  yield* outputs.set("greeting", `Hello, ${name}!`);
-  yield* outputs.summary(table(["Input", "Value"], [["name", name]]));
+  const name = yield* inputs.get("package-name", Schema.String);
+  yield* outputs.set("result", `checked ${name}`);
 });
 
-const MainLive = Layer.mergeAll(
-  ActionInputsLive,
-  ActionOutputsLive,
-  ActionLoggerLive,
-);
-
-program.pipe(
-  Effect.provide(ActionLoggerLayer),
-  Effect.provide(MainLive),
-  Effect.runPromise,
-);
+Action.run(program);
 ```
+
+`Action.run` provides all core service layers, installs the Effect logger, and catches errors with `core.setFailed` automatically.
+
+See the [full walkthrough](./docs/example-action.md) for log level configuration, batch input reading, GFM summaries, multi-phase state, and error handling.
 
 ## Documentation
 
-For architecture, API reference, testing guides, and advanced usage, see
-[docs](./docs/).
+- [Example Action](./docs/example-action.md) — end-to-end tutorial
+- [Architecture](./docs/architecture.md) — API reference and layer composition
+- [Testing](./docs/testing.md) — testing with in-memory layers
 
 ## License
 

@@ -1,7 +1,8 @@
 # github-action-effects Documentation
 
 Effect-based utility library for building GitHub Actions with schema-validated
-inputs, structured logging, typed outputs, and GFM report builders.
+inputs, structured logging, typed outputs, multi-phase state management, and
+GFM report builders.
 
 ## Installation
 
@@ -12,13 +13,13 @@ npm install @savvy-web/github-action-effects
 Required peer dependencies:
 
 ```bash
-npm install effect @actions/core @actions/exec @actions/github
+npm install effect @actions/core
 ```
 
-Optional peer dependencies (needed to run the action):
+Optional peer dependencies (for future services):
 
 ```bash
-npm install @effect/platform @effect/platform-node
+npm install @actions/exec @actions/github @effect/platform @effect/platform-node
 ```
 
 ## Table of Contents
@@ -33,10 +34,18 @@ npm install @effect/platform @effect/platform-node
 
 | Service | Purpose |
 | --- | --- |
-| ActionInputs | Schema-validated input reading (get, getOptional, getSecret, getJson) |
+| ActionInputs | Schema-validated input reading (get, getOptional, getSecret, getJson, getMultiline, getBoolean, getBooleanOptional) |
 | ActionLogger | Structured logging with group, withBuffer, annotationError/Warning/Notice |
-| ActionOutputs | Typed outputs (set, setJson, summary, exportVariable, addPath) |
+| ActionOutputs | Typed outputs (set, setJson, summary, exportVariable, addPath, setFailed, setSecret) |
+| ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
 | GFM Builders | Pure functions for tables, checklists, details, status icons |
+
+## Namespace Objects
+
+| Namespace | Purpose |
+| --- | --- |
+| `Action` | Groups top-level helpers: `run`, `parseInputs`, `makeLogger`, `setLogLevel`, `resolveLogLevel` |
+| `GithubMarkdown` | Groups GFM builder functions: `table`, `heading`, `bold`, `details`, etc. |
 
 ## See Also
 

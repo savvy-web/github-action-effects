@@ -3,9 +3,9 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-06
-last-synced: 2026-03-06
-completeness: 95
+updated: 2026-03-07
+last-synced: 2026-03-07
+completeness: 97
 related: []
 dependencies: []
 ---
@@ -65,7 +65,7 @@ GitHub Actions development suffers from four recurring pain points:
 
 ### System Components
 
-All core services are implemented and tested (77 tests passing across 8 test
+All core services are implemented and tested (111 tests passing across 11 test
 files, 95%+ coverage). The `ci:build` passes with both dev and prod outputs.
 
 | Component | Status | Files |
@@ -73,12 +73,16 @@ files, 95%+ coverage). The `ci:build` passes with both dev and prod outputs.
 | ActionInputs service | Complete | `services/ActionInputs.ts`, `layers/ActionInputsLive.ts`, `layers/ActionInputsTest.ts` |
 | ActionLogger service | Complete | `services/ActionLogger.ts`, `layers/ActionLoggerLive.ts`, `layers/ActionLoggerTest.ts` |
 | ActionOutputs service | Complete | `services/ActionOutputs.ts`, `layers/ActionOutputsLive.ts`, `layers/ActionOutputsTest.ts` |
+| ActionState service | Complete | `services/ActionState.ts`, `layers/ActionStateLive.ts`, `layers/ActionStateTest.ts` |
 | Shared decode helpers | Complete | `layers/internal/decodeInput.ts` |
 | ActionInputError | Complete | `errors/ActionInputError.ts` |
 | ActionOutputError | Complete | `errors/ActionOutputError.ts` |
+| ActionStateError | Complete | `errors/ActionStateError.ts` |
 | GithubMarkdown utils | Complete | `utils/GithubMarkdown.ts` |
 | GithubMarkdown schemas | Complete | `schemas/GithubMarkdown.ts` |
 | LogLevel schemas | Complete | `schemas/LogLevel.ts` |
+| Action namespace | Complete | `Action.ts` (run, parseInputs, makeLogger, setLogLevel, resolveLogLevel) |
+| GithubMarkdown namespace | Complete | `utils/GithubMarkdown.ts` (all 11 builders inlined) |
 
 ### Current Limitations
 
@@ -135,6 +139,23 @@ files, 95%+ coverage). The `ci:build` passes with both dev and prod outputs.
 - **Rationale:** GFM output is used in check run summaries, PR comments, issue
   bodies, and step summaries. Coupling it to check runs would limit reuse.
 
+#### AD-6: Schema-Based State Serialization
+
+- **Decision:** ActionState uses `Schema.encode` / `Schema.decode` for
+  multi-phase state transfer rather than raw JSON.stringify/parse
+- **Rationale:** `@actions/core.saveState()` / `getState()` only accept
+  strings. Complex objects (timestamps, enums, nested structures) need
+  serialization. Using Effect Schema for the round-trip provides three
+  benefits: (1) type-safe encode on save guarantees the persisted JSON
+  conforms to the schema, (2) decode on get validates data integrity and
+  catches phase-ordering bugs (e.g., main.ts reading state before pre.ts
+  sets it produces a clear `ActionStateError` instead of undefined behavior),
+  (3) schema evolution is possible by widening the decode schema while
+  keeping the encode schema strict.
+- **Trade-off:** Slightly more ceremony than raw JSON, but the safety
+  guarantees are essential for multi-phase actions where debugging state
+  issues across phases is otherwise very difficult.
+
 ### Constraints
 
 #### Node.js 24 Runtime
@@ -159,15 +180,45 @@ size-constrained like browser bundles.
 
 ### Service Overview
 
-Four core service modules, each independently usable:
+Five core service modules plus two namespace objects, each independently usable:
 
 ```text
 @savvy-web/github-action-effects
-├── ActionInputs    — Schema-validated input reading
-├── ActionLogger    — Structured logging with buffering
-├── ActionOutputs   — Typed output setting and step summaries
-└── GithubMarkdown  — GFM table/summary builders (pure functions)
+├── ActionInputs        — Schema-validated input reading
+├── ActionLogger        — Structured logging with buffering
+├── ActionOutputs       — Typed output setting and step summaries
+├── ActionState         — Schema-serialized state for multi-phase actions
+├── Action.*            — Namespace: run, parseInputs, makeLogger, setLogLevel, resolveLogLevel
+└── GithubMarkdown.*    — Namespace: table, heading, details, bold, code, etc. (pure functions)
 ```
+
+### Namespace Objects
+
+The public API uses namespace objects to group related functions under a
+single export, reducing barrel clutter and improving discoverability.
+
+**`Action`** (from `src/Action.ts`) groups top-level action helpers:
+
+- `Action.run(program)` / `Action.run(program, layer)` — Run a GitHub Action
+  program with standard boilerplate (provides core layers, catches errors)
+- `Action.parseInputs(config, crossValidate?)` — Read and validate all inputs
+  at once from a config record
+- `Action.makeLogger()` — Create the Effect Logger for GitHub Actions
+- `Action.setLogLevel(level)` — Set action log level for current scope
+- `Action.resolveLogLevel(input)` — Resolve LogLevelInput to ActionLogLevel
+
+**`GithubMarkdown`** (from `src/utils/GithubMarkdown.ts`) groups GFM builders:
+
+- `GithubMarkdown.table`, `GithubMarkdown.heading`, `GithubMarkdown.details`,
+  `GithubMarkdown.bold`, `GithubMarkdown.code`, `GithubMarkdown.codeBlock`,
+  `GithubMarkdown.link`, `GithubMarkdown.list`, `GithubMarkdown.checklist`,
+  `GithubMarkdown.rule`, `GithubMarkdown.statusIcon`
+
+All functions are defined directly as properties of their namespace objects.
+They are not exported individually from the barrel -- only the namespace
+objects are exported. `src/services/parseAllInputs.ts` re-exports only the
+`InputConfig` and `ParsedInputs` types from `Action.ts` for backwards
+compatibility.
 
 ### Module Details
 
@@ -181,8 +232,27 @@ Reads and validates GitHub Action inputs using Effect Schema.
 - `getOptional(name, schema)` — Read optional input, return Option
 - `getSecret(name, schema)` — Read input, mark as secret (masked in logs)
 - `getJson(name, schema)` — Read input as JSON string, parse and validate
+- `getMultiline(name, itemSchema)` — Read multiline input, split on newlines,
+  trim each line, filter blanks and comment lines (starting with `#`), validate
+  each item against `itemSchema`. Live layer uses `core.getMultilineInput()`,
+  test layer splits from string. Returns `Effect<Array<A>, ActionInputError>`
+- `getBoolean(name)` — Read boolean input. Live layer uses
+  `core.getBooleanInput()`. Returns `Effect<boolean, ActionInputError>`
+- `getBooleanOptional(name, defaultValue)` — Read boolean input or return
+  default if not provided. Returns `Effect<boolean, ActionInputError>`
 
-**Backed by:** `@actions/core.getInput()`, `@actions/core.setSecret()` — all
+**Batch helper:** `Action.parseInputs(config, crossValidate?)` — Read all
+inputs at once from a config object (`Record<string, InputConfig>`). Each
+`InputConfig` specifies `{ schema, required?, default?, multiline?, secret?,
+json? }`. After reading all inputs, passes the parsed object to an optional
+cross-validation function. Returns the fully typed parsed object. Errors from
+individual inputs and cross-validation unified under `ActionInputError`.
+Requires `ActionInputs` in the Effect context. Implementation is inlined in
+`Action.ts`; `services/parseAllInputs.ts` re-exports only the `InputConfig`
+and `ParsedInputs` types.
+
+**Backed by:** `@actions/core.getInput()`, `@actions/core.setSecret()`,
+`@actions/core.getMultilineInput()`, `@actions/core.getBooleanInput()` — all
 `core.*` calls in `ActionInputsLive` are wrapped in `Effect.sync()` to
 follow Effect's laziness contract (side effects are deferred until the
 Effect is run, never called eagerly during layer construction).
@@ -287,9 +357,15 @@ Sets action outputs and writes step summaries.
 - `summary(content)` — Write to `$GITHUB_STEP_SUMMARY`
 - `exportVariable(name, value)` — Export an environment variable
 - `addPath(path)` — Add to PATH
+- `setFailed(message)` — Mark the action as failed via `core.setFailed()`.
+  Returns `Effect<void>`
+- `setSecret(value)` — Mask a runtime value in logs via `core.setSecret()`.
+  Useful for values not originating from inputs (e.g., generated tokens).
+  Returns `Effect<void>`
 
 **Backed by:** `@actions/core.setOutput()`, `@actions/core.summary`,
-`@actions/core.exportVariable()`, `@actions/core.addPath()`
+`@actions/core.exportVariable()`, `@actions/core.addPath()`,
+`@actions/core.setFailed()`, `@actions/core.setSecret()`
 
 #### GithubMarkdown (Pure Functions)
 
@@ -312,6 +388,78 @@ Standalone GFM builders — no Effect service, just pure functions.
 **Why standalone:** These are used everywhere — check run summaries, PR
 comments, issue bodies, step summaries. No service dependency needed.
 
+#### ActionState Service
+
+Schema-serialized state passing for multi-phase GitHub Actions (pre/main/post).
+`@actions/core.saveState()` and `getState()` only accept strings. ActionState
+uses Effect Schema encode/decode to provide type-safe complex objects across
+action phases.
+
+**Interface:**
+
+- `save(key, value, schema)` — Serialize a typed value to JSON via
+  `Schema.encode`, then persist with `core.saveState()`. Returns
+  `Effect<void, ActionStateError>`
+- `get(key, schema)` — Read state string via `core.getState()`, parse JSON,
+  then validate and decode via `Schema.decode`. Returns
+  `Effect<A, ActionStateError>`
+- `getOptional(key, schema)` — Like `get` but returns `Option<A>` when the
+  key has no saved state (empty string from `core.getState()`). Returns
+  `Effect<Option<A>, ActionStateError>`
+
+**Data flow:**
+
+```text
+save: value → Schema.encode → JSON.stringify → core.saveState(key, json)
+get:  core.getState(key) → JSON.parse → Schema.decode → typed value | ActionStateError
+```
+
+**Error type:** `ActionStateError` — tagged error with key name, reason
+(e.g., "decode_failed", "not_found"), and optional raw value for diagnostics
+
+**Why this matters:** Multi-phase actions (pre/main/post) need to pass typed
+state between phases. Without schema serialization, complex objects require
+manual JSON.stringify/parse with no validation, making phase-ordering bugs
+(e.g., main.ts reading state before pre.ts sets it) silent and hard to debug.
+
+**Live layer:** Wraps `core.saveState()` / `core.getState()` in `Effect.sync()`
+
+**Test layer:** Uses in-memory `Map<string, string>`. Can be pre-populated to
+simulate phase ordering (e.g., pre-populate state that pre.ts would have set,
+then test main.ts logic). Follows the namespace object pattern:
+`ActionStateTest.layer(state)` and `ActionStateTest.empty()`
+
+#### Action.run Helper
+
+Top-level convenience function that eliminates boilerplate for wiring Effect
+programs into GitHub Action entry points. Implementation is inlined in
+`Action.ts` and accessed via the `Action` namespace.
+
+**Signatures:**
+
+```typescript
+Action.run(program): void          // uses all standard Live layers
+Action.run(program, layer): void   // merge additional layers with standard layers
+```
+
+**Behavior:**
+
+1. Provides core Live layers (ActionInputsLive, ActionLoggerLive,
+   ActionOutputsLive) plus ActionLoggerLayer (the Effect Logger integration)
+2. Catches all errors (via `Effect.catchAllCause`) and routes them to
+   `core.setFailed()` with `Cause.pretty` formatting
+3. Runs the program with `Effect.runPromise()`
+4. Merges any user-supplied `layer` with the core layers
+5. Last-resort catch on the promise sets `process.exitCode = 1` if even
+   `setFailed` fails
+
+**Why this matters:** Every action entry point requires the same boilerplate:
+compose Live layers, add the ActionLoggerLayer, catch errors, call setFailed,
+run the promise. `Action.run` eliminates this class of errors entirely. Note
+that `ActionStateLive` is not included in the core layers because not all
+actions need multi-phase state; users who need it pass it as the second
+`layer` argument.
+
 ### Layer Composition
 
 Each service has a `Live` layer backed by real `@actions/core` calls and
@@ -327,6 +475,12 @@ ActionLoggerTest   — captures log entries in memory (annotations include type 
 
 ActionOutputsLive  — writes to @actions/core outputs
 ActionOutputsTest  — captures outputs in memory
+
+ActionStateLive    — wraps core.saveState()/core.getState() with Schema encode/decode
+ActionStateTest    — in-memory Map<string, string>, pre-populatable for phase simulation
+
+Action.parseInputs — inlined in Action.ts, reads all inputs from a config record
+                     (depends on ActionInputs service, not bundled into Action.run)
 ```
 
 Users compose layers as needed:
@@ -382,6 +536,23 @@ ActionOutputs.set(name, value)
 ActionOutputs.summary(gfm)
   → $GITHUB_STEP_SUMMARY file
   → visible in Actions UI
+```
+
+### State Serialization Flow
+
+```text
+ActionState.save(key, value, schema)
+  → Schema.encode(schema)(value)
+  → JSON.stringify(encoded)
+  → @actions/core.saveState(key, json)
+  → persisted across action phases
+
+ActionState.get(key, schema)
+  → @actions/core.getState(key)
+  → empty string? → ActionStateError (not_found)
+  → JSON.parse(raw)
+  → Schema.decode(schema)(parsed)
+  → typed value | ActionStateError (decode_failed)
 ```
 
 ---
@@ -441,7 +612,7 @@ ergonomic test setup:
 - `ActionOutputsTest.empty()` / `ActionOutputsTest.layer(state)` — namespace
   object with in-memory state capture
 
-**What is tested (77 tests across 8 files, 95%+ coverage):**
+**What is tested (111 tests across 11 files, 95%+ coverage):**
 
 - Schema validation: valid inputs decode, invalid inputs produce clear errors
 - Input laziness: `ActionInputsLive` defers `core.getInput()`/`core.setSecret()`
@@ -458,6 +629,12 @@ ergonomic test setup:
 - GFM builders: pure function output matches expected markdown strings
 - GFM schemas: Status, ChecklistItem, CapturedOutput encode/decode
 - LogLevel schemas: parsing and round-trip validation
+- ActionState: save/get/getOptional with schema encode/decode, phase ordering errors
+- ActionState live layer: core.saveState()/core.getState() interactions
+- ActionInputs extensions: getMultiline, getBoolean, getBooleanOptional
+- parseAllInputs: config-driven batch input reading with cross-validation
+- ActionOutputs extensions: setFailed, setSecret
+- Action.run: layer composition, error handling, custom layer merging
 
 ### Integration Tests
 
@@ -493,7 +670,7 @@ action-builder's `persistLocal` feature to run actions in Docker containers.
 
 **Package Documentation:**
 
-- `README.md` — Package overview (to be written)
+- `README.md` — Package overview and quick-start guide
 - `CLAUDE.md` — Development guide
 
 **External References:**

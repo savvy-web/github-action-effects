@@ -37,6 +37,18 @@ export interface ActionOutputs {
 	 * Add a directory to PATH for subsequent steps.
 	 */
 	readonly addPath: (path: string) => Effect.Effect<void>;
+
+	/**
+	 * Mark the action as failed with a message.
+	 * This is the standard way to signal action failure.
+	 */
+	readonly setFailed: (message: string) => Effect.Effect<void>;
+
+	/**
+	 * Register a value as a secret so it is masked in logs.
+	 * Use for values not read through ActionInputs (e.g., generated tokens).
+	 */
+	readonly setSecret: (value: string) => Effect.Effect<void>;
 }
 
 /**

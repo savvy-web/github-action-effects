@@ -29,6 +29,14 @@ const getSecret = <A, I>(name: string, schema: Schema.Schema<A, I, never>) =>
 const getJson = <A, I>(name: string, schema: Schema.Schema<A, I, never>) =>
 	Effect.flatMap(ActionInputs, (svc) => svc.getJson(name, schema));
 
+const getMultiline = <A, I>(name: string, schema: Schema.Schema<A, I, never>) =>
+	Effect.flatMap(ActionInputs, (svc) => svc.getMultiline(name, schema));
+
+const getBoolean = (name: string) => Effect.flatMap(ActionInputs, (svc) => svc.getBoolean(name));
+
+const getBooleanOptional = (name: string, defaultValue: boolean) =>
+	Effect.flatMap(ActionInputs, (svc) => svc.getBooleanOptional(name, defaultValue));
+
 describe("ActionInputs", () => {
 	describe("get", () => {
 		it("reads and validates a string input", async () => {
@@ -100,6 +108,90 @@ describe("ActionInputs", () => {
 
 		it("fails on missing JSON input", async () => {
 			const exit = await runExit({}, getJson("packages", PackageList));
+			expect(exit._tag).toBe("Failure");
+		});
+	});
+
+	describe("getMultiline", () => {
+		it("splits and validates multiline input", async () => {
+			const result = await run({ deps: "foo\nbar\nbaz" }, getMultiline("deps", Schema.String));
+			expect(result).toEqual(["foo", "bar", "baz"]);
+		});
+
+		it("trims whitespace from each line", async () => {
+			const result = await run({ deps: "  foo  \n  bar  " }, getMultiline("deps", Schema.String));
+			expect(result).toEqual(["foo", "bar"]);
+		});
+
+		it("filters blank lines", async () => {
+			const result = await run({ deps: "foo\n\n\nbar" }, getMultiline("deps", Schema.String));
+			expect(result).toEqual(["foo", "bar"]);
+		});
+
+		it("filters comment lines", async () => {
+			const result = await run({ deps: "foo\n# this is a comment\nbar" }, getMultiline("deps", Schema.String));
+			expect(result).toEqual(["foo", "bar"]);
+		});
+
+		it("validates each item against schema", async () => {
+			const exit = await runExit(
+				{ deps: "foo\n123\nbar" },
+				getMultiline("deps", Schema.String.pipe(Schema.minLength(4))),
+			);
+			expect(exit._tag).toBe("Failure");
+		});
+
+		it("fails on missing input", async () => {
+			const exit = await runExit({}, getMultiline("deps", Schema.String));
+			expect(exit._tag).toBe("Failure");
+		});
+	});
+
+	describe("getBoolean", () => {
+		it("reads true", async () => {
+			const result = await run({ flag: "true" }, getBoolean("flag"));
+			expect(result).toBe(true);
+		});
+
+		it("reads false", async () => {
+			const result = await run({ flag: "false" }, getBoolean("flag"));
+			expect(result).toBe(false);
+		});
+
+		it("is case-insensitive", async () => {
+			const result = await run({ flag: "True" }, getBoolean("flag"));
+			expect(result).toBe(true);
+		});
+
+		it("fails on invalid value", async () => {
+			const exit = await runExit({ flag: "yes" }, getBoolean("flag"));
+			expect(exit._tag).toBe("Failure");
+		});
+
+		it("fails on missing input", async () => {
+			const exit = await runExit({}, getBoolean("flag"));
+			expect(exit._tag).toBe("Failure");
+		});
+	});
+
+	describe("getBooleanOptional", () => {
+		it("reads true when provided", async () => {
+			const result = await run({ flag: "true" }, getBooleanOptional("flag", false));
+			expect(result).toBe(true);
+		});
+
+		it("returns default when missing", async () => {
+			const result = await run({}, getBooleanOptional("flag", true));
+			expect(result).toBe(true);
+		});
+
+		it("returns default when empty", async () => {
+			const result = await run({ flag: "" }, getBooleanOptional("flag", false));
+			expect(result).toBe(false);
+		});
+
+		it("fails on invalid value", async () => {
+			const exit = await runExit({ flag: "maybe" }, getBooleanOptional("flag", true));
 			expect(exit._tag).toBe("Failure");
 		});
 	});

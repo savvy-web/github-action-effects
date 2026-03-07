@@ -32,4 +32,8 @@ export const ActionOutputsLive: Layer.Layer<ActionOutputs> = Layer.succeed(Actio
 	exportVariable: (name, value) => Effect.sync(() => core.exportVariable(name, value)),
 
 	addPath: (path) => Effect.sync(() => core.addPath(path)),
+
+	setFailed: (message) => Effect.sync(() => core.setFailed(message)),
+
+	setSecret: (value) => Effect.sync(() => core.setSecret(value)),
 });
