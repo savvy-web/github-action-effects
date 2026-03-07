@@ -116,6 +116,47 @@ Use `getSecret` to read an input and automatically mask it in logs via
 const token = yield* ActionInputs.getSecret("token", Schema.String)
 ```
 
+### Multiline inputs
+
+Use `getMultiline` to read a newline-delimited list. Lines are trimmed, blank
+lines and comment lines (starting with `#`) are filtered out, and each
+remaining item is validated against the schema:
+
+```typescript
+const packages = yield* inputs.getMultiline("packages", Schema.String)
+// ["pkg-a", "pkg-b", "pkg-c"]
+```
+
+### Boolean inputs
+
+Use `getBoolean` for required booleans and `getBooleanOptional` for optional
+booleans with a default:
+
+```typescript
+const dryRun = yield* inputs.getBoolean("dry-run")
+const verbose = yield* inputs.getBooleanOptional("verbose", false)
+```
+
+### Batch input reading with parseAllInputs
+
+Use `parseAllInputs` to read and validate all inputs at once from a
+configuration record:
+
+```typescript
+import { parseAllInputs } from "@savvy-web/github-action-effects"
+
+const inputs = yield* parseAllInputs({
+  "package-name": { schema: Schema.String, required: true },
+  "branch": { schema: Schema.String, default: "main" },
+  "dry-run": { schema: Schema.Boolean, default: false },
+  "config": { schema: MyConfigSchema, json: true },
+})
+// inputs is fully typed: { "package-name": string, branch: string, ... }
+```
+
+An optional second argument accepts a cross-validation function that runs
+after all inputs are parsed.
+
 ### Validation errors
 
 When validation fails, the effect fails with an `ActionInputError`:
@@ -272,6 +313,16 @@ yield* outputs.exportVariable("MY_VAR", "value")
 yield* outputs.addPath("/usr/local/bin")
 ```
 
+### Marking failure and masking secrets
+
+Use `setFailed` to mark the action as failed and `setSecret` to mask runtime
+values in logs (for values not originating from inputs):
+
+```typescript
+yield* outputs.setFailed("Build failed: missing artifact")
+yield* outputs.setSecret(generatedToken) // masked in all subsequent log output
+```
+
 ## Building Reports with GFM
 
 The library exports pure functions for composing GitHub Flavored Markdown.
@@ -338,19 +389,18 @@ heading("Section", 3)              // ### Section
 
 ## Composing the Layer and Running
 
-Here is a complete `src/main.ts` that ties everything together:
+### Using runAction (recommended)
+
+The simplest way to run an action is with `runAction`, which provides all core
+service layers, installs the Effect logger, and catches errors automatically:
 
 ```typescript
-import { NodeRuntime } from "@effect/platform-node"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Schema } from "effect"
 import {
+  runAction,
   ActionInputs,
-  ActionInputsLive,
   ActionLogger,
-  ActionLoggerLive,
-  ActionLoggerLayer,
   ActionOutputs,
-  ActionOutputsLive,
   LogLevelInput,
   resolveLogLevel,
   setLogLevel,
@@ -393,6 +443,39 @@ const program = Effect.gen(function* () {
   yield* Effect.log("Action completed")
 })
 
+runAction(program)
+```
+
+`runAction` handles:
+
+* Providing core Live layers (ActionInputsLive, ActionLoggerLive,
+  ActionOutputsLive)
+* Installing ActionLoggerLayer (routes Effect.log to core.info/debug)
+* Catching all errors and calling `core.setFailed`
+* Running with `Effect.runPromise`
+
+If your action needs additional layers (e.g., `ActionStateLive` for
+multi-phase state), pass them as the second argument:
+
+```typescript
+import { ActionStateLive } from "@savvy-web/github-action-effects"
+
+runAction(program, ActionStateLive)
+```
+
+### Manual layer composition
+
+If you need full control over layers, compose them yourself:
+
+```typescript
+import { Effect, Layer } from "effect"
+import {
+  ActionInputsLive,
+  ActionOutputsLive,
+  ActionLoggerLive,
+  ActionLoggerLayer,
+} from "@savvy-web/github-action-effects"
+
 const MainLayer = Layer.mergeAll(
   ActionInputsLive,
   ActionOutputsLive,
@@ -404,7 +487,7 @@ const runnable = program.pipe(
   Effect.provide(ActionLoggerLayer),
 )
 
-NodeRuntime.runMain(runnable)
+Effect.runPromise(runnable)
 ```
 
 ### Why ActionLoggerLayer is provided separately
@@ -414,7 +497,7 @@ Instead, it replaces the default Effect logger with one that routes to GitHub
 Actions log functions (`core.info`, `core.warning`, `core.error`,
 `core.debug`). Because it modifies the fiber's logger rather than providing a
 service, it must be applied with a separate `Effect.provide` call after the
-service layer.
+service layer. `runAction` handles this automatically.
 
 `ActionLoggerLive` is a separate `Layer<ActionLogger>` that provides the
 `ActionLogger` service (groups, buffering, annotation methods). Both are
@@ -429,7 +512,7 @@ needed:
 
 ### Error types
 
-The library defines two tagged error classes:
+The library defines three tagged error classes:
 
 * `ActionInputError` -- raised by `ActionInputs` methods when an input is
   missing or fails schema validation. Fields: `inputName`, `reason`,
@@ -437,6 +520,9 @@ The library defines two tagged error classes:
 * `ActionOutputError` -- raised by `ActionOutputs.setJson` and
   `ActionOutputs.summary` on serialization or write failures. Fields:
   `outputName`, `reason`.
+* `ActionStateError` -- raised by `ActionState` methods when state
+  read/write fails (e.g., decode failure, missing state). Fields: `key`,
+  `reason`, `rawValue`.
 
 ### Catching specific errors
 
@@ -461,29 +547,34 @@ const program = Effect.gen(function* () {
 
 ### Top-level error handling
 
-For a production action, catch all errors at the top level and call
-`core.setFailed` so the workflow step fails with a clear message:
+The easiest approach is to use `runAction`, which catches all errors and calls
+`core.setFailed` automatically:
+
+```typescript
+runAction(program)
+```
+
+If you need custom error handling, compose manually:
 
 ```typescript
 import * as core from "@actions/core"
+import { Cause, Effect } from "effect"
 
 const runnable = program.pipe(
   Effect.provide(MainLayer),
   Effect.provide(ActionLoggerLayer),
-  Effect.catchAll((error) =>
-    Effect.sync(() => {
-      const message = "_tag" in error ? `${error._tag}: ${error.reason}` : String(error)
-      core.setFailed(message)
-    })
+  Effect.catchAllCause((cause) =>
+    Effect.sync(() => core.setFailed(`Action failed: ${Cause.pretty(cause)}`))
   ),
 )
 
-NodeRuntime.runMain(runnable)
+Effect.runPromise(runnable)
 ```
 
 ## Next Steps
 
 * [Testing Guide](./testing.md) -- how to test your action with the provided
-  test layers (`ActionInputsTest`, `ActionOutputsTest`, `ActionLoggerTest`)
+  test layers (`ActionInputsTest`, `ActionOutputsTest`, `ActionLoggerTest`,
+  `ActionStateTest`)
 * [Architecture](./architecture.md) -- deeper look at the service design,
   layer composition, and logging pipeline

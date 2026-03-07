@@ -62,4 +62,18 @@ describe("ActionOutputs", () => {
 			expect(state.paths).toEqual(["/usr/local/bin"]);
 		});
 	});
+
+	describe("setFailed", () => {
+		it("captures failure message", async () => {
+			const { state } = await runWithOutputs(use((svc) => svc.setFailed("Something went wrong")));
+			expect(state.failed).toEqual(["Something went wrong"]);
+		});
+	});
+
+	describe("setSecret", () => {
+		it("captures secret value", async () => {
+			const { state } = await runWithOutputs(use((svc) => svc.setSecret("ghs_abc123")));
+			expect(state.secrets).toEqual(["ghs_abc123"]);
+		});
+	});
 });

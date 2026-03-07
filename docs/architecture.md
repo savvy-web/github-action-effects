@@ -16,6 +16,7 @@ src/
   errors/      - Tagged error types
   schemas/     - Effect Schema definitions
   utils/       - Pure utility functions (GFM builders)
+  runAction.ts - Top-level convenience helper
 ```
 
 ## Services
@@ -34,10 +35,31 @@ Reads GitHub Action inputs with schema validation.
 | `getOptional` | `(name, schema) => Effect<Option<A>, ActionInputError>` | Read an optional input; returns `Option.none()` if empty |
 | `getSecret` | `(name, schema) => Effect<A, ActionInputError>` | Read a required input and mask it in logs via `core.setSecret` |
 | `getJson` | `(name, schema) => Effect<A, ActionInputError>` | Read a required input, parse as JSON, then validate against schema |
+| `getMultiline` | `(name, itemSchema) => Effect<Array<A>, ActionInputError>` | Read multiline input, split on newlines, trim, filter blanks/comments, validate each item |
+| `getBoolean` | `(name) => Effect<boolean, ActionInputError>` | Read a boolean input (true/false, case-insensitive) |
+| `getBooleanOptional` | `(name, defaultValue) => Effect<boolean, ActionInputError>` | Read an optional boolean input with a default value |
 
 All methods that accept a `schema` parameter use `Schema.decode` to validate
 the raw string (or parsed JSON) value. Validation failures are mapped to
 `ActionInputError` with the input name, reason, and raw value.
+
+### parseAllInputs
+
+`parseAllInputs` is a standalone function (not a service method) that reads
+all inputs at once from a config record. Each entry specifies `{ schema,
+required?, default?, multiline?, secret?, json? }`. An optional second
+argument accepts a cross-validation function that receives the parsed object
+and can return errors.
+
+```typescript
+const inputs = yield* parseAllInputs({
+  "app-id": { schema: Schema.NumberFromString, required: true },
+  "branch": { schema: Schema.String, default: "main" },
+});
+```
+
+Requires `ActionInputs` in the Effect context. Exported as `parseAllInputs`
+with its `InputConfig` type.
 
 ### ActionLogger
 
@@ -65,9 +87,48 @@ entries.
 | `summary` | `(content) => Effect<void, ActionOutputError>` | Write markdown to the step summary |
 | `exportVariable` | `(name, value) => Effect<void>` | Export an environment variable for subsequent steps |
 | `addPath` | `(path) => Effect<void>` | Add a directory to PATH for subsequent steps |
+| `setFailed` | `(message) => Effect<void>` | Mark the action as failed via `core.setFailed` |
+| `setSecret` | `(value) => Effect<void>` | Mask a runtime value in logs via `core.setSecret` |
 
 `setJson` uses `Schema.encode` to validate before serializing, ensuring
 the output conforms to the schema.
+
+### ActionState
+
+Schema-serialized state passing for multi-phase GitHub Actions (pre/main/post).
+Uses Effect Schema encode/decode to provide type-safe complex objects across
+action phases, where `@actions/core.saveState()` and `getState()` only accept
+strings.
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `save` | `(key, value, schema) => Effect<void, ActionStateError>` | Serialize via Schema.encode, persist with core.saveState |
+| `get` | `(key, schema) => Effect<A, ActionStateError>` | Read, parse JSON, decode via Schema.decode |
+| `getOptional` | `(key, schema) => Effect<Option<A>, ActionStateError>` | Like get but returns Option.none() when key has no value |
+
+## runAction Helper
+
+`runAction` is a top-level convenience function that eliminates boilerplate
+for wiring Effect programs into GitHub Action entry points.
+
+```typescript
+// Simplest form -- provides core layers automatically
+runAction(program);
+
+// With additional layers (e.g., ActionStateLive)
+runAction(program, ActionStateLive);
+```
+
+It handles:
+
+* Providing core Live layers (ActionInputsLive, ActionLoggerLive,
+  ActionOutputsLive)
+* Installing ActionLoggerLayer (routes Effect.log to core.info/debug)
+* Catching all errors via `Effect.catchAllCause` and calling `core.setFailed`
+* Running with `Effect.runPromise`
+
+Note: `ActionStateLive` is not included in core layers because not all actions
+need multi-phase state. Pass it as the second `layer` argument when needed.
 
 ## Layer Composition
 
@@ -102,6 +163,8 @@ const program = myAction.pipe(
   Effect.provide(ActionLoggerLayer),
 )
 ```
+
+`runAction` handles both automatically.
 
 ## Logging System
 
@@ -165,7 +228,7 @@ The buffer-on-failure pattern optimizes output at `info` level:
 
 ## Error Types
 
-Both error types use `Data.TaggedError` for structural equality and pattern
+All error types use `Data.TaggedError` for structural equality and pattern
 matching.
 
 ### ActionInputError
@@ -178,6 +241,12 @@ matching.
 
 * **Tag**: `"ActionOutputError"`
 * **Fields**: `outputName` (string), `reason` (string)
+
+### ActionStateError
+
+* **Tag**: `"ActionStateError"`
+* **Fields**: `key` (string), `reason` (string), `rawValue` (string or
+  undefined)
 
 Each error module exports a `Base` class (e.g., `ActionInputErrorBase`)
 created by `Data.TaggedError(tag)`. The actual error class extends this
@@ -224,6 +293,10 @@ Each service has a corresponding test implementation in `src/layers/`:
 * `ActionOutputsTest` -- namespace with `empty()` and `layer(state)`. Captures
   outputs, summaries, exported variables, and paths in
   `ActionOutputsTestState`.
+* `ActionStateTest` -- namespace with `empty()` and `layer(state)`. Uses an
+  in-memory `Map<string, string>`. Can be pre-populated to simulate state from
+  a previous phase (e.g., pre-populate state that `pre.ts` would have set, then
+  test `main.ts` logic).
 
 The namespace pattern (`empty()` to create state, `layer(state)` to create
 the layer) lets tests inspect captured operations after the effect completes.

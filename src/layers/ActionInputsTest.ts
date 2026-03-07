@@ -53,5 +53,51 @@ export const ActionInputsTest = {
 				}
 				return decodeJsonInput(name, raw, schema);
 			},
+
+			getMultiline: <A, I>(name: string, itemSchema: Schema.Schema<A, I, never>) => {
+				const raw = inputs[name];
+				if (raw === undefined) {
+					return Effect.fail(missingInput(name));
+				}
+				const lines = raw
+					.split("\n")
+					.map((l) => l.trim())
+					.filter((l) => l.length > 0 && !l.startsWith("#"));
+				return Effect.forEach(lines, (line) => decodeInput(name, line, itemSchema));
+			},
+
+			getBoolean: (name: string) => {
+				const raw = inputs[name];
+				if (raw === undefined) {
+					return Effect.fail(missingInput(name));
+				}
+				const lower = raw.toLowerCase().trim();
+				if (lower === "true") return Effect.succeed(true);
+				if (lower === "false") return Effect.succeed(false);
+				return Effect.fail(
+					new ActionInputError({
+						inputName: name,
+						reason: `Input "${name}" is not a valid boolean: expected "true" or "false", got "${raw}"`,
+						rawValue: raw,
+					}),
+				);
+			},
+
+			getBooleanOptional: (name: string, defaultValue: boolean) => {
+				const raw = inputs[name];
+				if (raw === undefined || raw === "") {
+					return Effect.succeed(defaultValue);
+				}
+				const lower = raw.toLowerCase().trim();
+				if (lower === "true") return Effect.succeed(true);
+				if (lower === "false") return Effect.succeed(false);
+				return Effect.fail(
+					new ActionInputError({
+						inputName: name,
+						reason: `Input "${name}" is not a valid boolean: expected "true" or "false", got "${raw}"`,
+						rawValue: raw,
+					}),
+				);
+			},
 		}),
 } as const;

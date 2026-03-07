@@ -9,10 +9,11 @@ call `@actions/core` and never require a real GitHub Actions runner environment.
 
 Test layers come in two shapes:
 
-* **Namespace objects** (`ActionLoggerTest`, `ActionOutputsTest`) expose an
-  `empty()` function that creates a mutable state container and a `layer()`
-  function that builds an Effect `Layer` backed by that state. After running
-  your effect, you inspect the state to verify what happened.
+* **Namespace objects** (`ActionLoggerTest`, `ActionOutputsTest`,
+  `ActionStateTest`) expose an `empty()` function that creates a mutable state
+  container and a `layer()` function that builds an Effect `Layer` backed by
+  that state. After running your effect, you inspect the state to verify what
+  happened.
 * **Simple function** (`ActionInputsTest`) takes a `Record<string, string>` of
   input name/value pairs and returns a `Layer` directly. There is no mutable
   state because inputs are read-only.
@@ -35,10 +36,10 @@ const layer = ActionInputsTest({
 })
 ```
 
-The returned layer supports all four service methods (`get`, `getOptional`,
-`getSecret`, `getJson`). Missing keys cause the effect to fail with an
-`ActionInputError`, and values are validated against the provided `Schema` just
-like the live layer.
+The returned layer supports all service methods (`get`, `getOptional`,
+`getSecret`, `getJson`, `getMultiline`, `getBoolean`, `getBooleanOptional`).
+Missing keys cause the effect to fail with an `ActionInputError`, and values
+are validated against the provided `Schema` just like the live layer.
 
 ### ActionOutputsTest
 
@@ -62,6 +63,8 @@ outputs were set.
 | `variables` | `Array<{ name: string, value: string }>` | Values set via `exportVariable` |
 | `paths` | `Array<string>` | Paths added via `addPath` |
 | `summaries` | `Array<string>` | Markdown written via `summary` |
+| `failed` | `Array<string>` | Messages passed to `setFailed` |
+| `secrets` | `Array<string>` | Values registered via `setSecret` |
 
 ### ActionLoggerTest
 
@@ -86,6 +89,33 @@ logging behavior.
 | `annotations` | `Array<{ type: string, message: string, properties?: AnnotationProperties }>` | File/line annotations (type is `"error"`, `"warning"`, or `"notice"`) |
 | `flushedBuffers` | `Array<{ label: string, entries: Array<string> }>` | Buffers flushed on failure via `withBuffer` |
 
+### ActionStateTest
+
+`ActionStateTest` is a namespace object with `empty()` and `layer()`.
+
+```typescript
+import { ActionStateTest } from "@savvy-web/github-action-effects"
+
+const state = ActionStateTest.empty()
+const layer = ActionStateTest.layer(state)
+```
+
+The test state uses an in-memory `Map<string, string>`. Pre-populate entries
+to simulate state from a previous action phase:
+
+```typescript
+const state = ActionStateTest.empty()
+// Simulate state saved by pre.ts
+state.entries.set("timing", JSON.stringify({ startedAt: 1000 }))
+const layer = ActionStateTest.layer(state)
+```
+
+**State shape (`ActionStateTestState`):**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `entries` | `Map<string, string>` | Stored state entries (key to JSON string) |
+
 ## Composing Test Layers
 
 When your action uses multiple services, merge the test layers together with
@@ -97,19 +127,22 @@ import {
   ActionInputsTest,
   ActionLoggerTest,
   ActionOutputsTest,
+  ActionStateTest,
 } from "@savvy-web/github-action-effects"
 
 const outputState = ActionOutputsTest.empty()
 const logState = ActionLoggerTest.empty()
+const stateState = ActionStateTest.empty()
 
 const TestLayer = Layer.mergeAll(
   ActionInputsTest({ "package-name": "my-pkg" }),
   ActionOutputsTest.layer(outputState),
   ActionLoggerTest.layer(logState),
+  ActionStateTest.layer(stateState),
 )
 ```
 
-Then provide the merged layer to any effect that requires all three services.
+Then provide the merged layer to any effect that requires those services.
 
 ## Testing Patterns
 
@@ -147,6 +180,73 @@ describe("input validation", () => {
 })
 ```
 
+### Testing multiline and boolean inputs
+
+```typescript
+import { Effect, Schema } from "effect"
+import { describe, expect, it } from "vitest"
+import { ActionInputs, ActionInputsTest } from "@savvy-web/github-action-effects"
+
+describe("extended input methods", () => {
+  it("reads multiline input", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.flatMap(ActionInputs, (svc) =>
+          svc.getMultiline("packages", Schema.String)
+        ),
+        ActionInputsTest({ packages: "pkg-a\npkg-b\n# comment\n\npkg-c" }),
+      ),
+    )
+    expect(result).toEqual(["pkg-a", "pkg-b", "pkg-c"])
+  })
+
+  it("reads boolean input", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.flatMap(ActionInputs, (svc) => svc.getBoolean("dry-run")),
+        ActionInputsTest({ "dry-run": "true" }),
+      ),
+    )
+    expect(result).toBe(true)
+  })
+
+  it("reads optional boolean with default", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.flatMap(ActionInputs, (svc) =>
+          svc.getBooleanOptional("verbose", false)
+        ),
+        ActionInputsTest({}),
+      ),
+    )
+    expect(result).toBe(false)
+  })
+})
+```
+
+### Testing parseAllInputs
+
+```typescript
+import { Effect, Schema } from "effect"
+import { describe, expect, it } from "vitest"
+import { parseAllInputs, ActionInputsTest } from "@savvy-web/github-action-effects"
+
+describe("parseAllInputs", () => {
+  it("reads all inputs from config", async () => {
+    const result = await Effect.runPromise(
+      Effect.provide(
+        parseAllInputs({
+          name: { schema: Schema.String, required: true },
+          count: { schema: Schema.NumberFromString, default: 1 },
+        }),
+        ActionInputsTest({ name: "test" }),
+      ),
+    )
+    expect(result).toEqual({ name: "test", count: 1 })
+  })
+})
+```
+
 ### Testing outputs
 
 Capture outputs in the test state and assert against them:
@@ -175,6 +275,83 @@ describe("outputs", () => {
     }).pipe(Effect.provide(ActionOutputsTest.layer(state)), Effect.runPromise)
 
     expect(state.variables).toEqual([{ name: "MY_VAR", value: "value" }])
+  })
+})
+```
+
+### Testing setFailed and setSecret
+
+```typescript
+import { Effect } from "effect"
+import { describe, expect, it } from "vitest"
+import { ActionOutputs, ActionOutputsTest } from "@savvy-web/github-action-effects"
+
+describe("setFailed and setSecret", () => {
+  it("captures setFailed calls", async () => {
+    const state = ActionOutputsTest.empty()
+    await Effect.gen(function* () {
+      const svc = yield* ActionOutputs
+      yield* svc.setFailed("Something went wrong")
+    }).pipe(Effect.provide(ActionOutputsTest.layer(state)), Effect.runPromise)
+
+    expect(state.failed).toEqual(["Something went wrong"])
+  })
+
+  it("captures setSecret calls", async () => {
+    const state = ActionOutputsTest.empty()
+    await Effect.gen(function* () {
+      const svc = yield* ActionOutputs
+      yield* svc.setSecret("super-secret-token")
+    }).pipe(Effect.provide(ActionOutputsTest.layer(state)), Effect.runPromise)
+
+    expect(state.secrets).toEqual(["super-secret-token"])
+  })
+})
+```
+
+### Testing ActionState
+
+```typescript
+import { Effect, Schema, Option } from "effect"
+import { describe, expect, it } from "vitest"
+import { ActionState, ActionStateTest } from "@savvy-web/github-action-effects"
+
+const TimingSchema = Schema.Struct({ startedAt: Schema.Number })
+
+describe("ActionState", () => {
+  it("saves and retrieves state", async () => {
+    const state = ActionStateTest.empty()
+    const result = await Effect.gen(function* () {
+      const svc = yield* ActionState
+      yield* svc.save("timing", { startedAt: 1000 }, TimingSchema)
+      return yield* svc.get("timing", TimingSchema)
+    }).pipe(Effect.provide(ActionStateTest.layer(state)), Effect.runPromise)
+
+    expect(result).toEqual({ startedAt: 1000 })
+  })
+
+  it("returns Option.none for missing state", async () => {
+    const state = ActionStateTest.empty()
+    const result = await Effect.gen(function* () {
+      const svc = yield* ActionState
+      return yield* svc.getOptional("missing", TimingSchema)
+    }).pipe(Effect.provide(ActionStateTest.layer(state)), Effect.runPromise)
+
+    expect(Option.isNone(result)).toBe(true)
+  })
+
+  it("simulates phase ordering with pre-populated state", async () => {
+    const state = ActionStateTest.empty()
+    // Simulate pre.ts saving state
+    state.entries.set("timing", JSON.stringify({ startedAt: 1000 }))
+
+    // Test main.ts reading that state
+    const result = await Effect.gen(function* () {
+      const svc = yield* ActionState
+      return yield* svc.get("timing", TimingSchema)
+    }).pipe(Effect.provide(ActionStateTest.layer(state)), Effect.runPromise)
+
+    expect(result).toEqual({ startedAt: 1000 })
   })
 })
 ```
@@ -400,31 +577,37 @@ import {
   ActionInputsTest,
   ActionLoggerTest,
   ActionOutputsTest,
+  ActionStateTest,
 } from "@savvy-web/github-action-effects"
 import type {
   ActionLoggerTestState,
   ActionOutputsTestState,
+  ActionStateTestState,
 } from "@savvy-web/github-action-effects"
 
 interface TestContext {
   readonly outputState: ActionOutputsTestState
   readonly logState: ActionLoggerTestState
+  readonly stateState: ActionStateTestState
   readonly layer: Layer.Layer<
     import("@savvy-web/github-action-effects").ActionInputs
     | import("@savvy-web/github-action-effects").ActionOutputs
     | import("@savvy-web/github-action-effects").ActionLogger
+    | import("@savvy-web/github-action-effects").ActionState
   >
 }
 
 const runWithTestLayers = (inputs: Record<string, string>): TestContext => {
   const outputState = ActionOutputsTest.empty()
   const logState = ActionLoggerTest.empty()
+  const stateState = ActionStateTest.empty()
   const layer = Layer.mergeAll(
     ActionInputsTest(inputs),
     ActionOutputsTest.layer(outputState),
     ActionLoggerTest.layer(logState),
+    ActionStateTest.layer(stateState),
   )
-  return { outputState, logState, layer }
+  return { outputState, logState, stateState, layer }
 }
 ```
 

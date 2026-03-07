@@ -11,6 +11,8 @@ export interface ActionOutputsTestState {
 	readonly summaries: Array<string>;
 	readonly variables: Array<CapturedOutput>;
 	readonly paths: Array<string>;
+	readonly secrets: Array<string>;
+	readonly failed: Array<string>;
 }
 
 /**
@@ -31,6 +33,8 @@ export const ActionOutputsTest = {
 		summaries: [],
 		variables: [],
 		paths: [],
+		secrets: [],
+		failed: [],
 	}),
 
 	/**
@@ -73,6 +77,16 @@ export const ActionOutputsTest = {
 			addPath: (path) =>
 				Effect.sync(() => {
 					state.paths.push(path);
+				}),
+
+			setFailed: (message) =>
+				Effect.sync(() => {
+					state.failed.push(message);
+				}),
+
+			setSecret: (value) =>
+				Effect.sync(() => {
+					state.secrets.push(value);
 				}),
 		}),
 } as const;
