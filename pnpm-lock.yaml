@@ -23,6 +23,9 @@ importers:
       '@opentelemetry/api':
         specifier: '>=1.0.0'
         version: 1.9.0
+      semver:
+        specifier: ^7.7.4
+        version: 7.7.4
     devDependencies:
       '@actions/cache':
         specifier: ^4.0.0
@@ -63,6 +66,9 @@ importers:
       '@savvy-web/vitest':
         specifier: ^0.2.0
         version: 0.2.0(@types/node@25.3.3)(@typescript/native-preview@7.0.0-dev.20260304.1)(@vitest/coverage-v8@4.0.18(vitest@4.0.18(@opentelemetry/api@1.9.0)(@types/node@25.3.3)(jiti@2.6.1)(yaml@2.8.2)))(typescript@5.9.3)(vitest@4.0.18(@opentelemetry/api@1.9.0)(@types/node@25.3.3)(jiti@2.6.1)(yaml@2.8.2))
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.7.1
       effect:
         specifier: ^3.19.19
         version: 3.19.19
@@ -1546,6 +1552,9 @@ packages:
   '@types/parse-path@7.1.0':
     resolution: {integrity: sha512-EULJ8LApcVEPbrfND0cRQqutIOdiIgJ1Mgrhpy755r14xMohPTEpkV/k28SJvuOs9bHRFW8x+KeDAEPiGQPB9Q==}
     deprecated: This is a stub types definition. parse-path provides its own type definitions, so you do not need this installed.
+
+  '@types/semver@7.7.1':
+    resolution: {integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==}
 
   '@types/unist@2.0.11':
     resolution: {integrity: sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA==}
@@ -5452,6 +5461,8 @@ snapshots:
   '@types/parse-path@7.1.0':
     dependencies:
       parse-path: 7.1.0
+
+  '@types/semver@7.7.1': {}
 
   '@types/unist@2.0.11': {}
 

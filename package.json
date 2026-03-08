@@ -43,6 +43,9 @@
 		"typecheck": "turbo run types:check --log-prefix=none --log-order=grouped",
 		"types:check": "tsgo --noEmit"
 	},
+	"dependencies": {
+		"semver": "^7.7.4"
+	},
 	"devDependencies": {
 		"@actions/cache": "^4.0.0",
 		"@actions/core": "^3.0.0",
@@ -57,6 +60,7 @@
 		"@savvy-web/lint-staged": "^0.5.1",
 		"@savvy-web/rslib-builder": "^0.16.0",
 		"@savvy-web/vitest": "^0.2.0",
+		"@types/semver": "^7.7.1",
 		"effect": "^3.19.19",
 		"jsonc-parser": "^3.3.1",
 		"yaml": "^2.8.2"
