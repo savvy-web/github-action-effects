@@ -5,7 +5,7 @@ category: architecture
 created: 2026-03-06
 updated: 2026-03-08
 last-synced: 2026-03-08
-completeness: 90
+completeness: 95
 related: []
 dependencies: []
 ---
@@ -77,6 +77,12 @@ files, 95%+ coverage). The `ci:build` passes with both dev and prod outputs.
 | CommandRunner service | In Progress | `services/CommandRunner.ts`, `layers/CommandRunnerLive.ts`, `layers/CommandRunnerTest.ts` |
 | ActionEnvironment service | In Progress | `services/ActionEnvironment.ts`, `layers/ActionEnvironmentLive.ts`, `layers/ActionEnvironmentTest.ts` |
 | ActionCache service | In Progress | `services/ActionCache.ts`, `layers/ActionCacheLive.ts`, `layers/ActionCacheTest.ts` |
+| GitHubClient service | Complete | `services/GitHubClient.ts`, `layers/GitHubClientLive.ts`, `layers/GitHubClientTest.ts` |
+| CheckRun service | Complete | `services/CheckRun.ts`, `layers/CheckRunLive.ts`, `layers/CheckRunTest.ts` |
+| PullRequestComment service | Complete | `services/PullRequestComment.ts`, `layers/PullRequestCommentLive.ts`, `layers/PullRequestCommentTest.ts` |
+| GitHubClientError | Complete | `errors/GitHubClientError.ts` |
+| CheckRunError | Complete | `errors/CheckRunError.ts` |
+| PullRequestCommentError | Complete | `errors/PullRequestCommentError.ts` |
 | Shared decode helpers | Complete | `layers/internal/decodeInput.ts` |
 | ActionInputError | Complete | `errors/ActionInputError.ts` |
 | ActionOutputError | Complete | `errors/ActionOutputError.ts` |
@@ -95,7 +101,7 @@ files, 95%+ coverage). The `ci:build` passes with both dev and prod outputs.
 
 - No integration tests yet (deferred until services are stable in real actions)
 - CommandRunner, ActionEnvironment, and ActionCache services are in progress (Tier 1 expansion)
-- No CheckRun, GitHubClient, or PullRequestComment services yet (Tier 2, future)
+- Tier 2 services (GitHubClient, CheckRun, PullRequestComment) are implemented and tested
 
 ---
 
@@ -188,10 +194,11 @@ size-constrained like browser bundles.
 
 ### Service Overview
 
-Eight service modules plus two namespace objects, each independently usable.
+Eleven service modules plus two namespace objects, each independently usable.
 The first four (ActionInputs, ActionLogger, ActionOutputs, ActionState) are
-complete. Three new Tier 1 services (CommandRunner, ActionEnvironment,
-ActionCache) are in progress as part of the library expansion plan.
+complete. Three Tier 1 expansion services (CommandRunner, ActionEnvironment,
+ActionCache) are in progress. Three Tier 2 services (GitHubClient, CheckRun,
+PullRequestComment) are implemented and tested.
 `Action.run()` automatically provides `NodeContext.layer` from
 `@effect/platform-node`, so programs also have access to Node.js platform
 services (`FileSystem`, `Path`, `Terminal`, `CommandExecutor`, `WorkerManager`)
@@ -206,6 +213,9 @@ without needing to provide them manually.
 ├── CommandRunner       — Structured shell command execution (in progress)
 ├── ActionEnvironment   — Schema-validated GitHub/Runner context variables (in progress)
 ├── ActionCache         — Effect wrapper for @actions/cache save/restore (in progress)
+├── GitHubClient        — Authenticated Octokit provider with rate-limit awareness
+├── CheckRun            — Create/update/complete GitHub check runs with bracket pattern
+├── PullRequestComment  — Sticky (upsert) PR comments with marker-based idempotency
 ├── Action.*            — Namespace: run, parseInputs, makeLogger, setLogLevel, resolveLogLevel
 └── GithubMarkdown.*    — Namespace: table, heading, details, bold, code, etc. (pure functions)
 ```
@@ -525,6 +535,149 @@ operation (`"save"` | `"restore"`), and reason
 **Test layer:** `ActionCacheTest.layer(cache?)` with in-memory Map.
 `ActionCacheTest.empty()` returns empty cache (always miss).
 
+#### GitHubClient Service
+
+Authenticated Octokit provider for GitHub REST and GraphQL API operations.
+Wraps `@actions/github.getOctokit()` with Effect error handling and
+rate-limit awareness via the `retryable` flag on errors.
+
+**Interface:**
+
+- `rest(operation, fn)` — Execute a REST API call via callback. The callback
+  receives an Octokit instance and should return `Promise<{ data: T }>`. The
+  `operation` string labels the call for error diagnostics (e.g.,
+  `"repos.get"`). Returns `Effect<T, GitHubClientError>`
+- `graphql(query, variables?)` — Execute a GraphQL query. Returns
+  `Effect<T, GitHubClientError>`
+- `repo` — Get the repository context (`{ owner, repo }`) derived from the
+  `GITHUB_REPOSITORY` environment variable. Returns
+  `Effect<{ owner: string; repo: string }, GitHubClientError>`
+
+**Error type:** `GitHubClientError` — tagged error with operation (string),
+status (HTTP status code or undefined), reason (human-readable message), and
+retryable (boolean). The `retryable` flag is `true` for 429 (rate limit) and
+5xx status codes, enabling consumers to implement retry logic.
+
+**Live layer:** `GitHubClientLive(token: string)` — a function (not a
+constant) returning `Layer.Layer<GitHubClient>`. Creates an Octokit instance
+via `@actions/github.getOctokit(token)`. REST calls use `Effect.tryPromise`,
+GraphQL calls use `octokit.graphql()`. Error mapping extracts HTTP status from
+the error object when available and sets the `retryable` flag accordingly.
+
+**Test layer:** `GitHubClientTest` — namespace object with `.empty()` and
+`.layer(state)`. State holds `restResponses` (`Map<string, RestResponse>`
+keyed by operation string), `graphqlResponses` (`Map<string, unknown>` keyed
+by query string), and a `repo` object. Operations that have no recorded
+response fail with a 404 `GitHubClientError`. `.empty()` returns an empty
+layer with default repo `{ owner: "test-owner", repo: "test-repo" }`.
+
+**Why this matters:** All Tier 2 services (CheckRun, PullRequestComment) depend
+on GitHubClient for API access. Centralizing Octokit management in one service
+ensures consistent token handling, error wrapping, and test isolation. The
+callback-based `rest()` interface avoids exposing the Octokit type in the
+public API surface (typed as `unknown`), which keeps the service interface
+stable regardless of Octokit version changes.
+
+#### CheckRun Service
+
+Create, update, and complete GitHub check runs via the Checks API. Provides a
+bracket pattern (`withCheckRun`) for automatic lifecycle management.
+
+**Interface:**
+
+- `create(name, headSha)` — Create a new check run in `in_progress` status.
+  Returns `Effect<number, CheckRunError>` (the check run ID)
+- `update(checkRunId, output)` — Update an in-progress check run with output
+  content. Returns `Effect<void, CheckRunError>`
+- `complete(checkRunId, conclusion, output?)` — Complete a check run with a
+  conclusion and optional final output. Returns `Effect<void, CheckRunError>`
+- `withCheckRun(name, headSha, effect)` — Bracket pattern: creates a check
+  run, passes the ID to the effect callback, then completes with `"success"`
+  on success or `"failure"` on failure. The failure case re-raises the
+  original cause after completing the check run. Returns
+  `Effect<A, E | CheckRunError>`
+
+**Types:**
+
+- `CheckRunConclusion` — `"success"` | `"failure"` | `"neutral"` |
+  `"cancelled"` | `"skipped"` | `"timed_out"` | `"action_required"`
+- `AnnotationLevel` — `"notice"` | `"warning"` | `"failure"`
+- `CheckRunAnnotation` — `{ path, start_line, end_line, annotation_level,
+  message, title? }`
+- `CheckRunOutput` — `{ title, summary, text?, annotations? }`
+
+**Error type:** `CheckRunError` — tagged error with name (check run name),
+operation (`"create"` | `"update"` | `"complete"`), and reason (human-readable
+message). Maps from underlying `GitHubClientError`.
+
+**Live layer:** `CheckRunLive` — `Layer.Layer<CheckRun, never, GitHubClient>`.
+Created via `Layer.effect` depending on `GitHubClient`. Uses `client.repo` to
+resolve owner/repo for each API call. Annotations are capped at 50 per API
+call (GitHub API limit). The `formatOutput` helper strips undefined optional
+fields to produce clean API payloads.
+
+**Test layer:** `CheckRunTest` — namespace object with `.empty()` and
+`.layer(state)`. State holds a `runs` array of `CheckRunRecord` objects that
+track each check run's id, name, headSha, status, conclusion, and outputs
+array. `.empty()` returns a fresh `CheckRunTestState` with an empty runs array
+and resets the internal ID counter. The test layer does not depend on
+`GitHubClient` (operates in-memory).
+
+**Why this matters:** Check runs are the primary mechanism for reporting
+structured analysis results (lint findings, test results, build metrics)
+directly in the GitHub PR UI. The bracket pattern ensures check runs are
+always completed even when the wrapped effect fails, preventing orphaned
+"in progress" check runs.
+
+#### PullRequestComment Service
+
+Create, find, update, and delete PR comments with a sticky (upsert) pattern
+using hidden HTML markers for idempotent comment management.
+
+**Interface:**
+
+- `create(prNumber, body)` — Create a new comment on a PR. Returns
+  `Effect<number, PullRequestCommentError>` (the comment ID)
+- `upsert(prNumber, markerKey, body)` — Create or update a sticky comment.
+  Searches existing comments for `<!-- savvy-web:KEY -->` HTML marker. If
+  found, updates that comment; otherwise creates a new one with the marker
+  prepended. Returns `Effect<number, PullRequestCommentError>` (the comment
+  ID)
+- `find(prNumber, markerKey)` — Find a comment by marker key. Returns
+  `Effect<Option<CommentRecord>, PullRequestCommentError>`
+- `delete(prNumber, commentId)` — Delete a comment by ID. Returns
+  `Effect<void, PullRequestCommentError>`
+
+**Types:**
+
+- `CommentRecord` — `{ id: number; body: string }`
+
+**Error type:** `PullRequestCommentError` — tagged error with prNumber
+(number), operation (`"create"` | `"upsert"` | `"find"` | `"delete"`), and
+reason (human-readable message). Maps from underlying `GitHubClientError`.
+
+**Live layer:** `PullRequestCommentLive` —
+`Layer.Layer<PullRequestComment, never, GitHubClient>`. Created via
+`Layer.effect` depending on `GitHubClient`. Uses the GitHub Issues API
+(PRs are issues) via `rest.issues.createComment`, `listComments`,
+`updateComment`, and `deleteComment`. The marker pattern uses
+`<!-- savvy-web:KEY -->` HTML comments which are invisible in rendered
+markdown. Listing fetches up to 100 comments per page.
+
+**Test layer:** `PullRequestCommentTest` — namespace object with `.empty()`
+and `.layer(state)`. State holds a `comments` map
+(`Map<number, Array<{ id, body }>>`) keyed by PR number, and an
+instance-scoped `nextId` counter for generating comment IDs. `.empty()`
+returns a fresh state with an empty map and `nextId = 1`. The test layer
+does not depend on `GitHubClient` (operates in-memory). The upsert logic
+faithfully replicates the marker search-and-update pattern.
+
+**Why this matters:** PR comments are the primary channel for reporting action
+results inline in pull requests. The upsert pattern with hidden markers
+prevents comment spam — repeated workflow runs update the same comment
+instead of creating new ones. This is essential for build status, size
+reports, and other metrics that update on each push.
+
 #### Action.run Helper
 
 Top-level convenience function that eliminates boilerplate for wiring Effect
@@ -588,11 +741,41 @@ ActionEnvironmentTest — reads from provided Record<string, string>
 ActionCacheLive    — wraps @actions/cache.saveCache()/restoreCache() (deferred via Effect.tryPromise)
 ActionCacheTest    — in-memory Map for cache simulation (always-miss when empty)
 
+GitHubClientLive(token)  — function returning Layer; wraps @actions/github.getOctokit(token)
+GitHubClientTest         — Map-based recorded REST/GraphQL responses; default test repo
+
+CheckRunLive       — Layer.effect depending on GitHubClient; caps annotations at 50
+CheckRunTest       — in-memory CheckRunRecord array; resets ID counter on .empty()
+
+PullRequestCommentLive  — Layer.effect depending on GitHubClient; uses Issues API
+PullRequestCommentTest  — in-memory Map<prNumber, comments[]>; instance-scoped nextId
+
 NodeContextLive.layer — @effect/platform-node: FileSystem, Path, Terminal,
                         CommandExecutor, WorkerManager (provided by Action.run)
 
 Action.parseInputs — inlined in Action.ts, reads all inputs from a config record
                      (depends on ActionInputs service, not bundled into Action.run)
+```
+
+### Service Dependency Graph
+
+```text
+Independent (no service dependencies):
+  ActionInputs, ActionLogger, ActionOutputs, ActionState,
+  CommandRunner, ActionEnvironment, ActionCache, GithubMarkdown
+
+Tier 2 dependency chain:
+  GitHubClient (token)       ← standalone, wraps @actions/github
+    ├── CheckRun             ← Layer.effect depends on GitHubClient
+    └── PullRequestComment   ← Layer.effect depends on GitHubClient
+
+Layer provision for Tier 2:
+  GitHubClientLive(token)
+    → CheckRunLive           (requires GitHubClient in context)
+    → PullRequestCommentLive (requires GitHubClient in context)
+
+Test layers for CheckRun and PullRequestComment do NOT depend on
+GitHubClient — they operate entirely in-memory.
 ```
 
 Users compose layers as needed:
@@ -678,9 +861,10 @@ annotations. All interactions wrapped in Effect services.
 
 ### @actions/github (optional peer)
 
-Provides authenticated Octokit for future check-run and PR-comment services.
-Not required for initial implementation — GithubMarkdown is pure. Marked
-`optional: true` in `peerDependenciesMeta`.
+Provides authenticated Octokit for the GitHubClient service, which in turn
+backs CheckRun and PullRequestComment. Required only when using Tier 2
+services. `GitHubClientLive(token)` wraps `github.getOctokit(token)`.
+Marked `optional: true` in `peerDependenciesMeta`.
 
 ### @actions/exec (optional peer)
 
@@ -738,6 +922,12 @@ ergonomic test setup:
 - `ActionEnvironmentTest.layer(env)` — reads from provided record
 - `ActionCacheTest.empty()` / `ActionCacheTest.layer(cache)` — namespace
   object with in-memory cache simulation
+- `GitHubClientTest.empty()` / `GitHubClientTest.layer(state)` — namespace
+  object with recorded REST/GraphQL responses
+- `CheckRunTest.empty()` / `CheckRunTest.layer(state)` — namespace object
+  with in-memory check run records
+- `PullRequestCommentTest.empty()` / `PullRequestCommentTest.layer(state)` —
+  namespace object with in-memory comment storage
 
 **What is tested (133 tests across 12 files, 95%+ coverage):**
 
@@ -775,6 +965,20 @@ ergonomic test setup:
   hit/miss and matchedKey, withCache bracket restores then saves on miss,
   cache errors include key and operation, test layer simulates hit/miss with
   in-memory Map
+- GitHubClient: rest callback receives Octokit and returns data, graphql
+  executes queries with variables, repo reads GITHUB_REPOSITORY, error
+  wrapping extracts HTTP status, retryable flag set for 429 and 5xx, test
+  layer returns recorded responses or 404 error for unrecorded operations
+- CheckRun: create returns check run ID in in_progress status, update appends
+  output to check run, complete sets conclusion and status, withCheckRun
+  bracket creates/completes automatically, failure case completes with
+  "failure" and re-raises cause, annotations capped at 50, test layer
+  records all operations in CheckRunRecord array
+- PullRequestComment: create adds comment and returns ID, upsert finds
+  existing comment by marker and updates or creates new, find returns
+  Option of matching comment, delete removes by ID, marker pattern uses
+  `<!-- savvy-web:KEY -->` HTML comments, test layer tracks comments per
+  PR number with instance-scoped ID counter
 
 ### Integration Tests
 
@@ -795,13 +999,16 @@ action-builder's `persistLocal` feature to run actions in Docker containers.
 - **ActionCache service** — In Progress. Effect wrapper around `@actions/cache`
   for save/restore with typed cache keys and hit/miss reporting.
 
+### Completed (Tier 2)
+
+- **GitHubClient service** — Authenticated Octokit provider with rate-limit
+  awareness via retryable flag
+- **CheckRun service** — Create/update/complete check runs with bracket pattern
+- **PullRequestComment service** — Sticky (upsert) PR comments with
+  `<!-- savvy-web:KEY -->` marker pattern for idempotent updates
+
 ### Near-Term (After Tier 1)
 
-- **GitHubClient service** — Authenticated Octokit provider with token
-  validation and rate-limit awareness
-- **CheckRun service** — Create/update check runs via Octokit, post PR comments
-- **PullRequestComment service** — Sticky (upsert) PR comments with GFM
-  content, keyed by marker for idempotent updates
 - **Specialized command services** — e.g., `NpmPack` service that runs
   `npm pack --dry-run --json` and returns typed metrics
 
