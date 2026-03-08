@@ -19,6 +19,7 @@ export { ActionStateError, ActionStateErrorBase } from "./errors/ActionStateErro
 export { ChangesetError, ChangesetErrorBase } from "./errors/ChangesetError.js";
 export { CheckRunError, CheckRunErrorBase } from "./errors/CheckRunError.js";
 export { CommandRunnerError, CommandRunnerErrorBase } from "./errors/CommandRunnerError.js";
+export { GitBranchError, GitBranchErrorBase } from "./errors/GitBranchError.js";
 export { GitHubAppError, GitHubAppErrorBase } from "./errors/GitHubAppError.js";
 export { GitHubClientError, GitHubClientErrorBase } from "./errors/GitHubClientError.js";
 export { PullRequestCommentError, PullRequestCommentErrorBase } from "./errors/PullRequestCommentError.js";
@@ -53,6 +54,9 @@ export { CheckRunTest } from "./layers/CheckRunTest.js";
 export { CommandRunnerLive } from "./layers/CommandRunnerLive.js";
 export type { CommandResponse } from "./layers/CommandRunnerTest.js";
 export { CommandRunnerTest } from "./layers/CommandRunnerTest.js";
+export { GitBranchLive } from "./layers/GitBranchLive.js";
+export type { GitBranchTestState } from "./layers/GitBranchTest.js";
+export { GitBranchTest } from "./layers/GitBranchTest.js";
 export { GitHubAppLive } from "./layers/GitHubAppLive.js";
 export type { GitHubAppTestState } from "./layers/GitHubAppTest.js";
 export { GitHubAppTest } from "./layers/GitHubAppTest.js";
@@ -100,6 +104,7 @@ export type { AnnotationLevel, CheckRunAnnotation, CheckRunConclusion, CheckRunO
 export { CheckRun } from "./services/CheckRun.js";
 export type { ExecOptions, ExecOutput } from "./services/CommandRunner.js";
 export { CommandRunner } from "./services/CommandRunner.js";
+export { GitBranch } from "./services/GitBranch.js";
 export type { InstallationToken as InstallationTokenType } from "./services/GitHubApp.js";
 export { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
 export { GitHubClient } from "./services/GitHubClient.js";
