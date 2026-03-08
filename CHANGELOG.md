@@ -1,5 +1,59 @@
 # @savvy-web/pnpm-module-template
 
+## 0.4.0
+
+### Breaking Changes
+
+* [`53d50e9`](https://github.com/savvy-web/github-action-effects/commit/53d50e9ae2e7e3161ca008d672ace88d6086a304) **ActionTelemetry refactored**: Removed `span()` and `getTimings()` methods. Use `Effect.withSpan()` for tracing instead. `ActionTelemetry` is now metrics-only (`metric`, `attribute`, `getMetrics`).
+* **SpanData schema removed**: `SpanData` removed from `schemas/Telemetry.ts`. Use `CompletedSpan` from `InMemoryTracer` instead.
+
+### Features
+
+* [`53d50e9`](https://github.com/savvy-web/github-action-effects/commit/53d50e9ae2e7e3161ca008d672ace88d6086a304) Add Tier 1 services — CommandRunner, ActionEnvironment, ActionCache — for structured shell execution, environment variable access, and cache operations.
+
+- [`53d50e9`](https://github.com/savvy-web/github-action-effects/commit/53d50e9ae2e7e3161ca008d672ace88d6086a304) **GitHubClient.paginate**: Paginated REST API calls with automatic page concatenation, empty-page termination, and configurable maxPages limit.
+- **GitHubGraphQL**: Dedicated GraphQL service with operation naming, mutation/query distinction, and structured GraphQL error extraction. Delegates to GitHubClient.graphql with error mapping.
+- **DryRun**: Cross-cutting dry-run mode with guard pattern for mutation interception. When enabled, guard() logs the operation and returns a fallback instead of executing.
+- **NpmRegistry**: Query npm registry for package metadata (versions, dist-tags, package info, integrity hashes) via CommandRunner using `npm view --json`.
+- **ErrorAccumulator**: Utility namespace for "process all, collect failures" patterns with sequential and concurrent variants.
+- **WorkspaceDetector**: Detect monorepo workspace structure (pnpm, npm, yarn, bun, single) and list workspace packages via @effect/platform FileSystem.
+
+* [`53d50e9`](https://github.com/savvy-web/github-action-effects/commit/53d50e9ae2e7e3161ca008d672ace88d6086a304) ### Telemetry Overhaul
+
+- **InMemoryTracer**: Custom Effect `Tracer` that captures completed spans in memory for GitHub-native output (step summaries, PR comments).
+- **Effect.withSpan instrumentation**: All public service methods across 11 live layers are now instrumented with `Effect.withSpan` for automatic tracing.
+- **OtelTelemetryLive**: Optional layer bridging Effect's Tracer to OpenTelemetry exporters. Requires `@effect/opentelemetry` and `@opentelemetry/api` as optional peer deps.
+- **TelemetryReport**: Utility namespace for rendering span data as GitHub-flavored Markdown tables.
+- **ReportBuilder**: Immutable fluent builder for composing structured Markdown reports with sections, stats, details, and timing data.
+- **Action.run() auto-summary**: Automatically writes a timing summary to GitHub step summary after program completion.
+
+* [`53d50e9`](https://github.com/savvy-web/github-action-effects/commit/53d50e9ae2e7e3161ca008d672ace88d6086a304) **GitHubRelease**: Service for GitHub Releases API — create releases, upload assets, get by tag, list with pagination.
+* **GitHubIssue**: Service for Issues API — list with filters, close, comment, and get linked issues via GraphQL.
+* **GitTag**: Service for Git tag refs — create, delete, list with prefix filter, resolve tag to SHA.
+* **SemverResolver**: Utility namespace for semver operations — compare, satisfies, latestInRange, increment, parse.
+* **AutoMerge**: Utility namespace for PR auto-merge — enable/disable via GraphQL mutations.
+* **PackagePublish**: Service for npm publishing workflow — registry auth setup, pack with digest, publish, integrity verification, multi-registry support.
+* **TokenPermissionChecker**: Service for GitHub App token permission validation with three enforcement modes (assertSufficient, assertExact, warnOverPermissioned) and structured result reporting.
+* **GitHubOtelAttributes**: Utility to map GitHub Actions environment variables to OpenTelemetry semantic convention resource attributes (cicd.*, vcs.*).
+* **OtelConfig.resourceAttributes**: Extended OTel configuration to accept custom resource attributes.
+
+- [`53d50e9`](https://github.com/savvy-web/github-action-effects/commit/53d50e9ae2e7e3161ca008d672ace88d6086a304) **OTel Exporter Inputs**: Standardized OpenTelemetry exporter configuration for GitHub Actions. Four inputs (otel-enabled, otel-endpoint, otel-protocol, otel-headers) are automatically parsed by `Action.run()` with env var fallback (`OTEL_EXPORTER_OTLP_*`). Supports auto/enabled/disabled modes, grpc/http-protobuf/http-json protocols, and OTLP-format header parsing.
+- **OtelExporterLive**: Layer that dynamically imports the correct OTLP trace and metric exporter packages based on protocol, with helpful error messages when packages are missing.
+- **OtelExporterConfig**: Schema and resolution logic for OTel configuration with input-over-env-var precedence.
+
+* [`53d50e9`](https://github.com/savvy-web/github-action-effects/commit/53d50e9ae2e7e3161ca008d672ace88d6086a304) Add Tier 2 services — GitHubClient, CheckRun, PullRequestComment — for authenticated GitHub API operations, check run management with bracket pattern, and idempotent sticky PR comments.
+
+### New Services
+
+* **GitHubApp**: GitHub App authentication lifecycle — generate installation tokens, revoke tokens, and bracket-style `withToken` for automatic cleanup. Requires `@octokit/auth-app` as optional peer dep.
+* **RateLimiter**: GitHub API rate limit awareness — check remaining quota, wait-and-retry with configurable thresholds, exponential backoff retry.
+* **ChangesetAnalyzer**: Parse, query, and generate changeset files with YAML frontmatter validation.
+* **GitBranch**: Branch management via GitHub's Git Data API — create, delete, get SHA, and reset branches.
+* **GitCommit**: Verified commits via GitHub's Git Data API — create trees, commits, and update refs for programmatic file changes.
+* **ConfigLoader**: Schema-validated config file loading for JSON, JSONC, and YAML formats. JSONC requires `jsonc-parser`, YAML requires `yaml` as optional peer deps.
+* **ToolInstaller**: Tool binary management — download, extract, cache, and add to PATH. Requires `@actions/tool-cache` as optional peer dep.
+* **PackageManagerAdapter**: Unified package manager interface — detect PM from package.json or lockfiles, install dependencies, query cache paths, and execute PM commands. Supports npm, pnpm, yarn, bun, and deno.
+
 ## 0.3.0
 
 ### Breaking Changes
