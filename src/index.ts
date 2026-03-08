@@ -50,6 +50,8 @@ export { CommandRunnerTest } from "./layers/CommandRunnerTest.js";
 export { GitHubClientLive } from "./layers/GitHubClientLive.js";
 export type { GitHubClientTestState, RestResponse } from "./layers/GitHubClientTest.js";
 export { GitHubClientTest } from "./layers/GitHubClientTest.js";
+export type { CompletedSpan } from "./layers/InMemoryTracer.js";
+export { InMemoryTracer } from "./layers/InMemoryTracer.js";
 export { PullRequestCommentLive } from "./layers/PullRequestCommentLive.js";
 export type { PullRequestCommentTestState } from "./layers/PullRequestCommentTest.js";
 export { PullRequestCommentTest } from "./layers/PullRequestCommentTest.js";
