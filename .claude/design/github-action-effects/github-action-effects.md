@@ -3,9 +3,9 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-07
-last-synced: 2026-03-07
-completeness: 97
+updated: 2026-03-08
+last-synced: 2026-03-08
+completeness: 90
 related: []
 dependencies: []
 ---
@@ -74,20 +74,28 @@ files, 95%+ coverage). The `ci:build` passes with both dev and prod outputs.
 | ActionLogger service | Complete | `services/ActionLogger.ts`, `layers/ActionLoggerLive.ts`, `layers/ActionLoggerTest.ts` |
 | ActionOutputs service | Complete | `services/ActionOutputs.ts`, `layers/ActionOutputsLive.ts`, `layers/ActionOutputsTest.ts` |
 | ActionState service | Complete | `services/ActionState.ts`, `layers/ActionStateLive.ts`, `layers/ActionStateTest.ts` |
+| CommandRunner service | In Progress | `services/CommandRunner.ts`, `layers/CommandRunnerLive.ts`, `layers/CommandRunnerTest.ts` |
+| ActionEnvironment service | In Progress | `services/ActionEnvironment.ts`, `layers/ActionEnvironmentLive.ts`, `layers/ActionEnvironmentTest.ts` |
+| ActionCache service | In Progress | `services/ActionCache.ts`, `layers/ActionCacheLive.ts`, `layers/ActionCacheTest.ts` |
 | Shared decode helpers | Complete | `layers/internal/decodeInput.ts` |
 | ActionInputError | Complete | `errors/ActionInputError.ts` |
 | ActionOutputError | Complete | `errors/ActionOutputError.ts` |
 | ActionStateError | Complete | `errors/ActionStateError.ts` |
+| CommandRunnerError | In Progress | `errors/CommandRunnerError.ts` |
+| ActionEnvironmentError | In Progress | `errors/ActionEnvironmentError.ts` |
+| ActionCacheError | In Progress | `errors/ActionCacheError.ts` |
 | GithubMarkdown utils | Complete | `utils/GithubMarkdown.ts` |
 | GithubMarkdown schemas | Complete | `schemas/GithubMarkdown.ts` |
 | LogLevel schemas | Complete | `schemas/LogLevel.ts` |
+| Environment schemas | In Progress | `schemas/Environment.ts` |
 | Action namespace | Complete | `Action.ts` (run, parseInputs, makeLogger, setLogLevel, resolveLogLevel) |
 | GithubMarkdown namespace | Complete | `utils/GithubMarkdown.ts` (all 11 builders inlined) |
 
 ### Current Limitations
 
 - No integration tests yet (deferred until services are stable in real actions)
-- No CheckRun, CommandRunner, or ActionCache services yet (future enhancements)
+- CommandRunner, ActionEnvironment, and ActionCache services are in progress (Tier 1 expansion)
+- No CheckRun, GitHubClient, or PullRequestComment services yet (Tier 2, future)
 
 ---
 
@@ -180,7 +188,10 @@ size-constrained like browser bundles.
 
 ### Service Overview
 
-Five core service modules plus two namespace objects, each independently usable.
+Eight service modules plus two namespace objects, each independently usable.
+The first four (ActionInputs, ActionLogger, ActionOutputs, ActionState) are
+complete. Three new Tier 1 services (CommandRunner, ActionEnvironment,
+ActionCache) are in progress as part of the library expansion plan.
 `Action.run()` automatically provides `NodeContext.layer` from
 `@effect/platform-node`, so programs also have access to Node.js platform
 services (`FileSystem`, `Path`, `Terminal`, `CommandExecutor`, `WorkerManager`)
@@ -192,6 +203,9 @@ without needing to provide them manually.
 ├── ActionLogger        — Structured logging with buffering
 ├── ActionOutputs       — Typed output setting and step summaries
 ├── ActionState         — Schema-serialized state for multi-phase actions
+├── CommandRunner       — Structured shell command execution (in progress)
+├── ActionEnvironment   — Schema-validated GitHub/Runner context variables (in progress)
+├── ActionCache         — Effect wrapper for @actions/cache save/restore (in progress)
 ├── Action.*            — Namespace: run, parseInputs, makeLogger, setLogLevel, resolveLogLevel
 └── GithubMarkdown.*    — Namespace: table, heading, details, bold, code, etc. (pure functions)
 ```
@@ -433,6 +447,84 @@ simulate phase ordering (e.g., pre-populate state that pre.ts would have set,
 then test main.ts logic). Follows the namespace object pattern:
 `ActionStateTest.layer(state)` and `ActionStateTest.empty()`
 
+#### CommandRunner Service
+
+Structured shell command execution with stdout/stderr capture, timeout, retry,
+and typed output parsing. Wraps `@actions/exec`.
+
+**Interface:**
+
+- `exec(command, args?, options?)` — Run a command, return exit code. Options:
+  `{ cwd?, env?, timeout?, silent? }`
+- `execCapture(command, args?, options?)` — Run and capture stdout/stderr.
+  Returns `{ exitCode, stdout, stderr }`
+- `execJson(command, args?, schema?)` — Run, parse stdout as JSON, validate
+  against schema
+- `execLines(command, args?, options?)` — Run and return stdout split into
+  lines (trimmed, blanks filtered)
+
+**Error type:** `CommandRunnerError` — tagged error with command, args,
+exitCode, stderr
+
+**Live layer:** Wraps `@actions/exec.exec()` with listeners for stdout/stderr
+capture. All calls deferred via `Effect.tryPromise()`.
+
+**Test layer:** Namespace object `CommandRunnerTest.layer(responses)` where
+responses is a `Map<string, { exitCode, stdout, stderr }>` keyed by command
+string. `CommandRunnerTest.empty()` returns a layer where all commands succeed
+with empty output.
+
+#### ActionEnvironment Service
+
+Read-only, schema-validated access to GitHub Actions context variables
+(`GITHUB_*`, `RUNNER_*`).
+
+**Interface:**
+
+- `get(name)` — Read environment variable, return string or fail
+- `getOptional(name)` — Read env var, return Option
+- `github` — Lazy accessor returning validated GitHubContext: `{ sha, ref,
+  repository, repositoryOwner, workspace, eventName, eventPath, runId,
+  runNumber, actor, serverUrl, apiUrl, graphqlUrl, action, job, workflow }`
+- `runner` — Lazy accessor returning validated RunnerContext: `{ os, arch,
+  name, temp, toolCache, debug }`
+
+**Schemas:** `GitHubContext` and `RunnerContext` as `Schema.Struct` in
+`src/schemas/Environment.ts`
+
+**Error type:** `ActionEnvironmentError` — tagged error with variable name
+and reason
+
+**Live layer:** Reads from `process.env`. GitHub/Runner contexts built lazily
+from env vars.
+
+**Test layer:** `ActionEnvironmentTest.layer(env)` reads from provided
+`Record<string, string>`.
+
+#### ActionCache Service
+
+Effect wrapper around `@actions/cache` for save/restore with typed cache keys
+and hit/miss reporting.
+
+**Interface:**
+
+- `save(key, paths)` — Save paths to cache under key. Returns
+  `Effect<void, ActionCacheError>`
+- `restore(key, restoreKeys?, paths?)` — Restore from cache. Returns
+  `Effect<CacheHit, ActionCacheError>` where CacheHit is
+  `{ hit: boolean; matchedKey?: string }`
+- `withCache(key, paths, effect)` — Bracket: restore, run effect, save if
+  cache miss. Returns the effect's result.
+
+**Error type:** `ActionCacheError` — tagged error with key,
+operation (`"save"` | `"restore"`), and reason
+
+**Live layer:** Wraps `@actions/cache.saveCache()` and
+`@actions/cache.restoreCache()`. Deferred via `Effect.tryPromise()`.
+
+**Test layer:** `ActionCacheTest.layer(cache?)` with in-memory Map.
+`ActionCacheTest.empty()` returns empty cache (always miss).
+
 #### Action.run Helper
 
 Top-level convenience function that eliminates boilerplate for wiring Effect
@@ -486,6 +578,15 @@ ActionOutputsTest  — captures outputs in memory
 
 ActionStateLive    — wraps core.saveState()/core.getState() with Schema encode/decode
 ActionStateTest    — in-memory Map<string, string>, pre-populatable for phase simulation
+
+CommandRunnerLive  — wraps @actions/exec.exec() with stdout/stderr listeners (deferred via Effect.tryPromise)
+CommandRunnerTest  — Map<string, { exitCode, stdout, stderr }> keyed by command string
+
+ActionEnvironmentLive — reads from process.env, lazy GitHub/Runner context construction
+ActionEnvironmentTest — reads from provided Record<string, string>
+
+ActionCacheLive    — wraps @actions/cache.saveCache()/restoreCache() (deferred via Effect.tryPromise)
+ActionCacheTest    — in-memory Map for cache simulation (always-miss when empty)
 
 NodeContextLive.layer — @effect/platform-node: FileSystem, Path, Terminal,
                         CommandExecutor, WorkerManager (provided by Action.run)
@@ -583,9 +684,17 @@ Not required for initial implementation — GithubMarkdown is pure. Marked
 
 ### @actions/exec (optional peer)
 
-For future command-running services (e.g., the `npm pack --dry-run --json`
-pattern). Not required for initial implementation. Marked `optional: true`
-in `peerDependenciesMeta`.
+Used by the `CommandRunner` service for structured shell command execution
+with stdout/stderr capture. Wraps `exec()` with Effect.tryPromise and
+stdout/stderr listeners. Marked `optional: true` in `peerDependenciesMeta`
+-- only needed if the consumer uses `CommandRunner`.
+
+### @actions/cache (optional peer)
+
+Used by the `ActionCache` service for save/restore cache operations. Wraps
+`saveCache()` and `restoreCache()` with Effect.tryPromise. Marked
+`optional: true` in `peerDependenciesMeta` -- only needed if the consumer
+uses `ActionCache`.
 
 ### @effect/platform and @effect/platform-node (required peers)
 
@@ -624,6 +733,11 @@ ergonomic test setup:
   object with in-memory state capture
 - `ActionOutputsTest.empty()` / `ActionOutputsTest.layer(state)` — namespace
   object with in-memory state capture
+- `CommandRunnerTest.empty()` / `CommandRunnerTest.layer(responses)` —
+  namespace object with recorded command responses
+- `ActionEnvironmentTest.layer(env)` — reads from provided record
+- `ActionCacheTest.empty()` / `ActionCacheTest.layer(cache)` — namespace
+  object with in-memory cache simulation
 
 **What is tested (133 tests across 12 files, 95%+ coverage):**
 
@@ -648,6 +762,19 @@ ergonomic test setup:
 - parseAllInputs: config-driven batch input reading with cross-validation
 - ActionOutputs extensions: setFailed, setSecret
 - Action.run: layer composition, error handling, custom layer merging
+- CommandRunner: exec returns exit code, execCapture returns stdout/stderr,
+  execJson parses and validates JSON output, execLines splits and filters,
+  non-zero exit codes produce CommandRunnerError, timeout handling, cwd/env
+  options, test layer response matching by command string
+- ActionEnvironment: get/getOptional for individual env vars, github lazy
+  accessor builds and validates GitHubContext from GITHUB_*vars, runner lazy
+  accessor builds and validates RunnerContext from RUNNER_* vars, missing
+  required vars produce ActionEnvironmentError, schema validation of context
+  objects, test layer reads from provided record
+- ActionCache: save persists paths under key, restore returns CacheHit with
+  hit/miss and matchedKey, withCache bracket restores then saves on miss,
+  cache errors include key and operation, test layer simulates hit/miss with
+  in-memory Map
 
 ### Integration Tests
 
@@ -658,17 +785,30 @@ action-builder's `persistLocal` feature to run actions in Docker containers.
 
 ## Future Enhancements
 
-### Near-Term (After Initial Release)
+### In Progress (Tier 1 Expansion)
 
+- **CommandRunner service** — In Progress. Structured shell command execution
+  with stdout/stderr capture, timeout, retry, and typed output parsing.
+  See [library-expansion-v2 plan](../../plans/library-expansion-v2.md).
+- **ActionEnvironment service** — In Progress. Read-only, schema-validated
+  access to GitHub/Runner context variables.
+- **ActionCache service** — In Progress. Effect wrapper around `@actions/cache`
+  for save/restore with typed cache keys and hit/miss reporting.
+
+### Near-Term (After Tier 1)
+
+- **GitHubClient service** — Authenticated Octokit provider with token
+  validation and rate-limit awareness
 - **CheckRun service** — Create/update check runs via Octokit, post PR comments
-- **CommandRunner service** — Run shell commands with structured output capture,
-  timeout handling, and retry logic
+- **PullRequestComment service** — Sticky (upsert) PR comments with GFM
+  content, keyed by marker for idempotent updates
 - **Specialized command services** — e.g., `NpmPack` service that runs
   `npm pack --dry-run --json` and returns typed metrics
 
 ### Medium-Term
 
-- **ActionCache service** — Effect wrapper around `@actions/cache`
+- **WorkflowDispatch service** — Trigger and monitor downstream workflow runs
+- **ActionTelemetry service** — OpenTelemetry-compatible spans for action phases
 - **Artifact service** — Effect wrapper around `@actions/artifact`
 - **Token validation service** — Verify GitHub token permissions in pre-phase
 
