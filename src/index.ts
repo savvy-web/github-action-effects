@@ -52,6 +52,8 @@ export type { GitHubClientTestState, RestResponse } from "./layers/GitHubClientT
 export { GitHubClientTest } from "./layers/GitHubClientTest.js";
 export type { CompletedSpan } from "./layers/InMemoryTracer.js";
 export { InMemoryTracer } from "./layers/InMemoryTracer.js";
+export type { OtelConfig } from "./layers/OtelTelemetryLive.js";
+export { OtelTelemetryLive } from "./layers/OtelTelemetryLive.js";
 export { PullRequestCommentLive } from "./layers/PullRequestCommentLive.js";
 export type { PullRequestCommentTestState } from "./layers/PullRequestCommentTest.js";
 export { PullRequestCommentTest } from "./layers/PullRequestCommentTest.js";
