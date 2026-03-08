@@ -18,6 +18,7 @@ export { ActionOutputError, ActionOutputErrorBase } from "./errors/ActionOutputE
 export { ActionStateError, ActionStateErrorBase } from "./errors/ActionStateError.js";
 export { CheckRunError, CheckRunErrorBase } from "./errors/CheckRunError.js";
 export { CommandRunnerError, CommandRunnerErrorBase } from "./errors/CommandRunnerError.js";
+export { GitHubAppError, GitHubAppErrorBase } from "./errors/GitHubAppError.js";
 export { GitHubClientError, GitHubClientErrorBase } from "./errors/GitHubClientError.js";
 export { PullRequestCommentError, PullRequestCommentErrorBase } from "./errors/PullRequestCommentError.js";
 export { WorkflowDispatchError, WorkflowDispatchErrorBase } from "./errors/WorkflowDispatchError.js";
@@ -47,6 +48,9 @@ export { CheckRunTest } from "./layers/CheckRunTest.js";
 export { CommandRunnerLive } from "./layers/CommandRunnerLive.js";
 export type { CommandResponse } from "./layers/CommandRunnerTest.js";
 export { CommandRunnerTest } from "./layers/CommandRunnerTest.js";
+export { GitHubAppLive } from "./layers/GitHubAppLive.js";
+export type { GitHubAppTestState } from "./layers/GitHubAppTest.js";
+export { GitHubAppTest } from "./layers/GitHubAppTest.js";
 export { GitHubClientLive } from "./layers/GitHubClientLive.js";
 export type { GitHubClientTestState, RestResponse } from "./layers/GitHubClientTest.js";
 export { GitHubClientTest } from "./layers/GitHubClientTest.js";
@@ -79,6 +83,8 @@ export type { AnnotationLevel, CheckRunAnnotation, CheckRunConclusion, CheckRunO
 export { CheckRun } from "./services/CheckRun.js";
 export type { ExecOptions, ExecOutput } from "./services/CommandRunner.js";
 export { CommandRunner } from "./services/CommandRunner.js";
+export type { InstallationToken as InstallationTokenType } from "./services/GitHubApp.js";
+export { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
 export { GitHubClient } from "./services/GitHubClient.js";
 export type { CommentRecord } from "./services/PullRequestComment.js";
 export { PullRequestComment } from "./services/PullRequestComment.js";
