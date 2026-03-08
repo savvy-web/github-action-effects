@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import { Context, Effect, Layer } from "effect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Action } from "./Action.js";
 
 vi.mock("@actions/core", () => ({
@@ -25,8 +25,16 @@ vi.mock("@actions/core", () => ({
 	},
 }));
 
+beforeEach(() => {
+	// Clear OTel env vars so resolveOtelConfig doesn't pick them up
+	vi.stubEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "");
+	vi.stubEnv("OTEL_EXPORTER_OTLP_PROTOCOL", "");
+	vi.stubEnv("OTEL_EXPORTER_OTLP_HEADERS", "");
+});
+
 afterEach(() => {
 	vi.clearAllMocks();
+	vi.unstubAllEnvs();
 });
 
 describe("Action.run", () => {
