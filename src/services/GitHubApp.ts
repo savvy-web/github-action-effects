@@ -11,6 +11,9 @@ export const InstallationToken = Schema.Struct({
 	token: Schema.String,
 	expiresAt: Schema.String,
 	installationId: Schema.Number,
+	permissions: Schema.optionalWith(Schema.Record({ key: Schema.String, value: Schema.String }), {
+		default: () => ({}),
+	}),
 }).annotations({ identifier: "InstallationToken" });
 
 /**

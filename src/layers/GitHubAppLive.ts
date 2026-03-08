@@ -21,6 +21,7 @@ export const GitHubAppLive: Layer.Layer<GitHubApp> = Layer.succeed(GitHubApp, {
 					token: result.token,
 					expiresAt: result.expiresAt,
 					installationId: result.installationId,
+					permissions: result.permissions ?? {},
 				};
 			},
 			catch: (error) => new GitHubAppError({ operation: "token", reason: String(error) }),
@@ -54,6 +55,7 @@ export const GitHubAppLive: Layer.Layer<GitHubApp> = Layer.succeed(GitHubApp, {
 						token: result.token,
 						expiresAt: result.expiresAt,
 						installationId: result.installationId,
+						permissions: result.permissions ?? {},
 					};
 				},
 				catch: (error) => new GitHubAppError({ operation: "token", reason: String(error) }),

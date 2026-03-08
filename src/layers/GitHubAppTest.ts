@@ -58,6 +58,7 @@ export const GitHubAppTest = {
 			token: "ghs_test_token_123",
 			expiresAt: "2099-01-01T00:00:00Z",
 			installationId: 12345,
+			permissions: {},
 		},
 	}),
 } as const;
