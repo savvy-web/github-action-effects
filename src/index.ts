@@ -21,6 +21,7 @@ export { CommandRunnerError, CommandRunnerErrorBase } from "./errors/CommandRunn
 export { GitHubAppError, GitHubAppErrorBase } from "./errors/GitHubAppError.js";
 export { GitHubClientError, GitHubClientErrorBase } from "./errors/GitHubClientError.js";
 export { PullRequestCommentError, PullRequestCommentErrorBase } from "./errors/PullRequestCommentError.js";
+export { RateLimitError, RateLimitErrorBase } from "./errors/RateLimitError.js";
 export { WorkflowDispatchError, WorkflowDispatchErrorBase } from "./errors/WorkflowDispatchError.js";
 // -- Layers --
 export { ActionCacheLive } from "./layers/ActionCacheLive.js";
@@ -61,6 +62,9 @@ export { OtelTelemetryLive } from "./layers/OtelTelemetryLive.js";
 export { PullRequestCommentLive } from "./layers/PullRequestCommentLive.js";
 export type { PullRequestCommentTestState } from "./layers/PullRequestCommentTest.js";
 export { PullRequestCommentTest } from "./layers/PullRequestCommentTest.js";
+export { RateLimiterLive } from "./layers/RateLimiterLive.js";
+export type { RateLimiterTestState } from "./layers/RateLimiterTest.js";
+export { RateLimiterTest } from "./layers/RateLimiterTest.js";
 export { WorkflowDispatchLive } from "./layers/WorkflowDispatchLive.js";
 export type { DispatchRecord, WorkflowDispatchTestState } from "./layers/WorkflowDispatchTest.js";
 export { WorkflowDispatchTest } from "./layers/WorkflowDispatchTest.js";
@@ -69,6 +73,8 @@ export type { GitHubContext as GitHubContextType, RunnerContext as RunnerContext
 export { GitHubContext, RunnerContext } from "./schemas/Environment.js";
 export { CapturedOutput, ChecklistItem, Status } from "./schemas/GithubMarkdown.js";
 export { ActionLogLevel, LogLevelInput } from "./schemas/LogLevel.js";
+export type { RateLimitStatus as RateLimitStatusType } from "./schemas/RateLimit.js";
+export { RateLimitStatus } from "./schemas/RateLimit.js";
 export { MetricData } from "./schemas/Telemetry.js";
 // -- Services --
 export type { CacheHit } from "./services/ActionCache.js";
@@ -88,6 +94,7 @@ export { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
 export { GitHubClient } from "./services/GitHubClient.js";
 export type { CommentRecord } from "./services/PullRequestComment.js";
 export { PullRequestComment } from "./services/PullRequestComment.js";
+export { RateLimiter } from "./services/RateLimiter.js";
 export type { PollOptions, WorkflowRunStatus } from "./services/WorkflowDispatch.js";
 export { WorkflowDispatch } from "./services/WorkflowDispatch.js";
 export { GithubMarkdown } from "./utils/GithubMarkdown.js";
