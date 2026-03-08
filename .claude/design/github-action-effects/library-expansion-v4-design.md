@@ -1,5 +1,10 @@
 # Library Expansion v4: Targeted Gap-Fillers — Design
 
+> **Status: COMPLETED.** All 6 services from this design have been
+> implemented and are documented in [services.md](./services.md),
+> [layers.md](./layers.md), and [errors-and-schemas.md](./errors-and-schemas.md).
+> This document is retained as historical context for the design decisions.
+
 **Date:** 2026-03-08
 
 **Goal:** Add 6 focused abstractions that fill concrete gaps identified by

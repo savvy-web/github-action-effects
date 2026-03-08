@@ -13,7 +13,7 @@ config loading, tool management, and package manager abstraction.
 ## Design Documentation
 
 **For architecture, service interfaces, and data flow:**
--> `@./.claude/design/github-action-effects/github-action-effects.md`
+-> `@./.claude/design/github-action-effects/index.md`
 
 Load when making architectural changes, adding new services, modifying layer
 composition, or understanding design decisions.
