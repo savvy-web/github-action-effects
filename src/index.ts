@@ -63,7 +63,7 @@ export type { GitHubContext as GitHubContextType, RunnerContext as RunnerContext
 export { GitHubContext, RunnerContext } from "./schemas/Environment.js";
 export { CapturedOutput, ChecklistItem, Status } from "./schemas/GithubMarkdown.js";
 export { ActionLogLevel, LogLevelInput } from "./schemas/LogLevel.js";
-export { MetricData, SpanData } from "./schemas/Telemetry.js";
+export { MetricData } from "./schemas/Telemetry.js";
 // -- Services --
 export type { CacheHit } from "./services/ActionCache.js";
 export { ActionCache } from "./services/ActionCache.js";
@@ -72,7 +72,6 @@ export { ActionInputs } from "./services/ActionInputs.js";
 export { ActionLogger } from "./services/ActionLogger.js";
 export { ActionOutputs } from "./services/ActionOutputs.js";
 export { ActionState } from "./services/ActionState.js";
-export type { Timings } from "./services/ActionTelemetry.js";
 export { ActionTelemetry } from "./services/ActionTelemetry.js";
 export type { AnnotationLevel, CheckRunAnnotation, CheckRunConclusion, CheckRunOutput } from "./services/CheckRun.js";
 export { CheckRun } from "./services/CheckRun.js";

@@ -13,60 +13,6 @@ const run = <A, E>(state: ActionTelemetryTestState, effect: Effect.Effect<A, E, 
 	Effect.runPromise(provide(state, effect));
 
 describe("ActionTelemetry", () => {
-	describe("span", () => {
-		it("records a span and returns the inner result", async () => {
-			const state = ActionTelemetryTest.empty();
-			const result = await run(
-				state,
-				Effect.flatMap(ActionTelemetry, (svc) => svc.span("my-span", Effect.succeed(42))),
-			);
-
-			expect(result).toBe(42);
-			expect(state.spans).toHaveLength(1);
-			expect(state.spans[0]?.name).toBe("my-span");
-		});
-
-		it("propagates inner effect errors", async () => {
-			const state = ActionTelemetryTest.empty();
-			const exit = await Effect.runPromise(
-				Effect.exit(
-					provide(
-						state,
-						Effect.flatMap(ActionTelemetry, (svc) => svc.span("failing", Effect.fail("boom"))),
-					),
-				),
-			);
-
-			expect(exit._tag).toBe("Failure");
-		});
-
-		it("records multiple spans in order", async () => {
-			const state = ActionTelemetryTest.empty();
-			const program = Effect.gen(function* () {
-				const svc = yield* ActionTelemetry;
-				yield* svc.span("first", Effect.succeed("a"));
-				yield* svc.span("second", Effect.succeed("b"));
-				yield* svc.span("third", Effect.succeed("c"));
-			});
-
-			await run(state, program);
-			expect(state.spans).toHaveLength(3);
-			expect(state.spans.map((s) => s.name)).toEqual(["first", "second", "third"]);
-		});
-
-		it("records spans with zero duration in test layer", async () => {
-			const state = ActionTelemetryTest.empty();
-			await run(
-				state,
-				Effect.flatMap(ActionTelemetry, (svc) => svc.span("test-span", Effect.succeed(undefined))),
-			);
-
-			expect(state.spans[0]?.duration).toBe(0);
-			expect(state.spans[0]?.startTime).toBe(0);
-			expect(state.spans[0]?.endTime).toBe(0);
-		});
-	});
-
 	describe("metric", () => {
 		it("records a metric value", async () => {
 			const state = ActionTelemetryTest.empty();
@@ -127,32 +73,30 @@ describe("ActionTelemetry", () => {
 		});
 	});
 
-	describe("getTimings", () => {
-		it("returns all recorded spans and metrics", async () => {
+	describe("getMetrics", () => {
+		it("returns all recorded metrics", async () => {
 			const state = ActionTelemetryTest.empty();
 			const program = Effect.gen(function* () {
 				const svc = yield* ActionTelemetry;
-				yield* svc.span("span-a", Effect.succeed(undefined));
 				yield* svc.metric("metric-a", 10);
-				return yield* svc.getTimings();
+				yield* svc.metric("metric-b", 20, "ms");
+				return yield* svc.getMetrics();
 			});
 
-			const timings = await run(state, program);
-			expect(timings.spans).toHaveLength(1);
-			expect(timings.spans[0]?.name).toBe("span-a");
-			expect(timings.metrics).toHaveLength(1);
-			expect(timings.metrics[0]?.name).toBe("metric-a");
+			const metrics = await run(state, program);
+			expect(metrics).toHaveLength(2);
+			expect(metrics[0]?.name).toBe("metric-a");
+			expect(metrics[1]?.name).toBe("metric-b");
 		});
 
-		it("returns empty arrays when nothing recorded", async () => {
+		it("returns empty array when nothing recorded", async () => {
 			const state = ActionTelemetryTest.empty();
-			const timings = await run(
+			const metrics = await run(
 				state,
-				Effect.flatMap(ActionTelemetry, (svc) => svc.getTimings()),
+				Effect.flatMap(ActionTelemetry, (svc) => svc.getMetrics()),
 			);
 
-			expect(timings.spans).toEqual([]);
-			expect(timings.metrics).toEqual([]);
+			expect(metrics).toEqual([]);
 		});
 	});
 });

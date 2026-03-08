@@ -1,46 +1,32 @@
 import type { Effect } from "effect";
 import { Context } from "effect";
-import type { MetricData, SpanData } from "../schemas/Telemetry.js";
+import type { MetricData } from "../schemas/Telemetry.js";
 
 /**
- * Timings result returned by {@link ActionTelemetry.getTimings}.
- *
- * @public
- */
-export interface Timings {
-	readonly spans: Array<SpanData>;
-	readonly metrics: Array<MetricData>;
-}
-
-/**
- * Service interface for lightweight timing spans and metrics.
+ * Service interface for recording numeric metrics.
  *
  * ActionTelemetry is a recording service — it never fails on its own.
- * The `span` method propagates the inner effect's error channel.
+ * Span tracking is handled by Effect's built-in tracing via `Effect.withSpan`.
  *
  * @public
  */
 export interface ActionTelemetry {
-	/**
-	 * Wrap an effect in a timing span. Records start/end time and duration.
-	 * Returns the inner effect's result and propagates its error.
-	 */
-	readonly span: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
-
 	/**
 	 * Record a numeric metric value.
 	 */
 	readonly metric: (name: string, value: number, unit?: string | undefined) => Effect.Effect<void>;
 
 	/**
-	 * Set an attribute on the current span (via FiberRef).
+	 * Annotate the current span with a key-value attribute.
+	 * Delegates to `Effect.annotateCurrentSpan` in the live layer.
+	 * In the test layer, records to the test state's attributes map.
 	 */
 	readonly attribute: (key: string, value: string) => Effect.Effect<void>;
 
 	/**
-	 * Retrieve all recorded spans and metrics.
+	 * Retrieve all recorded metrics.
 	 */
-	readonly getTimings: () => Effect.Effect<Timings>;
+	readonly getMetrics: () => Effect.Effect<Array<MetricData>>;
 }
 
 /**
