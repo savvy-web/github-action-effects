@@ -26,6 +26,7 @@ const mockClient: GitHubClient = {
 				}),
 		}).pipe(Effect.map((r) => r.data)),
 	graphql: () => Effect.die("not used"),
+	paginate: () => Effect.die("not used"),
 	repo: Effect.succeed({ owner: "test-owner", repo: "test-repo" }),
 };
 

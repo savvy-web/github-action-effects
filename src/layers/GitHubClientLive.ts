@@ -39,6 +39,38 @@ export const GitHubClientLive = (token: string): Layer.Layer<GitHubClient, GitHu
 						Effect.withSpan("GitHubClient.rest", { attributes: { "github.operation": operation } }),
 					),
 
+				paginate: <T>(
+					operation: string,
+					fn: (octokit: unknown, page: number, perPage: number) => Promise<{ data: T[] }>,
+					options?: { perPage?: number; maxPages?: number },
+				) => {
+					const perPage = options?.perPage ?? 100;
+					const maxPages = options?.maxPages ?? Infinity;
+
+					const loop = (page: number, accumulated: Array<T>): Effect.Effect<Array<T>, GitHubClientError> =>
+						Effect.tryPromise({
+							try: () => fn(octokit, page, perPage),
+							catch: (error) => wrapError(operation, error),
+						}).pipe(
+							Effect.flatMap((response) => {
+								const results = [...accumulated, ...response.data];
+								if (response.data.length < perPage || page >= maxPages) {
+									return Effect.succeed(results);
+								}
+								return loop(page + 1, results);
+							}),
+						);
+
+					return loop(1, []).pipe(
+						Effect.withSpan("GitHubClient.paginate", {
+							attributes: {
+								"github.operation": operation,
+								"pagination.perPage": perPage,
+							},
+						}),
+					);
+				},
+
 				graphql: <T>(query: string, variables: Record<string, unknown> = {}) =>
 					Effect.tryPromise({
 						try: () => octokit.graphql<T>(query, variables),

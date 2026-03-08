@@ -22,6 +22,13 @@ export interface GitHubClient {
 	 */
 	readonly graphql: <T>(query: string, variables?: Record<string, unknown>) => Effect.Effect<T, GitHubClientError>;
 
+	/** Paginate a REST API call, collecting all results across pages. */
+	readonly paginate: <T>(
+		operation: string,
+		fn: (octokit: unknown, page: number, perPage: number) => Promise<{ data: T[] }>,
+		options?: { perPage?: number; maxPages?: number },
+	) => Effect.Effect<Array<T>, GitHubClientError>;
+
 	/**
 	 * Get the repository context (owner and repo name).
 	 * Derived from GITHUB_REPOSITORY environment variable.

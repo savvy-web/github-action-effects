@@ -38,6 +38,7 @@ describe("GitHubClient", () => {
 			const state: GitHubClientTestState = {
 				restResponses: new Map([["repos.get", { data: { full_name: "owner/repo" } }]]),
 				graphqlResponses: new Map(),
+				paginateResponses: new Map(),
 				repo: { owner: "test-owner", repo: "test-repo" },
 			};
 
@@ -64,6 +65,7 @@ describe("GitHubClient", () => {
 			const state: GitHubClientTestState = {
 				restResponses: new Map(),
 				graphqlResponses: new Map([[query, { viewer: { login: "test-user" } }]]),
+				paginateResponses: new Map(),
 				repo: { owner: "test-owner", repo: "test-repo" },
 			};
 
@@ -82,6 +84,7 @@ describe("GitHubClient", () => {
 			const state: GitHubClientTestState = {
 				restResponses: new Map(),
 				graphqlResponses: new Map(),
+				paginateResponses: new Map(),
 				repo: { owner: "my-org", repo: "my-repo" },
 			};
 

@@ -20,6 +20,7 @@ export interface RestResponse {
 export interface GitHubClientTestState {
 	readonly restResponses: Map<string, RestResponse>;
 	readonly graphqlResponses: Map<string, unknown>;
+	readonly paginateResponses: Map<string, Array<unknown[]>>;
 	readonly repo: { owner: string; repo: string };
 }
 
@@ -54,6 +55,26 @@ const makeTestClient = (state: GitHubClientTestState): GitHubClient => ({
 		return Effect.succeed(response as T);
 	},
 
+	paginate: <T>(
+		operation: string,
+		_fn: (octokit: unknown, page: number, perPage: number) => Promise<{ data: T[] }>,
+		_options?: { perPage?: number; maxPages?: number },
+	) => {
+		const pages = state.paginateResponses.get(operation);
+		if (!pages) {
+			return Effect.fail(
+				new GitHubClientError({
+					operation,
+					status: 404,
+					reason: `No paginate responses recorded for "${operation}"`,
+					retryable: false,
+				}),
+			);
+		}
+		const allData = pages.flat() as T[];
+		return Effect.succeed(allData);
+	},
+
 	repo: Effect.succeed(state.repo),
 });
 
@@ -74,6 +95,7 @@ export const GitHubClientTest = {
 			makeTestClient({
 				restResponses: new Map(),
 				graphqlResponses: new Map(),
+				paginateResponses: new Map(),
 				repo: { owner: "test-owner", repo: "test-repo" },
 			}),
 		),
