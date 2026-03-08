@@ -19,6 +19,7 @@ export { ActionStateError, ActionStateErrorBase } from "./errors/ActionStateErro
 export { ChangesetError, ChangesetErrorBase } from "./errors/ChangesetError.js";
 export { CheckRunError, CheckRunErrorBase } from "./errors/CheckRunError.js";
 export { CommandRunnerError, CommandRunnerErrorBase } from "./errors/CommandRunnerError.js";
+export { ConfigLoaderError, ConfigLoaderErrorBase } from "./errors/ConfigLoaderError.js";
 export { GitBranchError, GitBranchErrorBase } from "./errors/GitBranchError.js";
 export { GitCommitError, GitCommitErrorBase } from "./errors/GitCommitError.js";
 export { GitHubAppError, GitHubAppErrorBase } from "./errors/GitHubAppError.js";
@@ -55,6 +56,9 @@ export { CheckRunTest } from "./layers/CheckRunTest.js";
 export { CommandRunnerLive } from "./layers/CommandRunnerLive.js";
 export type { CommandResponse } from "./layers/CommandRunnerTest.js";
 export { CommandRunnerTest } from "./layers/CommandRunnerTest.js";
+export { ConfigLoaderLive } from "./layers/ConfigLoaderLive.js";
+export type { ConfigLoaderTestState } from "./layers/ConfigLoaderTest.js";
+export { ConfigLoaderTest } from "./layers/ConfigLoaderTest.js";
 export { GitBranchLive } from "./layers/GitBranchLive.js";
 export type { GitBranchTestState } from "./layers/GitBranchTest.js";
 export { GitBranchTest } from "./layers/GitBranchTest.js";
@@ -110,6 +114,7 @@ export type { AnnotationLevel, CheckRunAnnotation, CheckRunConclusion, CheckRunO
 export { CheckRun } from "./services/CheckRun.js";
 export type { ExecOptions, ExecOutput } from "./services/CommandRunner.js";
 export { CommandRunner } from "./services/CommandRunner.js";
+export { ConfigLoader } from "./services/ConfigLoader.js";
 export { GitBranch } from "./services/GitBranch.js";
 export { GitCommit } from "./services/GitCommit.js";
 export type { InstallationToken as InstallationTokenType } from "./services/GitHubApp.js";

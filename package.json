@@ -56,7 +56,9 @@
 		"@savvy-web/lint-staged": "^0.5.1",
 		"@savvy-web/rslib-builder": "^0.16.0",
 		"@savvy-web/vitest": "^0.2.0",
-		"effect": "^3.19.19"
+		"effect": "^3.19.19",
+		"jsonc-parser": "^3.3.1",
+		"yaml": "^2.8.2"
 	},
 	"peerDependencies": {
 		"@actions/cache": "^4.0.0",
@@ -68,7 +70,9 @@
 		"@effect/platform-node": ">=0.104.0",
 		"@octokit/auth-app": ">=8.0.0",
 		"@opentelemetry/api": ">=1.0.0",
-		"effect": "^3.19.0"
+		"effect": "^3.19.0",
+		"jsonc-parser": ">=3.0.0",
+		"yaml": ">=2.0.0"
 	},
 	"peerDependenciesMeta": {
 		"@actions/cache": {
@@ -100,6 +104,12 @@
 		},
 		"effect": {
 			"optional": false
+		},
+		"jsonc-parser": {
+			"optional": true
+		},
+		"yaml": {
+			"optional": true
 		}
 	},
 	"packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017",
