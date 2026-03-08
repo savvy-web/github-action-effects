@@ -29,6 +29,7 @@ export { GitHubIssueError, GitHubIssueErrorBase } from "./errors/GitHubIssueErro
 export { GitHubReleaseError, GitHubReleaseErrorBase } from "./errors/GitHubReleaseError.js";
 export { GitTagError, GitTagErrorBase } from "./errors/GitTagError.js";
 export { NpmRegistryError, NpmRegistryErrorBase } from "./errors/NpmRegistryError.js";
+export { OtelExporterError, OtelExporterErrorBase } from "./errors/OtelExporterError.js";
 export { PackageManagerError, PackageManagerErrorBase } from "./errors/PackageManagerError.js";
 export { PackagePublishError, PackagePublishErrorBase } from "./errors/PackagePublishError.js";
 export { PullRequestCommentError, PullRequestCommentErrorBase } from "./errors/PullRequestCommentError.js";
@@ -102,6 +103,7 @@ export { InMemoryTracer } from "./layers/InMemoryTracer.js";
 export { NpmRegistryLive } from "./layers/NpmRegistryLive.js";
 export type { NpmRegistryTestState } from "./layers/NpmRegistryTest.js";
 export { NpmRegistryTest } from "./layers/NpmRegistryTest.js";
+export { OtelExporterLive } from "./layers/OtelExporterLive.js";
 export type { OtelConfig } from "./layers/OtelTelemetryLive.js";
 export { OtelTelemetryLive } from "./layers/OtelTelemetryLive.js";
 export { PackageManagerAdapterLive } from "./layers/PackageManagerAdapterLive.js";
@@ -143,6 +145,12 @@ export { FileChange, TreeEntry } from "./schemas/GitTree.js";
 export { ActionLogLevel, LogLevelInput } from "./schemas/LogLevel.js";
 export type { NpmPackageInfo as NpmPackageInfoType } from "./schemas/NpmPackage.js";
 export { NpmPackageInfo } from "./schemas/NpmPackage.js";
+export type {
+	OtelEnabled as OtelEnabledType,
+	OtelProtocol as OtelProtocolType,
+	ResolvedOtelConfig as ResolvedOtelConfigType,
+} from "./schemas/OtelExporter.js";
+export { OtelEnabled, OtelProtocol, parseOtelHeaders, resolveOtelConfig } from "./schemas/OtelExporter.js";
 export type {
 	PackageManagerInfo as PackageManagerInfoType,
 	PackageManagerName as PackageManagerNameType,
