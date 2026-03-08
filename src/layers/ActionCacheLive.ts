@@ -14,7 +14,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 					operation: "save",
 					reason: `Cache save failed: ${error instanceof Error ? error.message : String(error)}`,
 				}),
-		}).pipe(Effect.asVoid),
+		}).pipe(Effect.asVoid, Effect.withSpan("ActionCache.save", { attributes: { "cache.key": key } })),
 
 	restore: (key, paths, restoreKeys = []) =>
 		Effect.tryPromise({
@@ -32,6 +32,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 					matchedKey: matchedKey ?? undefined,
 				}),
 			),
+			Effect.withSpan("ActionCache.restore", { attributes: { "cache.key": key } }),
 		),
 
 	withCache: (key, paths, effect, restoreKeys = []) =>
@@ -62,5 +63,6 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 					}).pipe(Effect.map(() => result));
 				}),
 			),
+			Effect.withSpan("ActionCache.withCache", { attributes: { "cache.key": key } }),
 		),
 });

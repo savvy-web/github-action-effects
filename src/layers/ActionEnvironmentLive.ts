@@ -39,8 +39,9 @@ const buildRunnerContext: Effect.Effect<RunnerContext, ActionEnvironmentError> =
 });
 
 export const ActionEnvironmentLive: Layer.Layer<ActionEnvironment> = Layer.succeed(ActionEnvironment, {
-	get: readEnv,
-	getOptional: readOptionalEnv,
-	github: buildGitHubContext,
-	runner: buildRunnerContext,
+	get: (name) => readEnv(name).pipe(Effect.withSpan("ActionEnvironment.get", { attributes: { "env.name": name } })),
+	getOptional: (name) =>
+		readOptionalEnv(name).pipe(Effect.withSpan("ActionEnvironment.getOptional", { attributes: { "env.name": name } })),
+	github: buildGitHubContext.pipe(Effect.withSpan("ActionEnvironment.github")),
+	runner: buildRunnerContext.pipe(Effect.withSpan("ActionEnvironment.runner")),
 });

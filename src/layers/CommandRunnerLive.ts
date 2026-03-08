@@ -63,10 +63,14 @@ export const CommandRunnerLive: Layer.Layer<CommandRunner> = Layer.succeed(Comma
 		runCapture(command, args, options).pipe(
 			Effect.flatMap((output) => failOnNonZero(command, args, output)),
 			Effect.map((output) => output.exitCode),
+			Effect.withSpan("CommandRunner.exec", { attributes: { command } }),
 		),
 
 	execCapture: (command, args = [], options?) =>
-		runCapture(command, args, options).pipe(Effect.flatMap((output) => failOnNonZero(command, args, output))),
+		runCapture(command, args, options).pipe(
+			Effect.flatMap((output) => failOnNonZero(command, args, output)),
+			Effect.withSpan("CommandRunner.execCapture", { attributes: { command } }),
+		),
 
 	execJson: (command, args, schema, options?) => {
 		const resolvedArgs = args ?? [];
@@ -99,6 +103,7 @@ export const CommandRunnerLive: Layer.Layer<CommandRunner> = Layer.succeed(Comma
 					),
 				),
 			),
+			Effect.withSpan("CommandRunner.execJson", { attributes: { command } }),
 		);
 	},
 
@@ -111,5 +116,6 @@ export const CommandRunnerLive: Layer.Layer<CommandRunner> = Layer.succeed(Comma
 					.map((line) => line.trim())
 					.filter((line) => line.length > 0),
 			),
+			Effect.withSpan("CommandRunner.execLines", { attributes: { command } }),
 		),
 });

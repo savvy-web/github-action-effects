@@ -34,13 +34,16 @@ export const GitHubClientLive = (token: string): Layer.Layer<GitHubClient, GitHu
 					Effect.tryPromise({
 						try: () => fn(octokit),
 						catch: (error) => wrapError(operation, error),
-					}).pipe(Effect.map((response) => response.data)),
+					}).pipe(
+						Effect.map((response) => response.data),
+						Effect.withSpan("GitHubClient.rest", { attributes: { "github.operation": operation } }),
+					),
 
 				graphql: <T>(query: string, variables: Record<string, unknown> = {}) =>
 					Effect.tryPromise({
 						try: () => octokit.graphql<T>(query, variables),
 						catch: (error) => wrapError("graphql", error),
-					}),
+					}).pipe(Effect.withSpan("GitHubClient.graphql", { attributes: { "github.operation": "graphql" } })),
 
 				repo: Effect.try({
 					try: () => {
@@ -60,7 +63,7 @@ export const GitHubClientLive = (token: string): Layer.Layer<GitHubClient, GitHu
 							reason: error instanceof Error ? error.message : String(error),
 							retryable: false,
 						}),
-				}),
+				}).pipe(Effect.withSpan("GitHubClient.repo")),
 			})),
 		),
 	);

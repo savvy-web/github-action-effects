@@ -4,7 +4,10 @@ import { ActionOutputError } from "../errors/ActionOutputError.js";
 import { ActionOutputs } from "../services/ActionOutputs.js";
 
 export const ActionOutputsLive: Layer.Layer<ActionOutputs> = Layer.succeed(ActionOutputs, {
-	set: (name, value) => Effect.sync(() => core.setOutput(name, value)),
+	set: (name, value) =>
+		Effect.sync(() => core.setOutput(name, value)).pipe(
+			Effect.withSpan("ActionOutputs.set", { attributes: { "output.name": name } }),
+		),
 
 	setJson: <A, I>(name: string, value: A, schema: Schema.Schema<A, I, never>) =>
 		Schema.encode(schema)(value).pipe(
@@ -17,6 +20,7 @@ export const ActionOutputsLive: Layer.Layer<ActionOutputs> = Layer.succeed(Actio
 						reason: `Output "${name}" validation failed: ${parseError.message}`,
 					}),
 			),
+			Effect.withSpan("ActionOutputs.setJson", { attributes: { "output.name": name } }),
 		),
 
 	summary: (content) =>
@@ -27,13 +31,16 @@ export const ActionOutputsLive: Layer.Layer<ActionOutputs> = Layer.succeed(Actio
 					outputName: "summary",
 					reason: `Failed to write step summary: ${error instanceof Error ? error.message : String(error)}`,
 				}),
-		}).pipe(Effect.asVoid),
+		}).pipe(Effect.asVoid, Effect.withSpan("ActionOutputs.summary")),
 
-	exportVariable: (name, value) => Effect.sync(() => core.exportVariable(name, value)),
+	exportVariable: (name, value) =>
+		Effect.sync(() => core.exportVariable(name, value)).pipe(
+			Effect.withSpan("ActionOutputs.exportVariable", { attributes: { "output.name": name } }),
+		),
 
-	addPath: (path) => Effect.sync(() => core.addPath(path)),
+	addPath: (path) => Effect.sync(() => core.addPath(path)).pipe(Effect.withSpan("ActionOutputs.addPath")),
 
-	setFailed: (message) => Effect.sync(() => core.setFailed(message)),
+	setFailed: (message) => Effect.sync(() => core.setFailed(message)).pipe(Effect.withSpan("ActionOutputs.setFailed")),
 
-	setSecret: (value) => Effect.sync(() => core.setSecret(value)),
+	setSecret: (value) => Effect.sync(() => core.setSecret(value)).pipe(Effect.withSpan("ActionOutputs.setSecret")),
 });

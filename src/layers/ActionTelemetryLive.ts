@@ -24,11 +24,12 @@ export const ActionTelemetryLive: Layer.Layer<ActionTelemetry> = Layer.effect(
 				Effect.gen(function* () {
 					const timestamp = yield* Effect.sync(() => performance.now());
 					yield* Ref.update(metricsRef, (m) => [...m, { name, value, unit, timestamp }]);
-				}),
+				}).pipe(Effect.withSpan("ActionTelemetry.metric", { attributes: { "metric.name": name } })),
 
-			attribute: (key: string, value: string) => Effect.annotateCurrentSpan(key, value),
+			attribute: (key: string, value: string) =>
+				Effect.annotateCurrentSpan(key, value).pipe(Effect.withSpan("ActionTelemetry.attribute")),
 
-			getMetrics: () => Ref.get(metricsRef),
+			getMetrics: () => Ref.get(metricsRef).pipe(Effect.withSpan("ActionTelemetry.getMetrics")),
 		};
 	}),
 );
