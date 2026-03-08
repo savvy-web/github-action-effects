@@ -56,4 +56,28 @@ describe("Action.run", () => {
 		await Action.run(program, MyServiceLive);
 		expect(core.setFailed).not.toHaveBeenCalled();
 	});
+
+	it("writes telemetry summary when spans are recorded", async () => {
+		const program = Effect.void.pipe(Effect.withSpan("test-operation"));
+
+		await Action.run(program);
+		expect(core.setFailed).not.toHaveBeenCalled();
+		expect(core.summary.addRaw).toHaveBeenCalledWith(expect.stringContaining("test-operation"));
+		expect(core.summary.write).toHaveBeenCalled();
+	});
+
+	it("writes telemetry summary even when the program fails", async () => {
+		const program = Effect.fail("boom").pipe(Effect.withSpan("failing-operation"));
+
+		await Action.run(program);
+		expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("Action failed"));
+		expect(core.summary.addRaw).toHaveBeenCalledWith(expect.stringContaining("failing-operation"));
+		expect(core.summary.write).toHaveBeenCalled();
+	});
+
+	it("does not write telemetry summary when no spans are recorded", async () => {
+		await Action.run(Effect.void);
+		expect(core.setFailed).not.toHaveBeenCalled();
+		expect(core.summary.addRaw).not.toHaveBeenCalled();
+	});
 });

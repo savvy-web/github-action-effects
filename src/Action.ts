@@ -6,11 +6,13 @@ import type { ActionInputError } from "./errors/ActionInputError.js";
 import { ActionInputsLive } from "./layers/ActionInputsLive.js";
 import { ActionLoggerLayer, ActionLoggerLive, makeActionLogger, setLogLevel } from "./layers/ActionLoggerLive.js";
 import { ActionOutputsLive } from "./layers/ActionOutputsLive.js";
+import { InMemoryTracer } from "./layers/InMemoryTracer.js";
 import { resolveLogLevel } from "./schemas/LogLevel.js";
 import type { ActionInputs } from "./services/ActionInputs.js";
 import { ActionInputs as ActionInputsTag } from "./services/ActionInputs.js";
 import type { ActionLogger } from "./services/ActionLogger.js";
 import type { ActionOutputs } from "./services/ActionOutputs.js";
+import { TelemetryReport } from "./utils/TelemetryReport.js";
 
 /**
  * Configuration for a single input in {@link Action.parseInputs}.
@@ -48,7 +50,13 @@ export type ParsedInputs<T extends Record<string, InputConfig>> = {
 };
 
 /** Standard live layer combining all core services. */
-const CoreLive = Layer.mergeAll(ActionInputsLive, ActionLoggerLive, ActionOutputsLive, PlatformNode.NodeContext.layer);
+const CoreLive = Layer.mergeAll(
+	ActionInputsLive,
+	ActionLoggerLive,
+	ActionOutputsLive,
+	PlatformNode.NodeContext.layer,
+	InMemoryTracer.layer,
+);
 
 /**
  * Namespace for top-level GitHub Action helpers.
@@ -90,7 +98,19 @@ export const Action = {
 		// biome-ignore lint/suspicious/noExplicitAny: Layer type erasure at the run boundary
 		const fullLayer: Layer.Layer<any, never, never> = layer ? Layer.mergeAll(CoreLive, layer) : CoreLive;
 
+		const writeTelemetrySummary = Effect.gen(function* () {
+			const spans = yield* InMemoryTracer.getSpans();
+			if (spans.length > 0) {
+				const summaries = spans.map((s) => {
+					const base = { name: s.name, duration: s.duration, status: s.status, attributes: s.attributes };
+					return s.parentName !== undefined ? { ...base, parentName: s.parentName } : base;
+				});
+				yield* TelemetryReport.toSummary(summaries);
+			}
+		}).pipe(Effect.catchAll(() => Effect.void));
+
 		const runnable = program.pipe(
+			Effect.onExit(() => writeTelemetrySummary),
 			Effect.provide(fullLayer),
 			Effect.provide(ActionLoggerLayer),
 			Effect.catchAllCause((cause) => {
