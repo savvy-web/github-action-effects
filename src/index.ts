@@ -24,6 +24,7 @@ export { GitBranchError, GitBranchErrorBase } from "./errors/GitBranchError.js";
 export { GitCommitError, GitCommitErrorBase } from "./errors/GitCommitError.js";
 export { GitHubAppError, GitHubAppErrorBase } from "./errors/GitHubAppError.js";
 export { GitHubClientError, GitHubClientErrorBase } from "./errors/GitHubClientError.js";
+export { PackageManagerError, PackageManagerErrorBase } from "./errors/PackageManagerError.js";
 export { PullRequestCommentError, PullRequestCommentErrorBase } from "./errors/PullRequestCommentError.js";
 export { RateLimitError, RateLimitErrorBase } from "./errors/RateLimitError.js";
 export { ToolInstallerError, ToolInstallerErrorBase } from "./errors/ToolInstallerError.js";
@@ -76,6 +77,9 @@ export type { CompletedSpan } from "./layers/InMemoryTracer.js";
 export { InMemoryTracer } from "./layers/InMemoryTracer.js";
 export type { OtelConfig } from "./layers/OtelTelemetryLive.js";
 export { OtelTelemetryLive } from "./layers/OtelTelemetryLive.js";
+export { PackageManagerAdapterLive } from "./layers/PackageManagerAdapterLive.js";
+export type { PackageManagerAdapterTestState } from "./layers/PackageManagerAdapterTest.js";
+export { PackageManagerAdapterTest } from "./layers/PackageManagerAdapterTest.js";
 export { PullRequestCommentLive } from "./layers/PullRequestCommentLive.js";
 export type { PullRequestCommentTestState } from "./layers/PullRequestCommentTest.js";
 export { PullRequestCommentTest } from "./layers/PullRequestCommentTest.js";
@@ -101,6 +105,11 @@ export { CapturedOutput, ChecklistItem, Status } from "./schemas/GithubMarkdown.
 export type { FileChange as FileChangeType, TreeEntry as TreeEntryType } from "./schemas/GitTree.js";
 export { FileChange, TreeEntry } from "./schemas/GitTree.js";
 export { ActionLogLevel, LogLevelInput } from "./schemas/LogLevel.js";
+export type {
+	PackageManagerInfo as PackageManagerInfoType,
+	PackageManagerName as PackageManagerNameType,
+} from "./schemas/PackageManager.js";
+export { PackageManagerInfo, PackageManagerName } from "./schemas/PackageManager.js";
 export type { RateLimitStatus as RateLimitStatusType } from "./schemas/RateLimit.js";
 export { RateLimitStatus } from "./schemas/RateLimit.js";
 export { MetricData } from "./schemas/Telemetry.js";
@@ -124,6 +133,8 @@ export { GitCommit } from "./services/GitCommit.js";
 export type { InstallationToken as InstallationTokenType } from "./services/GitHubApp.js";
 export { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
 export { GitHubClient } from "./services/GitHubClient.js";
+export type { InstallOptions } from "./services/PackageManagerAdapter.js";
+export { PackageManagerAdapter } from "./services/PackageManagerAdapter.js";
 export type { CommentRecord } from "./services/PullRequestComment.js";
 export { PullRequestComment } from "./services/PullRequestComment.js";
 export { RateLimiter } from "./services/RateLimiter.js";
