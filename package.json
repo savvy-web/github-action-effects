@@ -47,11 +47,11 @@
 		"semver": "^7.7.4"
 	},
 	"devDependencies": {
-		"@actions/cache": "^4.0.0",
+		"@actions/cache": "^6.0.0",
 		"@actions/core": "^3.0.0",
 		"@actions/exec": "^3.0.0",
 		"@actions/github": "^9.0.0",
-		"@actions/tool-cache": "^3.0.0",
+		"@actions/tool-cache": "^4.0.0",
 		"@effect/platform": ">=0.94.0",
 		"@effect/platform-node": ">=0.104.0",
 		"@octokit/auth-app": "^8.2.0",
