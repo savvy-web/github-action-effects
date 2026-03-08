@@ -25,11 +25,16 @@ export { GitCommitError, GitCommitErrorBase } from "./errors/GitCommitError.js";
 export { GitHubAppError, GitHubAppErrorBase } from "./errors/GitHubAppError.js";
 export { GitHubClientError, GitHubClientErrorBase } from "./errors/GitHubClientError.js";
 export { GitHubGraphQLError, GitHubGraphQLErrorBase } from "./errors/GitHubGraphQLError.js";
+export { GitHubIssueError, GitHubIssueErrorBase } from "./errors/GitHubIssueError.js";
 export { GitHubReleaseError, GitHubReleaseErrorBase } from "./errors/GitHubReleaseError.js";
+export { GitTagError, GitTagErrorBase } from "./errors/GitTagError.js";
 export { NpmRegistryError, NpmRegistryErrorBase } from "./errors/NpmRegistryError.js";
 export { PackageManagerError, PackageManagerErrorBase } from "./errors/PackageManagerError.js";
+export { PackagePublishError, PackagePublishErrorBase } from "./errors/PackagePublishError.js";
 export { PullRequestCommentError, PullRequestCommentErrorBase } from "./errors/PullRequestCommentError.js";
 export { RateLimitError, RateLimitErrorBase } from "./errors/RateLimitError.js";
+export { SemverResolverError, SemverResolverErrorBase } from "./errors/SemverResolverError.js";
+export { TokenPermissionError, TokenPermissionErrorBase } from "./errors/TokenPermissionError.js";
 export { ToolInstallerError, ToolInstallerErrorBase } from "./errors/ToolInstallerError.js";
 export { WorkflowDispatchError, WorkflowDispatchErrorBase } from "./errors/WorkflowDispatchError.js";
 export { WorkspaceDetectorError, WorkspaceDetectorErrorBase } from "./errors/WorkspaceDetectorError.js";
@@ -83,9 +88,15 @@ export { GitHubClientTest } from "./layers/GitHubClientTest.js";
 export { GitHubGraphQLLive } from "./layers/GitHubGraphQLLive.js";
 export type { GitHubGraphQLTestState } from "./layers/GitHubGraphQLTest.js";
 export { GitHubGraphQLTest } from "./layers/GitHubGraphQLTest.js";
+export { GitHubIssueLive } from "./layers/GitHubIssueLive.js";
+export type { GitHubIssueTestState } from "./layers/GitHubIssueTest.js";
+export { GitHubIssueTest } from "./layers/GitHubIssueTest.js";
 export { GitHubReleaseLive } from "./layers/GitHubReleaseLive.js";
 export type { GitHubReleaseTestState } from "./layers/GitHubReleaseTest.js";
 export { GitHubReleaseTest } from "./layers/GitHubReleaseTest.js";
+export { GitTagLive } from "./layers/GitTagLive.js";
+export type { GitTagTestState } from "./layers/GitTagTest.js";
+export { GitTagTest } from "./layers/GitTagTest.js";
 export type { CompletedSpan } from "./layers/InMemoryTracer.js";
 export { InMemoryTracer } from "./layers/InMemoryTracer.js";
 export { NpmRegistryLive } from "./layers/NpmRegistryLive.js";
@@ -96,12 +107,18 @@ export { OtelTelemetryLive } from "./layers/OtelTelemetryLive.js";
 export { PackageManagerAdapterLive } from "./layers/PackageManagerAdapterLive.js";
 export type { PackageManagerAdapterTestState } from "./layers/PackageManagerAdapterTest.js";
 export { PackageManagerAdapterTest } from "./layers/PackageManagerAdapterTest.js";
+export { PackagePublishLive } from "./layers/PackagePublishLive.js";
+export type { PackagePublishTestState } from "./layers/PackagePublishTest.js";
+export { PackagePublishTest } from "./layers/PackagePublishTest.js";
 export { PullRequestCommentLive } from "./layers/PullRequestCommentLive.js";
 export type { PullRequestCommentTestState } from "./layers/PullRequestCommentTest.js";
 export { PullRequestCommentTest } from "./layers/PullRequestCommentTest.js";
 export { RateLimiterLive } from "./layers/RateLimiterLive.js";
 export type { RateLimiterTestState } from "./layers/RateLimiterTest.js";
 export { RateLimiterTest } from "./layers/RateLimiterTest.js";
+export { TokenPermissionCheckerLive } from "./layers/TokenPermissionCheckerLive.js";
+export type { TokenPermissionCheckerTestState } from "./layers/TokenPermissionCheckerTest.js";
+export { TokenPermissionCheckerTest } from "./layers/TokenPermissionCheckerTest.js";
 export { ToolInstallerLive } from "./layers/ToolInstallerLive.js";
 export type { ToolInstallerTestState } from "./layers/ToolInstallerTest.js";
 export { ToolInstallerTest } from "./layers/ToolInstallerTest.js";
@@ -135,6 +152,13 @@ export type { RateLimitStatus as RateLimitStatusType } from "./schemas/RateLimit
 export { RateLimitStatus } from "./schemas/RateLimit.js";
 export { MetricData } from "./schemas/Telemetry.js";
 export type {
+	ExtraPermission as ExtraPermissionType,
+	PermissionCheckResult as PermissionCheckResultType,
+	PermissionGap as PermissionGapType,
+	PermissionLevel as PermissionLevelType,
+} from "./schemas/TokenPermission.js";
+export { ExtraPermission, PermissionCheckResult, PermissionGap, PermissionLevel } from "./schemas/TokenPermission.js";
+export type {
 	WorkspaceInfo as WorkspaceInfoType,
 	WorkspacePackage as WorkspacePackageType,
 	WorkspaceType as WorkspaceTypeType,
@@ -162,23 +186,33 @@ export type { InstallationToken as InstallationTokenType } from "./services/GitH
 export { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
 export { GitHubClient } from "./services/GitHubClient.js";
 export { GitHubGraphQL } from "./services/GitHubGraphQL.js";
+export type { IssueData } from "./services/GitHubIssue.js";
+export { GitHubIssue } from "./services/GitHubIssue.js";
 export type { ReleaseAsset, ReleaseData } from "./services/GitHubRelease.js";
 export { GitHubRelease } from "./services/GitHubRelease.js";
+export type { TagRef } from "./services/GitTag.js";
+export { GitTag } from "./services/GitTag.js";
 export { NpmRegistry } from "./services/NpmRegistry.js";
 export type { InstallOptions } from "./services/PackageManagerAdapter.js";
 export { PackageManagerAdapter } from "./services/PackageManagerAdapter.js";
+export type { PackResult, RegistryTarget } from "./services/PackagePublish.js";
+export { PackagePublish } from "./services/PackagePublish.js";
 export type { CommentRecord } from "./services/PullRequestComment.js";
 export { PullRequestComment } from "./services/PullRequestComment.js";
 export { RateLimiter } from "./services/RateLimiter.js";
+export { TokenPermissionChecker } from "./services/TokenPermissionChecker.js";
 export type { ToolInstallOptions } from "./services/ToolInstaller.js";
 export { ToolInstaller } from "./services/ToolInstaller.js";
 export type { PollOptions, WorkflowRunStatus } from "./services/WorkflowDispatch.js";
 export { WorkflowDispatch } from "./services/WorkflowDispatch.js";
 export { WorkspaceDetector } from "./services/WorkspaceDetector.js";
+export { AutoMerge } from "./utils/AutoMerge.js";
 export type { AccumulateResult } from "./utils/ErrorAccumulator.js";
 export { ErrorAccumulator } from "./utils/ErrorAccumulator.js";
+export { GitHubOtelAttributes } from "./utils/GitHubOtelAttributes.js";
 export { GithubMarkdown } from "./utils/GithubMarkdown.js";
 export type { Report } from "./utils/ReportBuilder.js";
 export { ReportBuilder } from "./utils/ReportBuilder.js";
+export { SemverResolver } from "./utils/SemverResolver.js";
 export type { SpanSummary } from "./utils/TelemetryReport.js";
 export { TelemetryReport } from "./utils/TelemetryReport.js";
