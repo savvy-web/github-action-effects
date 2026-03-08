@@ -25,6 +25,7 @@ export { GitCommitError, GitCommitErrorBase } from "./errors/GitCommitError.js";
 export { GitHubAppError, GitHubAppErrorBase } from "./errors/GitHubAppError.js";
 export { GitHubClientError, GitHubClientErrorBase } from "./errors/GitHubClientError.js";
 export { GitHubGraphQLError, GitHubGraphQLErrorBase } from "./errors/GitHubGraphQLError.js";
+export { NpmRegistryError, NpmRegistryErrorBase } from "./errors/NpmRegistryError.js";
 export { PackageManagerError, PackageManagerErrorBase } from "./errors/PackageManagerError.js";
 export { PullRequestCommentError, PullRequestCommentErrorBase } from "./errors/PullRequestCommentError.js";
 export { RateLimitError, RateLimitErrorBase } from "./errors/RateLimitError.js";
@@ -82,6 +83,9 @@ export type { GitHubGraphQLTestState } from "./layers/GitHubGraphQLTest.js";
 export { GitHubGraphQLTest } from "./layers/GitHubGraphQLTest.js";
 export type { CompletedSpan } from "./layers/InMemoryTracer.js";
 export { InMemoryTracer } from "./layers/InMemoryTracer.js";
+export { NpmRegistryLive } from "./layers/NpmRegistryLive.js";
+export type { NpmRegistryTestState } from "./layers/NpmRegistryTest.js";
+export { NpmRegistryTest } from "./layers/NpmRegistryTest.js";
 export type { OtelConfig } from "./layers/OtelTelemetryLive.js";
 export { OtelTelemetryLive } from "./layers/OtelTelemetryLive.js";
 export { PackageManagerAdapterLive } from "./layers/PackageManagerAdapterLive.js";
@@ -112,6 +116,8 @@ export { CapturedOutput, ChecklistItem, Status } from "./schemas/GithubMarkdown.
 export type { FileChange as FileChangeType, TreeEntry as TreeEntryType } from "./schemas/GitTree.js";
 export { FileChange, TreeEntry } from "./schemas/GitTree.js";
 export { ActionLogLevel, LogLevelInput } from "./schemas/LogLevel.js";
+export type { NpmPackageInfo as NpmPackageInfoType } from "./schemas/NpmPackage.js";
+export { NpmPackageInfo } from "./schemas/NpmPackage.js";
 export type {
 	PackageManagerInfo as PackageManagerInfoType,
 	PackageManagerName as PackageManagerNameType,
@@ -142,6 +148,7 @@ export type { InstallationToken as InstallationTokenType } from "./services/GitH
 export { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
 export { GitHubClient } from "./services/GitHubClient.js";
 export { GitHubGraphQL } from "./services/GitHubGraphQL.js";
+export { NpmRegistry } from "./services/NpmRegistry.js";
 export type { InstallOptions } from "./services/PackageManagerAdapter.js";
 export { PackageManagerAdapter } from "./services/PackageManagerAdapter.js";
 export type { CommentRecord } from "./services/PullRequestComment.js";
