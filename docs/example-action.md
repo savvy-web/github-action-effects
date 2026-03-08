@@ -280,6 +280,10 @@ The three error types — `ActionInputError`, `ActionOutputError`, and
 
 ## Next Steps
 
-* [Testing Guide](./testing.md) — test every service with in-memory layers
-* [Architecture](./architecture.md) — full API reference, layer
-  composition, and logging pipeline
+* [Services Guide](./services.md) -- detailed guide for every service
+* [Testing Guide](./testing.md) -- test every service with in-memory layers
+* [Architecture](./architecture.md) -- API reference, layer composition, and
+  logging pipeline
+* [OpenTelemetry](./otel.md) -- OTel configuration and tracing guide
+* [Patterns](./patterns.md) -- dry-run mode, error accumulation, permission
+  checking, and more

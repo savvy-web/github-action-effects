@@ -6,11 +6,16 @@ import type { ActionInputError } from "./errors/ActionInputError.js";
 import { ActionInputsLive } from "./layers/ActionInputsLive.js";
 import { ActionLoggerLayer, ActionLoggerLive, makeActionLogger, setLogLevel } from "./layers/ActionLoggerLive.js";
 import { ActionOutputsLive } from "./layers/ActionOutputsLive.js";
+import { InMemoryTracer } from "./layers/InMemoryTracer.js";
+import { OtelExporterLive } from "./layers/OtelExporterLive.js";
 import { resolveLogLevel } from "./schemas/LogLevel.js";
+import type { OtelEnabled } from "./schemas/OtelExporter.js";
+import { resolveOtelConfig } from "./schemas/OtelExporter.js";
 import type { ActionInputs } from "./services/ActionInputs.js";
 import { ActionInputs as ActionInputsTag } from "./services/ActionInputs.js";
 import type { ActionLogger } from "./services/ActionLogger.js";
 import type { ActionOutputs } from "./services/ActionOutputs.js";
+import { TelemetryReport } from "./utils/TelemetryReport.js";
 
 /**
  * Configuration for a single input in {@link Action.parseInputs}.
@@ -87,10 +92,44 @@ export const Action = {
 		program: Effect.Effect<void, unknown, CoreServices>,
 		layer?: Layer.Layer<never, never, never>,
 	): Promise<void> => {
+		// Read OTel inputs (optional, safe defaults)
+		const otelEnabled = (core.getInput("otel-enabled") || "auto") as OtelEnabled;
+		const otelEndpoint = core.getInput("otel-endpoint") || "";
+		const otelProtocol = core.getInput("otel-protocol") || "";
+		const otelHeaders = core.getInput("otel-headers") || "";
+
+		let otelLayer: Layer.Layer<never>;
+		try {
+			const otelConfig = resolveOtelConfig({
+				enabled: otelEnabled,
+				endpoint: otelEndpoint,
+				protocol: otelProtocol,
+				headers: otelHeaders,
+			});
+			otelLayer = OtelExporterLive(otelConfig);
+		} catch {
+			// If resolution fails (e.g., enabled but no endpoint), fall back to in-memory
+			otelLayer = InMemoryTracer.layer;
+		}
+
 		// biome-ignore lint/suspicious/noExplicitAny: Layer type erasure at the run boundary
-		const fullLayer: Layer.Layer<any, never, never> = layer ? Layer.mergeAll(CoreLive, layer) : CoreLive;
+		const fullLayer: Layer.Layer<any, never, never> = layer
+			? Layer.mergeAll(CoreLive, otelLayer, layer)
+			: Layer.mergeAll(CoreLive, otelLayer);
+
+		const writeTelemetrySummary = Effect.gen(function* () {
+			const spans = yield* InMemoryTracer.getSpans();
+			if (spans.length > 0) {
+				const summaries = spans.map((s) => {
+					const base = { name: s.name, duration: s.duration, status: s.status, attributes: s.attributes };
+					return s.parentName !== undefined ? { ...base, parentName: s.parentName } : base;
+				});
+				yield* TelemetryReport.toSummary(summaries);
+			}
+		}).pipe(Effect.catchAll(() => Effect.void));
 
 		const runnable = program.pipe(
+			Effect.onExit(() => writeTelemetrySummary),
 			Effect.provide(fullLayer),
 			Effect.provide(ActionLoggerLayer),
 			Effect.catchAllCause((cause) => {

@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import { Context, Effect, Layer } from "effect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Action } from "./Action.js";
 
 vi.mock("@actions/core", () => ({
@@ -25,8 +25,16 @@ vi.mock("@actions/core", () => ({
 	},
 }));
 
+beforeEach(() => {
+	// Clear OTel env vars so resolveOtelConfig doesn't pick them up
+	vi.stubEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "");
+	vi.stubEnv("OTEL_EXPORTER_OTLP_PROTOCOL", "");
+	vi.stubEnv("OTEL_EXPORTER_OTLP_HEADERS", "");
+});
+
 afterEach(() => {
 	vi.clearAllMocks();
+	vi.unstubAllEnvs();
 });
 
 describe("Action.run", () => {
@@ -55,5 +63,29 @@ describe("Action.run", () => {
 
 		await Action.run(program, MyServiceLive);
 		expect(core.setFailed).not.toHaveBeenCalled();
+	});
+
+	it("writes telemetry summary when spans are recorded", async () => {
+		const program = Effect.void.pipe(Effect.withSpan("test-operation"));
+
+		await Action.run(program);
+		expect(core.setFailed).not.toHaveBeenCalled();
+		expect(core.summary.addRaw).toHaveBeenCalledWith(expect.stringContaining("test-operation"));
+		expect(core.summary.write).toHaveBeenCalled();
+	});
+
+	it("writes telemetry summary even when the program fails", async () => {
+		const program = Effect.fail("boom").pipe(Effect.withSpan("failing-operation"));
+
+		await Action.run(program);
+		expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("Action failed"));
+		expect(core.summary.addRaw).toHaveBeenCalledWith(expect.stringContaining("failing-operation"));
+		expect(core.summary.write).toHaveBeenCalled();
+	});
+
+	it("does not write telemetry summary when no spans are recorded", async () => {
+		await Action.run(Effect.void);
+		expect(core.setFailed).not.toHaveBeenCalled();
+		expect(core.summary.addRaw).not.toHaveBeenCalled();
 	});
 });

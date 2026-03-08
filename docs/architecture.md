@@ -13,10 +13,11 @@ testable without mocking.
 src/
   services/    - Effect service definitions (interfaces + tags)
   layers/      - Live and Test implementations of each service
-  errors/      - Tagged error types
-  schemas/     - Effect Schema definitions
-  utils/       - Pure utility functions (GithubMarkdown namespace)
+  errors/      - Tagged error types (Data.TaggedError)
+  schemas/     - Effect Schema definitions (LogLevel, OtelExporter, Workspace, etc.)
+  utils/       - Namespace utilities (GithubMarkdown, AutoMerge, SemverResolver, etc.)
   Action.ts    - Action namespace (run, parseInputs, makeLogger, setLogLevel, resolveLogLevel)
+  index.ts     - Barrel export (single entry point)
 ```
 
 ## Services
@@ -288,24 +289,107 @@ Three schemas in `src/schemas/GithubMarkdown.ts` support the builders:
 * **`CapturedOutput`** -- Struct with `name` (string) and `value` (string),
   used by test layers to record output calls
 
+## Extended Services
+
+Beyond the core services, the library includes a comprehensive set of
+services for GitHub API operations, package management, and infrastructure.
+Each follows the same pattern: interface + `Context.GenericTag` in
+`src/services/`, live layer in `src/layers/*Live.ts`, test layer in
+`src/layers/*Test.ts`.
+
+See [services.md](./services.md) for usage examples of each service.
+
+### GitHub API Services
+
+| Service | Live Layer | Description |
+| --- | --- | --- |
+| GitHubClient | GitHubClientLive | Octokit REST/GraphQL with pagination |
+| GitHubGraphQL | GitHubGraphQLLive | Typed GraphQL queries and mutations |
+| GitHubRelease | GitHubReleaseLive | Release CRUD and asset upload |
+| GitHubIssue | GitHubIssueLive | Issue management and PR linking |
+| GitHubApp | GitHubAppLive | App token generation with bracket pattern |
+| CheckRun | CheckRunLive | Check run CRUD with annotations |
+| PullRequestComment | PullRequestCommentLive | Sticky (upsert) PR comments |
+| GitTag | GitTagLive | Tag CRUD via Git Data API |
+| GitBranch | GitBranchLive | Branch CRUD via Git Data API |
+| GitCommit | GitCommitLive | Tree/commit creation, ref updates |
+
+### Package Management Services
+
+| Service | Live Layer | Description |
+| --- | --- | --- |
+| NpmRegistry | NpmRegistryLive | npm registry queries |
+| PackagePublish | PackagePublishLive | Pack, publish, verify integrity |
+| PackageManagerAdapter | PackageManagerAdapterLive | Unified PM operations |
+| WorkspaceDetector | WorkspaceDetectorLive | Monorepo detection |
+| ChangesetAnalyzer | ChangesetAnalyzerLive | Changeset file operations |
+
+### Infrastructure Services
+
+| Service | Live Layer | Description |
+| --- | --- | --- |
+| ActionEnvironment | ActionEnvironmentLive | Typed env var access |
+| ActionCache | ActionCacheLive | GitHub Actions cache |
+| ActionTelemetry | ActionTelemetryLive | Metrics and span attributes |
+| CommandRunner | CommandRunnerLive | Shell execution with capture |
+| ConfigLoader | ConfigLoaderLive | JSON/JSONC/YAML config loading |
+| DryRun | DryRunLive | Mutation interception |
+| TokenPermissionChecker | TokenPermissionCheckerLive | Token permission checks |
+| RateLimiter | RateLimiterLive | Rate limit guard and retry |
+| WorkflowDispatch | WorkflowDispatchLive | Workflow trigger and poll |
+| ToolInstaller | ToolInstallerLive | Tool binary installation |
+
 ## Test Layers
 
-Each service has a corresponding test implementation in `src/layers/`:
+Every service has a corresponding test implementation in `src/layers/`.
+All follow the same namespace object pattern (`empty()` to create state,
+`layer(state)` to build the layer) unless noted otherwise.
+
+### Core Test Layers
 
 * `ActionInputsTest(inputs)` -- accepts a `Record<string, string>` and
   returns a layer that reads from it instead of `@actions/core`.
-* `ActionLoggerTest` -- namespace with `empty()` and `layer(state)`. Captures
-  groups, annotations (with type), and flushed buffers in
-  `ActionLoggerTestState`.
-* `ActionOutputsTest` -- namespace with `empty()` and `layer(state)`. Captures
-  outputs, summaries, exported variables, and paths in
-  `ActionOutputsTestState`.
-* `ActionStateTest` -- namespace with `empty()` and `layer(state)`. Uses an
-  in-memory `Map<string, string>`. Can be pre-populated to simulate state from
-  a previous phase (e.g., pre-populate state that `pre.ts` would have set, then
-  test `main.ts` logic).
+* `ActionLoggerTest` -- captures groups, annotations (with type), and
+  flushed buffers in `ActionLoggerTestState`.
+* `ActionOutputsTest` -- captures outputs, summaries, exported variables,
+  paths, failed messages, and secrets in `ActionOutputsTestState`.
+* `ActionStateTest` -- uses an in-memory `Map<string, string>`. Can be
+  pre-populated to simulate state from a previous phase.
 
-The namespace pattern (`empty()` to create state, `layer(state)` to create
-the layer) lets tests inspect captured operations after the effect completes.
+### Extended Test Layers
 
-See [docs/testing.md](./testing.md) for full usage details.
+All extended services ship with test layers following the same pattern:
+
+| Test Layer | State Type |
+| --- | --- |
+| ActionEnvironmentTest | - |
+| ActionCacheTest | ActionCacheTestState |
+| ActionTelemetryTest | ActionTelemetryTestState |
+| GitHubClientTest | GitHubClientTestState |
+| GitHubGraphQLTest | GitHubGraphQLTestState |
+| GitHubReleaseLive | GitHubReleaseTestState |
+| GitHubIssueTest | GitHubIssueTestState |
+| GitHubAppTest | GitHubAppTestState |
+| CheckRunTest | CheckRunTestState |
+| PullRequestCommentTest | PullRequestCommentTestState |
+| GitTagTest | GitTagTestState |
+| GitBranchTest | GitBranchTestState |
+| GitCommitTest | GitCommitTestState |
+| CommandRunnerTest | CommandResponse |
+| ConfigLoaderTest | ConfigLoaderTestState |
+| DryRunTest | DryRunTestState |
+| NpmRegistryTest | NpmRegistryTestState |
+| PackagePublishTest | PackagePublishTestState |
+| PackageManagerAdapterTest | PackageManagerAdapterTestState |
+| WorkspaceDetectorTest | WorkspaceDetectorTestState |
+| ChangesetAnalyzerTest | ChangesetAnalyzerTestState |
+| TokenPermissionCheckerTest | TokenPermissionCheckerTestState |
+| RateLimiterTest | RateLimiterTestState |
+| WorkflowDispatchTest | WorkflowDispatchTestState |
+| ToolInstallerTest | ToolInstallerTestState |
+
+The namespace pattern lets tests inspect captured operations after the
+effect completes.
+
+See [testing.md](./testing.md) for usage details and
+[patterns.md](./patterns.md) for common testing patterns.
