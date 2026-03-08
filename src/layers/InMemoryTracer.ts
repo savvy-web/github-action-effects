@@ -148,10 +148,3 @@ export const InMemoryTracer = {
 	 */
 	getSpans: (): Effect.Effect<ReadonlyArray<CompletedSpan>, never, typeof SpanStore.Service> => SpanStore,
 } as const;
-
-/**
- * Type alias for the context provided by InMemoryTracer.layer.
- */
-export declare namespace InMemoryTracer {
-	type Provides = typeof SpanStore.Service;
-}

@@ -34,7 +34,7 @@ export const parseOtelHeaders = (raw: string): Record<string, string> => {
 
 /**
  * Resolve OTel configuration from action inputs and environment variables.
- * Priority: action inputs > env vars > defaults.
+ * Priority: action inputs \> env vars \> defaults.
  */
 export const resolveOtelConfig = (
 	inputs: {

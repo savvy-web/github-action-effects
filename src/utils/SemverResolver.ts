@@ -12,7 +12,7 @@ import { SemverResolverError } from "../errors/SemverResolverError.js";
 export const SemverResolver = {
 	/**
 	 * Compare two semver versions.
-	 * Returns -1 if a < b, 0 if a === b, 1 if a > b.
+	 * Returns -1 if a is less than b, 0 if equal, 1 if a is greater than b.
 	 */
 	compare: (a: string, b: string): Effect.Effect<-1 | 0 | 1, SemverResolverError> =>
 		Effect.try({

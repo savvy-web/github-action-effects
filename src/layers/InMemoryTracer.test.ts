@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { CompletedSpan } from "./InMemoryTracer.js";
 import { InMemoryTracer } from "./InMemoryTracer.js";
 
+type InMemoryTracerContext = Effect.Effect.Context<ReturnType<typeof InMemoryTracer.getSpans>>;
+
 const run = <A>(
-	effect: Effect.Effect<A, never, InMemoryTracer.Provides>,
+	effect: Effect.Effect<A, never, InMemoryTracerContext>,
 ): Promise<{
 	readonly result: A;
 	readonly spans: ReadonlyArray<CompletedSpan>;
@@ -16,7 +18,7 @@ const run = <A>(
 	}).pipe(Effect.provide(InMemoryTracer.layer), Effect.runPromise);
 
 const runWithSpans = <A, E>(
-	effect: Effect.Effect<A, E, InMemoryTracer.Provides>,
+	effect: Effect.Effect<A, E, InMemoryTracerContext>,
 ): Promise<{
 	readonly exit: Exit.Exit<A, E>;
 	readonly spans: ReadonlyArray<CompletedSpan>;
