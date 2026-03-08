@@ -16,6 +16,7 @@ export { ActionEnvironmentError, ActionEnvironmentErrorBase } from "./errors/Act
 export { ActionInputError, ActionInputErrorBase } from "./errors/ActionInputError.js";
 export { ActionOutputError, ActionOutputErrorBase } from "./errors/ActionOutputError.js";
 export { ActionStateError, ActionStateErrorBase } from "./errors/ActionStateError.js";
+export { ChangesetError, ChangesetErrorBase } from "./errors/ChangesetError.js";
 export { CheckRunError, CheckRunErrorBase } from "./errors/CheckRunError.js";
 export { CommandRunnerError, CommandRunnerErrorBase } from "./errors/CommandRunnerError.js";
 export { GitHubAppError, GitHubAppErrorBase } from "./errors/GitHubAppError.js";
@@ -43,6 +44,9 @@ export { ActionStateTest } from "./layers/ActionStateTest.js";
 export { ActionTelemetryLive } from "./layers/ActionTelemetryLive.js";
 export type { ActionTelemetryTestState } from "./layers/ActionTelemetryTest.js";
 export { ActionTelemetryTest } from "./layers/ActionTelemetryTest.js";
+export { ChangesetAnalyzerLive } from "./layers/ChangesetAnalyzerLive.js";
+export type { ChangesetAnalyzerTestState } from "./layers/ChangesetAnalyzerTest.js";
+export { ChangesetAnalyzerTest } from "./layers/ChangesetAnalyzerTest.js";
 export { CheckRunLive } from "./layers/CheckRunLive.js";
 export type { CheckRunRecord, CheckRunTestState } from "./layers/CheckRunTest.js";
 export { CheckRunTest } from "./layers/CheckRunTest.js";
@@ -68,6 +72,12 @@ export { RateLimiterTest } from "./layers/RateLimiterTest.js";
 export { WorkflowDispatchLive } from "./layers/WorkflowDispatchLive.js";
 export type { DispatchRecord, WorkflowDispatchTestState } from "./layers/WorkflowDispatchTest.js";
 export { WorkflowDispatchTest } from "./layers/WorkflowDispatchTest.js";
+export type {
+	BumpType as BumpTypeType,
+	Changeset as ChangesetType,
+	ChangesetFile as ChangesetFileType,
+} from "./schemas/Changeset.js";
+export { BumpType, Changeset, ChangesetFile } from "./schemas/Changeset.js";
 export type { GitHubContext as GitHubContextType, RunnerContext as RunnerContextType } from "./schemas/Environment.js";
 // -- Schemas --
 export { GitHubContext, RunnerContext } from "./schemas/Environment.js";
@@ -85,6 +95,7 @@ export { ActionLogger } from "./services/ActionLogger.js";
 export { ActionOutputs } from "./services/ActionOutputs.js";
 export { ActionState } from "./services/ActionState.js";
 export { ActionTelemetry } from "./services/ActionTelemetry.js";
+export { ChangesetAnalyzer } from "./services/ChangesetAnalyzer.js";
 export type { AnnotationLevel, CheckRunAnnotation, CheckRunConclusion, CheckRunOutput } from "./services/CheckRun.js";
 export { CheckRun } from "./services/CheckRun.js";
 export type { ExecOptions, ExecOutput } from "./services/CommandRunner.js";
