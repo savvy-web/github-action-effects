@@ -96,7 +96,7 @@ export const OtelExporterLive = (config: ResolvedOtelConfig): Layer.Layer<never>
 				Layer.provide(
 					effectOtel.Resource.layer({
 						serviceName: config.serviceName ?? "github-action",
-						serviceVersion: config.serviceVersion ?? "0.0.0",
+						serviceVersion: process.env.__PACKAGE_VERSION__ ?? "0.0.0",
 						attributes,
 					}),
 				),

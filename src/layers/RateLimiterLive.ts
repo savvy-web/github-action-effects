@@ -22,6 +22,11 @@ interface OctokitRateLimit {
 
 const asRateLimit = (octokit: unknown): OctokitRateLimit => octokit as OctokitRateLimit;
 
+/**
+ * Executes `effect` with a pre-flight REST rate limit check.
+ * Note: only checks the REST core quota. For GraphQL-heavy effects,
+ * call `checkGraphQL` separately.
+ */
 export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = Layer.effect(
 	RateLimiter,
 	Effect.map(GitHubClient, (client) => {

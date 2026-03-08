@@ -56,7 +56,7 @@ export const OtelTelemetryLive = (config?: OtelConfig): Layer.Layer<never> =>
 					Layer.provide(
 						otel.Resource.layer({
 							serviceName: config?.serviceName ?? "github-action",
-							serviceVersion: config?.serviceVersion ?? "0.0.0",
+							serviceVersion: process.env.__PACKAGE_VERSION__,
 						}),
 					),
 				);
