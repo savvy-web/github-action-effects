@@ -43,6 +43,7 @@ describe("GitHubAppLive", () => {
 				token: "ghs_generated",
 				expiresAt: "2099-01-01T00:00:00Z",
 				installationId: 999,
+				permissions: {},
 			});
 			expect(createAppAuth).toHaveBeenCalledWith({
 				appId: "app-42",
