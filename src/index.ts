@@ -83,5 +83,7 @@ export { PullRequestComment } from "./services/PullRequestComment.js";
 export type { PollOptions, WorkflowRunStatus } from "./services/WorkflowDispatch.js";
 export { WorkflowDispatch } from "./services/WorkflowDispatch.js";
 export { GithubMarkdown } from "./utils/GithubMarkdown.js";
+export type { Report } from "./utils/ReportBuilder.js";
+export { ReportBuilder } from "./utils/ReportBuilder.js";
 export type { SpanSummary } from "./utils/TelemetryReport.js";
 export { TelemetryReport } from "./utils/TelemetryReport.js";
