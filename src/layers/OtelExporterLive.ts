@@ -30,7 +30,11 @@ const metricExporterModule = (protocol: string): string => {
 interface EffectOtel {
 	readonly Tracer: { readonly layer: Layer.Layer<never> };
 	readonly Resource: {
-		readonly layer: (config: { readonly serviceName: string; readonly serviceVersion: string }) => Layer.Layer<never>;
+		readonly layer: (config: {
+			readonly serviceName: string;
+			readonly serviceVersion: string;
+			readonly attributes?: Record<string, string>;
+		}) => Layer.Layer<never>;
 	};
 }
 
@@ -82,7 +86,8 @@ export const OtelExporterLive = (config: ResolvedOtelConfig): Layer.Layer<never>
 			});
 
 			// Build resource attributes from GitHub env vars
-			const _githubAttrs = GitHubOtelAttributes.fromEnvironment();
+			const githubAttrs = GitHubOtelAttributes.fromEnvironment();
+			const attributes = { ...githubAttrs, ...config.resourceAttributes };
 
 			// Use @effect/opentelemetry tracer bridge
 			// The OTel SDK packages register themselves globally when imported,
@@ -90,8 +95,9 @@ export const OtelExporterLive = (config: ResolvedOtelConfig): Layer.Layer<never>
 			return effectOtel.Tracer.layer.pipe(
 				Layer.provide(
 					effectOtel.Resource.layer({
-						serviceName: "github-action",
-						serviceVersion: "0.0.0",
+						serviceName: config.serviceName ?? "github-action",
+						serviceVersion: config.serviceVersion ?? "0.0.0",
+						attributes,
 					}),
 				),
 			);

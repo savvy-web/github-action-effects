@@ -25,34 +25,29 @@ const asRateLimit = (octokit: unknown): OctokitRateLimit => octokit as OctokitRa
 export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = Layer.effect(
 	RateLimiter,
 	Effect.map(GitHubClient, (client) => {
+		/** Fetch all rate limit resources via the REST API (used by both checkRest and checkGraphQL). */
+		const fetchRateLimits = () => client.rest("rate_limit", (octokit) => asRateLimit(octokit).rest.rateLimit.get());
+
 		const checkRest = (): Effect.Effect<RateLimitStatus, import("../errors/GitHubClientError.js").GitHubClientError> =>
-			client
-				.rest("rate_limit", (octokit) => asRateLimit(octokit).rest.rateLimit.get())
-				.pipe(
-					Effect.map((data) => {
-						const typed = data as {
-							resources: { core: RateLimitStatus };
-						};
-						return typed.resources.core;
-					}),
-					Effect.withSpan("RateLimiter.checkRest"),
-				);
+			fetchRateLimits().pipe(
+				Effect.map((data) => {
+					const typed = data as { resources: { core: RateLimitStatus } };
+					return typed.resources.core;
+				}),
+				Effect.withSpan("RateLimiter.checkRest"),
+			);
 
 		const checkGraphQL = (): Effect.Effect<
 			RateLimitStatus,
 			import("../errors/GitHubClientError.js").GitHubClientError
 		> =>
-			client
-				.rest("rate_limit", (octokit) => asRateLimit(octokit).rest.rateLimit.get())
-				.pipe(
-					Effect.map((data) => {
-						const typed = data as {
-							resources: { graphql: RateLimitStatus };
-						};
-						return typed.resources.graphql;
-					}),
-					Effect.withSpan("RateLimiter.checkGraphQL"),
-				);
+			fetchRateLimits().pipe(
+				Effect.map((data) => {
+					const typed = data as { resources: { graphql: RateLimitStatus } };
+					return typed.resources.graphql;
+				}),
+				Effect.withSpan("RateLimiter.checkGraphQL"),
+			);
 
 		return {
 			checkRest,

@@ -55,6 +55,9 @@ export const TelemetryReport = {
 	 *
 	 * Root spans (no parentName) appear first, children are indented with `  \u2514 `.
 	 * Durations are formatted as `Xms` or `X.XXs` for values \>= 1000ms.
+	 *
+	 * Note: Only 1 level of nesting is supported. Children whose parentName
+	 * does not match a root span are rendered as orphans at the end of the table.
 	 */
 	fromSpans: (spans: ReadonlyArray<SpanSummary>, metrics?: ReadonlyArray<MetricData>): string => {
 		const hasSpans = spans.length > 0;

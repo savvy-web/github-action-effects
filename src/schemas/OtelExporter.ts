@@ -11,6 +11,9 @@ export interface ResolvedOtelConfig {
 	readonly endpoint: string;
 	readonly protocol: OtelProtocol;
 	readonly headers: Record<string, string>;
+	readonly serviceName?: string;
+	readonly serviceVersion?: string;
+	readonly resourceAttributes?: Record<string, string>;
 }
 
 /**

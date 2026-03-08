@@ -25,35 +25,7 @@ export const ErrorAccumulator = {
 	forEachAccumulate: <A, B, E, R>(
 		items: Iterable<A>,
 		fn: (item: A) => Effect.Effect<B, E, R>,
-	): Effect.Effect<AccumulateResult<A, B, E>, never, R> =>
-		Effect.forEach(Array.from(items), (item) =>
-			fn(item).pipe(
-				Effect.map((value): { readonly _tag: "success"; readonly value: B } => ({
-					_tag: "success",
-					value,
-				})),
-				Effect.catchAll((error: E) =>
-					Effect.succeed({
-						_tag: "failure" as const,
-						item,
-						error,
-					}),
-				),
-			),
-		).pipe(
-			Effect.map((results) => {
-				const successes: Array<B> = [];
-				const failures: Array<{ item: A; error: E }> = [];
-				for (const r of results) {
-					if (r._tag === "success") {
-						successes.push(r.value);
-					} else {
-						failures.push({ item: r.item, error: r.error });
-					}
-				}
-				return { successes, failures };
-			}),
-		),
+	): Effect.Effect<AccumulateResult<A, B, E>, never, R> => ErrorAccumulator.forEachAccumulateConcurrent(items, fn, 1),
 
 	/**
 	 * Process all items with concurrency control, collecting successes and failures.
