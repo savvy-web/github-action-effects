@@ -31,6 +31,7 @@ export { PullRequestCommentError, PullRequestCommentErrorBase } from "./errors/P
 export { RateLimitError, RateLimitErrorBase } from "./errors/RateLimitError.js";
 export { ToolInstallerError, ToolInstallerErrorBase } from "./errors/ToolInstallerError.js";
 export { WorkflowDispatchError, WorkflowDispatchErrorBase } from "./errors/WorkflowDispatchError.js";
+export { WorkspaceDetectorError, WorkspaceDetectorErrorBase } from "./errors/WorkspaceDetectorError.js";
 // -- Layers --
 export { ActionCacheLive } from "./layers/ActionCacheLive.js";
 export type { ActionCacheTestState } from "./layers/ActionCacheTest.js";
@@ -103,6 +104,9 @@ export { ToolInstallerTest } from "./layers/ToolInstallerTest.js";
 export { WorkflowDispatchLive } from "./layers/WorkflowDispatchLive.js";
 export type { DispatchRecord, WorkflowDispatchTestState } from "./layers/WorkflowDispatchTest.js";
 export { WorkflowDispatchTest } from "./layers/WorkflowDispatchTest.js";
+export { WorkspaceDetectorLive } from "./layers/WorkspaceDetectorLive.js";
+export type { WorkspaceDetectorTestState } from "./layers/WorkspaceDetectorTest.js";
+export { WorkspaceDetectorTest } from "./layers/WorkspaceDetectorTest.js";
 export type {
 	BumpType as BumpTypeType,
 	Changeset as ChangesetType,
@@ -126,6 +130,12 @@ export { PackageManagerInfo, PackageManagerName } from "./schemas/PackageManager
 export type { RateLimitStatus as RateLimitStatusType } from "./schemas/RateLimit.js";
 export { RateLimitStatus } from "./schemas/RateLimit.js";
 export { MetricData } from "./schemas/Telemetry.js";
+export type {
+	WorkspaceInfo as WorkspaceInfoType,
+	WorkspacePackage as WorkspacePackageType,
+	WorkspaceType as WorkspaceTypeType,
+} from "./schemas/Workspace.js";
+export { WorkspaceInfo, WorkspacePackage, WorkspaceType } from "./schemas/Workspace.js";
 // -- Services --
 export type { CacheHit } from "./services/ActionCache.js";
 export { ActionCache } from "./services/ActionCache.js";
@@ -158,6 +168,7 @@ export type { ToolInstallOptions } from "./services/ToolInstaller.js";
 export { ToolInstaller } from "./services/ToolInstaller.js";
 export type { PollOptions, WorkflowRunStatus } from "./services/WorkflowDispatch.js";
 export { WorkflowDispatch } from "./services/WorkflowDispatch.js";
+export { WorkspaceDetector } from "./services/WorkspaceDetector.js";
 export type { AccumulateResult } from "./utils/ErrorAccumulator.js";
 export { ErrorAccumulator } from "./utils/ErrorAccumulator.js";
 export { GithubMarkdown } from "./utils/GithubMarkdown.js";
