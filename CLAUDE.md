@@ -6,8 +6,9 @@ code in this repository.
 ## Project Status
 
 Effect-based utility library for building robust, well-logged, and
-schema-validated GitHub Actions. Core services (ActionInputs, ActionLogger,
-ActionOutputs) and GithubMarkdown utilities are implemented and tested.
+schema-validated GitHub Actions. Provides 18 Effect services covering inputs,
+logging, outputs, state, telemetry, GitHub API operations, git operations,
+config loading, tool management, and package manager abstraction.
 
 ## Design Documentation
 
@@ -59,12 +60,43 @@ pnpm vitest run src/services/ActionInputs.test.ts
 
 ```text
 src/
-  services/    -- Effect service definitions (ActionInputs, ActionLogger, ActionOutputs)
-  layers/      -- Live and Test layer implementations
+  services/    -- Effect service interfaces (18 services)
+  layers/      -- Live and Test layer implementations + InMemoryTracer
   errors/      -- Tagged error types (Data.TaggedError)
-  schemas/     -- Effect Schema definitions (LogLevel, GithubMarkdown)
-  utils/       -- Pure utility functions (GithubMarkdown builders)
+  schemas/     -- Effect Schema definitions (LogLevel, Changeset, PackageManager, etc.)
+  utils/       -- GithubMarkdown, ReportBuilder, TelemetryReport
 ```
+
+### Services
+
+| Service | Purpose | Optional Peer Deps |
+| ------- | ------- | ----------------- |
+| ActionInputs | Schema-validated input reading | — |
+| ActionLogger | Structured logging (info/verbose/debug) | — |
+| ActionOutputs | Typed outputs + step summaries | — |
+| ActionState | State transfer between action phases | — |
+| ActionTelemetry | Metrics recording (metrics-only) | — |
+| ActionCache | Cache save/restore | @actions/cache |
+| ActionEnvironment | GitHub/runner context access | — |
+| GitHubClient | Octokit REST/GraphQL wrapper | @actions/github |
+| GitHubApp | App authentication lifecycle | @octokit/auth-app |
+| RateLimiter | API rate limit awareness + retry | — |
+| CheckRun | Check runs + annotations | — |
+| CommandRunner | Structured shell execution | @actions/exec |
+| PullRequestComment | PR comment management | — |
+| WorkflowDispatch | Trigger + poll workflows | — |
+| ChangesetAnalyzer | Parse/generate changeset files | — |
+| GitBranch | Branch management via Git Data API | — |
+| GitCommit | Verified commits via Git Data API | — |
+| ConfigLoader | JSON/JSONC/YAML config loading | jsonc-parser, yaml |
+| ToolInstaller | Tool binary management | @actions/tool-cache |
+| PackageManagerAdapter | Unified PM interface | — |
+
+### Telemetry
+
+- All service methods instrumented with `Effect.withSpan`
+- `InMemoryTracer` captures spans for GitHub-native output
+- Optional `OtelTelemetryLive` bridges to OpenTelemetry exporters
 
 ### Key Patterns
 
