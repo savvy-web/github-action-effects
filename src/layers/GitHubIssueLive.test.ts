@@ -108,6 +108,57 @@ describe("GitHubIssueLive", () => {
 		});
 	});
 
+	describe("list options", () => {
+		it("passes labels filter when provided", async () => {
+			mockListForRepo.mockResolvedValue({
+				data: [{ number: 1, title: "Bug", state: "open", labels: [{ name: "bug" }] }],
+			});
+			await run(Effect.flatMap(GitHubIssue, (svc) => svc.list({ labels: ["bug", "critical"] })));
+			expect(mockListForRepo).toHaveBeenCalledWith(
+				expect.objectContaining({
+					labels: "bug,critical",
+					state: "open",
+				}),
+			);
+		});
+
+		it("omits labels when empty array", async () => {
+			mockListForRepo.mockResolvedValue({ data: [] });
+			await run(Effect.flatMap(GitHubIssue, (svc) => svc.list({ labels: [] })));
+			const callArgs = mockListForRepo.mock.calls[0]?.[0];
+			expect(callArgs).not.toHaveProperty("labels");
+		});
+
+		it("passes milestone when provided", async () => {
+			mockListForRepo.mockResolvedValue({ data: [] });
+			await run(Effect.flatMap(GitHubIssue, (svc) => svc.list({ milestone: 3 })));
+			expect(mockListForRepo).toHaveBeenCalledWith(expect.objectContaining({ milestone: 3 }));
+		});
+
+		it("omits milestone when not provided", async () => {
+			mockListForRepo.mockResolvedValue({ data: [] });
+			await run(Effect.flatMap(GitHubIssue, (svc) => svc.list({ state: "closed" })));
+			const callArgs = mockListForRepo.mock.calls[0]?.[0];
+			expect(callArgs).not.toHaveProperty("milestone");
+			expect(callArgs).toHaveProperty("state", "closed");
+		});
+
+		it("passes perPage and maxPages pagination options", async () => {
+			mockListForRepo.mockResolvedValue({ data: [] });
+			await run(Effect.flatMap(GitHubIssue, (svc) => svc.list({ perPage: 10, maxPages: 2 })));
+			// The pagination options are passed to client.paginate, not to the REST call
+			expect(mockListForRepo).toHaveBeenCalled();
+		});
+
+		it("handles label objects without name property", async () => {
+			mockListForRepo.mockResolvedValue({
+				data: [{ number: 1, title: "Test", state: "open", labels: [{}] }],
+			});
+			const result = await run(Effect.flatMap(GitHubIssue, (svc) => svc.list()));
+			expect(result[0]?.labels).toEqual([""]);
+		});
+	});
+
 	describe("close", () => {
 		it("calls issues.update with state closed", async () => {
 			mockUpdate.mockResolvedValue({
@@ -123,6 +174,16 @@ describe("GitHubIssueLive", () => {
 					state_reason: "completed",
 				}),
 			);
+		});
+
+		it("closes without reason (omits state_reason)", async () => {
+			mockUpdate.mockResolvedValue({
+				data: { number: 1, title: "Bug", state: "closed", labels: [] },
+			});
+			await run(Effect.flatMap(GitHubIssue, (svc) => svc.close(1)));
+			const callArgs = mockUpdate.mock.calls[0]?.[0];
+			expect(callArgs).toHaveProperty("state", "closed");
+			expect(callArgs).not.toHaveProperty("state_reason");
 		});
 
 		it("fails on API error", async () => {

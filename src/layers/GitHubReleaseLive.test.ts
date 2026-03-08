@@ -172,7 +172,91 @@ describe("GitHubReleaseLive", () => {
 		});
 	});
 
+	describe("create with optional params", () => {
+		it("passes draft, prerelease, and generateReleaseNotes when provided", async () => {
+			mockCreateRelease.mockResolvedValue({
+				data: {
+					id: 43,
+					tag_name: "v2.0.0",
+					name: "Release 2.0.0",
+					body: "Notes",
+					draft: true,
+					prerelease: true,
+					upload_url: "https://uploads.github.com/releases/43/assets",
+				},
+			});
+			const result = await run(
+				Effect.flatMap(GitHubRelease, (svc) =>
+					svc.create({
+						tag: "v2.0.0",
+						name: "Release 2.0.0",
+						body: "Notes",
+						draft: true,
+						prerelease: true,
+						generateReleaseNotes: true,
+					}),
+				),
+			);
+			expect(result.draft).toBe(true);
+			expect(result.prerelease).toBe(true);
+			expect(mockCreateRelease).toHaveBeenCalledWith(
+				expect.objectContaining({
+					draft: true,
+					prerelease: true,
+					generate_release_notes: true,
+				}),
+			);
+		});
+
+		it("maps null name and body to empty strings", async () => {
+			mockCreateRelease.mockResolvedValue({
+				data: {
+					id: 44,
+					tag_name: "v3.0.0",
+					name: null,
+					body: null,
+					draft: false,
+					prerelease: false,
+					upload_url: "https://uploads.github.com/releases/44/assets",
+				},
+			});
+			const result = await run(
+				Effect.flatMap(GitHubRelease, (svc) => svc.create({ tag: "v3.0.0", name: "R", body: "" })),
+			);
+			expect(result.name).toBe("");
+			expect(result.body).toBe("");
+		});
+	});
+
+	describe("uploadAsset error mapping", () => {
+		it("maps error without tag field", async () => {
+			mockUploadReleaseAsset.mockRejectedValue(new Error("upload failed"));
+			const exit = await runExit(
+				Effect.flatMap(GitHubRelease, (svc) => svc.uploadAsset(42, "file.zip", "data", "application/zip")),
+			);
+			expect(exit._tag).toBe("Failure");
+		});
+	});
+
 	describe("list", () => {
+		it("passes perPage and maxPages pagination options", async () => {
+			mockListReleases.mockResolvedValue({ data: [] });
+			await run(Effect.flatMap(GitHubRelease, (svc) => svc.list({ perPage: 5, maxPages: 1 })));
+			expect(mockListReleases).toHaveBeenCalled();
+		});
+
+		it("omits pagination options when not provided", async () => {
+			mockListReleases.mockResolvedValue({ data: [] });
+			await run(Effect.flatMap(GitHubRelease, (svc) => svc.list()));
+			expect(mockListReleases).toHaveBeenCalled();
+		});
+
+		it("fails on API error", async () => {
+			mockListReleases.mockRejectedValue(new Error("api error"));
+			const exit = await runExit(Effect.flatMap(GitHubRelease, (svc) => svc.list()));
+			expect(exit._tag).toBe("Failure");
+		});
+
 		it("calls repos.listReleases via paginate and returns mapped data", async () => {
 			mockListReleases.mockResolvedValue({
 				data: [

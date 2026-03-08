@@ -149,6 +149,36 @@ describe("ToolInstallerLive", () => {
 			expect(error.operation).toBe("extract");
 		});
 
+		it("fails with extract error when tar.xz extraction fails", async () => {
+			mockFind.mockReturnValue("");
+			mockDownloadTool.mockResolvedValue("/tmp/download");
+			mockExtractTar.mockRejectedValue(new Error("Corrupt xz archive"));
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.install("tool", "1.0.0", "https://example.com/tool.tar.xz", { archiveType: "tar.xz" }),
+				),
+			);
+
+			expect(error.operation).toBe("extract");
+			expect(error.reason).toContain("tar.xz");
+		});
+
+		it("fails with extract error when zip extraction fails", async () => {
+			mockFind.mockReturnValue("");
+			mockDownloadTool.mockResolvedValue("/tmp/download");
+			mockExtractZip.mockRejectedValue(new Error("Corrupt zip"));
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.install("tool", "1.0.0", "https://example.com/tool.zip", { archiveType: "zip" }),
+				),
+			);
+
+			expect(error.operation).toBe("extract");
+			expect(error.reason).toContain("zip");
+		});
+
 		it("fails with cache error when caching fails", async () => {
 			mockFind.mockReturnValue("");
 			mockDownloadTool.mockResolvedValue("/tmp/download");
@@ -174,6 +204,16 @@ describe("ToolInstallerLive", () => {
 
 		it("returns false when tool is not cached", async () => {
 			mockFind.mockReturnValue("");
+
+			const result = await run(Effect.flatMap(ToolInstaller, (svc) => svc.isCached("node", "20.0.0")));
+
+			expect(result).toBe(false);
+		});
+
+		it("returns false when find throws an error", async () => {
+			mockFind.mockImplementation(() => {
+				throw new Error("tool-cache broken");
+			});
 
 			const result = await run(Effect.flatMap(ToolInstaller, (svc) => svc.isCached("node", "20.0.0")));
 
@@ -210,6 +250,130 @@ describe("ToolInstallerLive", () => {
 			expect(result).toBe("/cached/node/20.0.0");
 			expect(mockDownloadTool).not.toHaveBeenCalled();
 			expect(mockAddPath).toHaveBeenCalledWith("/cached/node/20.0.0");
+		});
+
+		it("appends binSubPath to cached path and adds to PATH", async () => {
+			mockFind.mockReturnValue("/cached/node/20.0.0");
+
+			const result = await run(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installAndAddToPath("node", "20.0.0", "https://example.com/node.tar.gz", { binSubPath: "bin" }),
+				),
+			);
+
+			expect(result).toBe("/cached/node/20.0.0/bin");
+			expect(mockDownloadTool).not.toHaveBeenCalled();
+			expect(mockAddPath).toHaveBeenCalledWith("/cached/node/20.0.0/bin");
+		});
+
+		it("appends binSubPath to freshly installed path", async () => {
+			mockFind.mockReturnValue("");
+			mockDownloadTool.mockResolvedValue("/tmp/download");
+			mockExtractTar.mockResolvedValue("/tmp/extracted");
+			mockCacheDir.mockResolvedValue("/cached/node/20.0.0");
+
+			const result = await run(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installAndAddToPath("node", "20.0.0", "https://example.com/node.tar.gz", { binSubPath: "bin" }),
+				),
+			);
+
+			expect(result).toBe("/cached/node/20.0.0/bin");
+			expect(mockAddPath).toHaveBeenCalledWith("/cached/node/20.0.0/bin");
+		});
+
+		it("extracts tar.xz with xJ flags", async () => {
+			mockFind.mockReturnValue("");
+			mockDownloadTool.mockResolvedValue("/tmp/download");
+			mockExtractTar.mockResolvedValue("/tmp/extracted");
+			mockCacheDir.mockResolvedValue("/cached/tool/1.0.0");
+
+			await run(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installAndAddToPath("tool", "1.0.0", "https://example.com/tool.tar.xz", { archiveType: "tar.xz" }),
+				),
+			);
+
+			expect(mockExtractTar).toHaveBeenCalledWith("/tmp/download", undefined, "xJ");
+			expect(mockAddPath).toHaveBeenCalledWith("/cached/tool/1.0.0");
+		});
+
+		it("extracts zip archives", async () => {
+			mockFind.mockReturnValue("");
+			mockDownloadTool.mockResolvedValue("/tmp/download");
+			mockExtractZip.mockResolvedValue("/tmp/extracted");
+			mockCacheDir.mockResolvedValue("/cached/tool/1.0.0");
+
+			await run(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installAndAddToPath("tool", "1.0.0", "https://example.com/tool.zip", { archiveType: "zip" }),
+				),
+			);
+
+			expect(mockExtractZip).toHaveBeenCalledWith("/tmp/download");
+			expect(mockAddPath).toHaveBeenCalledWith("/cached/tool/1.0.0");
+		});
+
+		it("fails with download error when download fails", async () => {
+			mockFind.mockReturnValue("");
+			mockDownloadTool.mockRejectedValue(new Error("Network error"));
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installAndAddToPath("node", "20.0.0", "https://example.com/node.tar.gz"),
+				),
+			);
+
+			expect(error.operation).toBe("download");
+			expect(error.tool).toBe("node");
+		});
+
+		it("fails with extract error when extraction fails", async () => {
+			mockFind.mockReturnValue("");
+			mockDownloadTool.mockResolvedValue("/tmp/download");
+			mockExtractTar.mockRejectedValue(new Error("Corrupt archive"));
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installAndAddToPath("node", "20.0.0", "https://example.com/node.tar.gz"),
+				),
+			);
+
+			expect(error.operation).toBe("extract");
+		});
+
+		it("fails with cache error when caching fails", async () => {
+			mockFind.mockReturnValue("");
+			mockDownloadTool.mockResolvedValue("/tmp/download");
+			mockExtractTar.mockResolvedValue("/tmp/extracted");
+			mockCacheDir.mockRejectedValue(new Error("Disk full"));
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installAndAddToPath("node", "20.0.0", "https://example.com/node.tar.gz"),
+				),
+			);
+
+			expect(error.operation).toBe("cache");
+		});
+
+		it("fails with path error when addPath throws", async () => {
+			mockFind.mockReturnValue("");
+			mockDownloadTool.mockResolvedValue("/tmp/download");
+			mockExtractTar.mockResolvedValue("/tmp/extracted");
+			mockCacheDir.mockResolvedValue("/cached/node/20.0.0");
+			mockAddPath.mockImplementation(() => {
+				throw new Error("Cannot modify PATH");
+			});
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installAndAddToPath("node", "20.0.0", "https://example.com/node.tar.gz"),
+				),
+			);
+
+			expect(error.operation).toBe("path");
+			expect(error.tool).toBe("node");
 		});
 	});
 });

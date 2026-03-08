@@ -94,6 +94,78 @@ describe("PackageManagerAdapterLive", () => {
 			expect(result.version).toBe("9.1.0");
 		});
 
+		it("detects from packageManager field and includes lockfile when present", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test", packageManager: "pnpm@9.1.0" }) },
+				"pnpm-lock.yaml": { content: "" },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("pnpm");
+			expect(result.version).toBe("9.1.0");
+			expect(result.lockfile).toBe("pnpm-lock.yaml");
+		});
+
+		it("detects npm from packageManager field", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test", packageManager: "npm@10.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("npm");
+			expect(result.version).toBe("10.0.0");
+		});
+
+		it("detects yarn from packageManager field", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test", packageManager: "yarn@4.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("yarn");
+			expect(result.version).toBe("4.0.0");
+		});
+
+		it("detects bun from packageManager field", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test", packageManager: "bun@1.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("bun");
+			expect(result.version).toBe("1.0.0");
+		});
+
+		it("detects deno from packageManager field", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test", packageManager: "deno@2.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("deno");
+			expect(result.version).toBe("2.0.0");
+		});
+
 		it("detects from lockfile scanning", async () => {
 			const files = {
 				"package.json": { content: JSON.stringify({ name: "test" }) },
@@ -111,6 +183,63 @@ describe("PackageManagerAdapterLive", () => {
 			expect(result.name).toBe("yarn");
 			expect(result.version).toBe("4.0.0");
 			expect(result.lockfile).toBe("yarn.lock");
+		});
+
+		it("detects bun from bun.lockb", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test" }) },
+				"bun.lockb": { content: "" },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["bun --version", { exitCode: 0, stdout: "1.0.0\n", stderr: "" }],
+			]);
+
+			const result = await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("bun");
+			expect(result.version).toBe("1.0.0");
+			expect(result.lockfile).toBe("bun.lockb");
+		});
+
+		it("detects deno from deno.lock", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test" }) },
+				"deno.lock": { content: "" },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["deno --version", { exitCode: 0, stdout: "2.0.0\n", stderr: "" }],
+			]);
+
+			const result = await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("deno");
+			expect(result.version).toBe("2.0.0");
+			expect(result.lockfile).toBe("deno.lock");
+		});
+
+		it("detects pnpm from pnpm-lock.yaml", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test" }) },
+				"pnpm-lock.yaml": { content: "" },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["pnpm --version", { exitCode: 0, stdout: "9.0.0\n", stderr: "" }],
+			]);
+
+			const result = await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("pnpm");
+			expect(result.version).toBe("9.0.0");
+			expect(result.lockfile).toBe("pnpm-lock.yaml");
 		});
 
 		it("fails when no packageManager field and no lockfile", async () => {
@@ -143,6 +272,77 @@ describe("PackageManagerAdapterLive", () => {
 			);
 			expect(result.name).toBe("npm");
 			expect(result.version).toBe("10.2.0");
+		});
+
+		it("ignores invalid packageManager field format", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test", packageManager: "invalid-format" }) },
+				"yarn.lock": { content: "" },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["yarn --version", { exitCode: 0, stdout: "4.0.0\n", stderr: "" }],
+			]);
+
+			const result = await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("yarn");
+			expect(result.version).toBe("4.0.0");
+		});
+
+		it("ignores non-string packageManager field", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ name: "test", packageManager: 123 }) },
+				"package-lock.json": { content: "" },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["npm --version", { exitCode: 0, stdout: "10.0.0\n", stderr: "" }],
+			]);
+
+			const result = await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("npm");
+			expect(result.version).toBe("10.0.0");
+		});
+
+		it("handles missing package.json gracefully", async () => {
+			const files = {
+				"yarn.lock": { content: "" },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["yarn --version", { exitCode: 0, stdout: "4.0.0\n", stderr: "" }],
+			]);
+
+			const result = await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("yarn");
+			expect(result.version).toBe("4.0.0");
+		});
+
+		it("handles invalid JSON in package.json gracefully", async () => {
+			const files = {
+				"package.json": { content: "not json" },
+				"pnpm-lock.yaml": { content: "" },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["pnpm --version", { exitCode: 0, stdout: "9.0.0\n", stderr: "" }],
+			]);
+
+			const result = await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.detect()),
+			);
+			expect(result.name).toBe("pnpm");
+			expect(result.version).toBe("9.0.0");
 		});
 	});
 
@@ -187,6 +387,119 @@ describe("PackageManagerAdapterLive", () => {
 				Effect.flatMap(PackageManagerAdapter, (svc) => svc.install({ frozen: false })),
 			);
 		});
+
+		it("runs yarn install --immutable for yarn with frozen lockfile", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "yarn@4.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["yarn install --immutable", { exitCode: 0, stdout: "", stderr: "" }],
+			]);
+
+			await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.install({ frozen: true })),
+			);
+		});
+
+		it("runs yarn install when frozen is false", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "yarn@4.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([["yarn install", { exitCode: 0, stdout: "", stderr: "" }]]);
+
+			await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.install({ frozen: false })),
+			);
+		});
+
+		it("runs bun install --frozen-lockfile for bun with frozen lockfile", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "bun@1.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["bun install --frozen-lockfile", { exitCode: 0, stdout: "", stderr: "" }],
+			]);
+
+			await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.install({ frozen: true })),
+			);
+		});
+
+		it("runs bun install when frozen is false", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "bun@1.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([["bun install", { exitCode: 0, stdout: "", stderr: "" }]]);
+
+			await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.install({ frozen: false })),
+			);
+		});
+
+		it("runs deno install (no frozen flag)", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "deno@2.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([["deno install", { exitCode: 0, stdout: "", stderr: "" }]]);
+
+			await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.install({ frozen: true })),
+			);
+		});
+
+		it("runs pnpm install when frozen is false", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "pnpm@9.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([["pnpm install", { exitCode: 0, stdout: "", stderr: "" }]]);
+
+			await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.install({ frozen: false })),
+			);
+		});
+
+		it("maps install failure to PackageManagerError", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "npm@10.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["npm ci", { exitCode: 1, stdout: "", stderr: "install failed" }],
+			]);
+
+			const error = await runFail(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.install()),
+			);
+			expect(error.operation).toBe("install");
+			expect(error.pm).toBe("npm");
+			expect(error.reason).toContain("Install failed");
+		});
+
+		it("passes cwd option to exec", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "npm@10.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([["npm ci", { exitCode: 0, stdout: "", stderr: "" }]]);
+
+			await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.install({ cwd: "/some/path" })),
+			);
+		});
 	});
 
 	describe("getCachePaths", () => {
@@ -221,10 +534,104 @@ describe("PackageManagerAdapterLive", () => {
 			);
 			expect(result).toEqual(["/home/user/.local/share/pnpm/store"]);
 		});
+
+		it("queries correct command for yarn", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "yarn@4.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["yarn cache dir", { exitCode: 0, stdout: "/home/user/.yarn/cache\n", stderr: "" }],
+			]);
+
+			const result = await run(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getCachePaths()),
+			);
+			expect(result).toEqual(["/home/user/.yarn/cache"]);
+		});
+
+		it("returns hardcoded path for bun", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "bun@1.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getCachePaths()),
+			);
+			expect(result[0]).toContain(".bun/install/cache");
+		});
+
+		it("returns hardcoded path for deno", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "deno@2.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getCachePaths()),
+			);
+			expect(result[0]).toContain("deno");
+		});
+
+		it("maps npm cache command failure to PackageManagerError", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "npm@10.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["npm config get cache", { exitCode: 1, stdout: "", stderr: "error" }],
+			]);
+
+			const error = await runFail(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getCachePaths()),
+			);
+			expect(error.operation).toBe("cache");
+			expect(error.pm).toBe("npm");
+			expect(error.reason).toContain("Failed to get cache paths");
+		});
+
+		it("maps pnpm cache command failure to PackageManagerError", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "pnpm@9.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["pnpm store path", { exitCode: 1, stdout: "", stderr: "error" }],
+			]);
+
+			const error = await runFail(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getCachePaths()),
+			);
+			expect(error.operation).toBe("cache");
+			expect(error.pm).toBe("pnpm");
+		});
+
+		it("maps yarn cache command failure to PackageManagerError", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "yarn@4.0.0" }) },
+			};
+			const responses = new Map<string, CommandResponse>([
+				["yarn cache dir", { exitCode: 1, stdout: "", stderr: "error" }],
+			]);
+
+			const error = await runFail(
+				files,
+				responses,
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getCachePaths()),
+			);
+			expect(error.operation).toBe("cache");
+			expect(error.pm).toBe("yarn");
+		});
 	});
 
 	describe("getLockfilePaths", () => {
-		it("returns correct lockfiles for detected PM", async () => {
+		it("returns correct lockfiles for yarn", async () => {
 			const files = {
 				"package.json": { content: JSON.stringify({ packageManager: "yarn@4.0.0" }) },
 			};
@@ -235,6 +642,58 @@ describe("PackageManagerAdapterLive", () => {
 				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getLockfilePaths()),
 			);
 			expect(result).toEqual(["yarn.lock"]);
+		});
+
+		it("returns correct lockfiles for npm", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "npm@10.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getLockfilePaths()),
+			);
+			expect(result).toEqual(["package-lock.json"]);
+		});
+
+		it("returns correct lockfiles for pnpm", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "pnpm@9.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getLockfilePaths()),
+			);
+			expect(result).toEqual(["pnpm-lock.yaml"]);
+		});
+
+		it("returns correct lockfiles for bun", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "bun@1.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getLockfilePaths()),
+			);
+			expect(result).toEqual(["bun.lockb", "bun.lock"]);
+		});
+
+		it("returns correct lockfiles for deno", async () => {
+			const files = {
+				"package.json": { content: JSON.stringify({ packageManager: "deno@2.0.0" }) },
+			};
+
+			const result = await run(
+				files,
+				new Map(),
+				Effect.flatMap(PackageManagerAdapter, (svc) => svc.getLockfilePaths()),
+			);
+			expect(result).toEqual(["deno.lock"]);
 		});
 	});
 

@@ -121,6 +121,7 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 		importToolCache(name, version).pipe(
 			Effect.map((tc) => tc.find(name, version) !== ""),
 			Effect.catchAll(() => Effect.succeed(false)),
+			Effect.catchAllDefect(() => Effect.succeed(false)),
 			Effect.withSpan("ToolInstaller.isCached", { attributes: { tool: name, version } }),
 		),
 

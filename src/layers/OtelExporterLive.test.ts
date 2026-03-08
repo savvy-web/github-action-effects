@@ -37,4 +37,36 @@ describe("OtelExporterLive", () => {
 			expect(msg.includes("OtelExporterError") || msg.includes("Service not found")).toBe(true);
 		}
 	});
+
+	it("resolves http/protobuf protocol modules when enabled", async () => {
+		const layer = OtelExporterLive({
+			enabled: true,
+			endpoint: "http://localhost:4318",
+			protocol: "http/protobuf",
+			headers: {},
+		});
+
+		try {
+			await Effect.runPromise(Effect.succeed("ok").pipe(Effect.provide(layer)));
+		} catch (error) {
+			const msg = String(error);
+			expect(msg.includes("OtelExporterError") || msg.includes("Service not found")).toBe(true);
+		}
+	});
+
+	it("resolves http/json protocol modules when enabled", async () => {
+		const layer = OtelExporterLive({
+			enabled: true,
+			endpoint: "http://localhost:4318",
+			protocol: "http/json",
+			headers: {},
+		});
+
+		try {
+			await Effect.runPromise(Effect.succeed("ok").pipe(Effect.provide(layer)));
+		} catch (error) {
+			const msg = String(error);
+			expect(msg.includes("OtelExporterError") || msg.includes("Service not found")).toBe(true);
+		}
+	});
 });

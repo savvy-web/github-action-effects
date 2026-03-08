@@ -46,4 +46,41 @@ describe("SemverResolver", () => {
 		const exit = await Effect.runPromiseExit(SemverResolver.parse("not-a-version"));
 		expect(Exit.isFailure(exit)).toBe(true);
 	});
+
+	it("fails compare with invalid semver", async () => {
+		const exit = await Effect.runPromiseExit(SemverResolver.compare("invalid", "1.0.0"));
+		expect(Exit.isFailure(exit)).toBe(true);
+	});
+
+	it("fails increment with invalid version", async () => {
+		const exit = await Effect.runPromiseExit(SemverResolver.increment("not-valid", "patch"));
+		expect(Exit.isFailure(exit)).toBe(true);
+	});
+
+	it("parses version without prerelease or build", async () => {
+		const result = await Effect.runPromise(SemverResolver.parse("2.0.0"));
+		expect(result).toEqual({ major: 2, minor: 0, patch: 0 });
+		expect(result).not.toHaveProperty("prerelease");
+		expect(result).not.toHaveProperty("build");
+	});
+
+	it("parses version with build metadata", async () => {
+		const result = await Effect.runPromise(SemverResolver.parse("1.0.0+build.123"));
+		expect(result).toEqual({ major: 1, minor: 0, patch: 0, build: "build.123" });
+	});
+
+	it("increments prerelease", async () => {
+		const result = await Effect.runPromise(SemverResolver.increment("1.0.0", "prerelease"));
+		expect(result).toBe("1.0.1-0");
+	});
+
+	it("satisfies returns false for non-matching range", async () => {
+		const result = await Effect.runPromise(SemverResolver.satisfies("3.0.0", "~1.2.0"));
+		expect(result).toBe(false);
+	});
+
+	it("latestInRange fails with descriptive error", async () => {
+		const exit = await Effect.runPromiseExit(SemverResolver.latestInRange(["1.0.0", "2.0.0"], ">=5.0.0"));
+		expect(Exit.isFailure(exit)).toBe(true);
+	});
 });

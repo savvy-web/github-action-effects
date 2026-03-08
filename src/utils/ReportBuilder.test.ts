@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { ActionOutputsTest } from "../layers/ActionOutputsTest.js";
+import { CheckRunTest } from "../layers/CheckRunTest.js";
+import { PullRequestCommentTest } from "../layers/PullRequestCommentTest.js";
 import { ReportBuilder } from "./ReportBuilder.js";
 import type { SpanSummary } from "./TelemetryReport.js";
 
@@ -87,6 +89,45 @@ describe("ReportBuilder", () => {
 			expect(state.summaries).toHaveLength(1);
 			expect(state.summaries[0]).toContain("## Test Report");
 			expect(state.summaries[0]).toContain("| Count | 42 |");
+		});
+	});
+
+	describe("toComment", () => {
+		it("calls PullRequestComment.upsert with rendered markdown", async () => {
+			const prState = PullRequestCommentTest.empty();
+			const report = ReportBuilder.create("PR Report").stat("Status", "pass");
+
+			await Effect.runPromise(
+				report.toComment(42, "test-key").pipe(Effect.provide(PullRequestCommentTest.layer(prState))),
+			);
+
+			const comments = prState.comments.get(42);
+			expect(comments).toHaveLength(1);
+			expect(comments?.[0]?.body).toContain("## PR Report");
+			expect(comments?.[0]?.body).toContain("| Status | pass |");
+		});
+	});
+
+	describe("toCheckRun", () => {
+		it("calls CheckRun.update with rendered markdown", async () => {
+			const checkState = CheckRunTest.empty();
+
+			// Manually push a run record so update finds it
+			checkState.runs.push({
+				id: 99,
+				name: "test",
+				headSha: "abc",
+				status: "in_progress",
+				outputs: [],
+			});
+
+			const report = ReportBuilder.create("Check Report").stat("Tests", 42);
+			await Effect.runPromise(report.toCheckRun(99).pipe(Effect.provide(CheckRunTest.layer(checkState))));
+
+			expect(checkState.runs[0]?.outputs).toHaveLength(1);
+			expect(checkState.runs[0]?.outputs[0]?.title).toBe("Check Report");
+			expect(checkState.runs[0]?.outputs[0]?.text).toContain("## Check Report");
+			expect(checkState.runs[0]?.outputs[0]?.text).toContain("| Tests | 42 |");
 		});
 	});
 

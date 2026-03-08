@@ -112,6 +112,85 @@ describe("GitTagLive", () => {
 		});
 	});
 
+	describe("list", () => {
+		it("lists tags without prefix (undefined)", async () => {
+			mockListMatchingRefs.mockResolvedValue({
+				data: [
+					{ ref: "refs/tags/v1.0.0", object: { sha: "abc123" } },
+					{ ref: "refs/tags/v2.0.0", object: { sha: "def456" } },
+				],
+			});
+			const result = await run(Effect.flatMap(GitTag, (svc) => svc.list()));
+			expect(result).toEqual([
+				{ tag: "v1.0.0", sha: "abc123" },
+				{ tag: "v2.0.0", sha: "def456" },
+			]);
+			expect(mockListMatchingRefs).toHaveBeenCalledWith(
+				expect.objectContaining({
+					ref: "tags/",
+				}),
+			);
+		});
+
+		it("maps API error to GitTagError without tag field", async () => {
+			mockListMatchingRefs.mockRejectedValue(new Error("api error"));
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitTag, (svc) => svc.list("v1.")).pipe(Effect.catchAll((error) => Effect.succeed(error))),
+					testLayer,
+				),
+			);
+			expect(result).toHaveProperty("_tag", "GitTagError");
+			expect(result).toHaveProperty("operation", "list");
+			expect(result).not.toHaveProperty("tag");
+		});
+	});
+
+	describe("error mapping with tag parameter", () => {
+		it("includes tag in error for create failures", async () => {
+			mockCreateRef.mockRejectedValue(new Error("api error"));
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitTag, (svc) => svc.create("v1.0.0", "abc123")).pipe(
+						Effect.catchAll((error) => Effect.succeed(error)),
+					),
+					testLayer,
+				),
+			);
+			expect(result).toHaveProperty("_tag", "GitTagError");
+			expect(result).toHaveProperty("operation", "create");
+			expect(result).toHaveProperty("tag", "v1.0.0");
+		});
+
+		it("includes tag in error for delete failures", async () => {
+			mockDeleteRef.mockRejectedValue(new Error("api error"));
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitTag, (svc) => svc.delete("v2.0.0")).pipe(Effect.catchAll((error) => Effect.succeed(error))),
+					testLayer,
+				),
+			);
+			expect(result).toHaveProperty("_tag", "GitTagError");
+			expect(result).toHaveProperty("operation", "delete");
+			expect(result).toHaveProperty("tag", "v2.0.0");
+		});
+
+		it("includes tag in error for resolve failures", async () => {
+			mockGetRef.mockRejectedValue(new Error("not found"));
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitTag, (svc) => svc.resolve("v3.0.0")).pipe(
+						Effect.catchAll((error) => Effect.succeed(error)),
+					),
+					testLayer,
+				),
+			);
+			expect(result).toHaveProperty("_tag", "GitTagError");
+			expect(result).toHaveProperty("operation", "resolve");
+			expect(result).toHaveProperty("tag", "v3.0.0");
+		});
+	});
+
 	describe("resolve", () => {
 		it("returns the SHA from the ref", async () => {
 			mockGetRef.mockResolvedValue({

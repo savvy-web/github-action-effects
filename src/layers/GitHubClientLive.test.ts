@@ -87,6 +87,73 @@ describe("GitHubClientLive", () => {
 		});
 	});
 
+	describe("paginate", () => {
+		it("collects results across multiple pages", async () => {
+			let callCount = 0;
+			const result = await run(
+				Effect.flatMap(GitHubClient, (client) =>
+					client.paginate(
+						"test.paginate",
+						(_octokit, page, _perPage) => {
+							callCount++;
+							if (page === 1) return Promise.resolve({ data: [1, 2, 3] });
+							if (page === 2) return Promise.resolve({ data: [4, 5, 6] });
+							return Promise.resolve({ data: [7] });
+						},
+						{ perPage: 3 },
+					),
+				),
+			);
+			expect(callCount).toBe(3);
+			expect(result).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		});
+
+		it("stops when response has fewer items than perPage", async () => {
+			let callCount = 0;
+			const result = await run(
+				Effect.flatMap(GitHubClient, (client) =>
+					client.paginate(
+						"test.partial",
+						(_octokit, _page, _perPage) => {
+							callCount++;
+							return Promise.resolve({ data: [1, 2] });
+						},
+						{ perPage: 5 },
+					),
+				),
+			);
+			expect(callCount).toBe(1);
+			expect(result).toEqual([1, 2]);
+		});
+
+		it("stops when maxPages is reached", async () => {
+			let callCount = 0;
+			const result = await run(
+				Effect.flatMap(GitHubClient, (client) =>
+					client.paginate(
+						"test.maxPages",
+						(_octokit, _page, _perPage) => {
+							callCount++;
+							return Promise.resolve({ data: [1, 2, 3] });
+						},
+						{ perPage: 3, maxPages: 2 },
+					),
+				),
+			);
+			expect(callCount).toBe(2);
+			expect(result).toEqual([1, 2, 3, 1, 2, 3]);
+		});
+
+		it("wraps pagination errors", async () => {
+			const exit = await runExit(
+				Effect.flatMap(GitHubClient, (client) =>
+					client.paginate("test.paginateErr", () => Promise.reject(new Error("page fail"))),
+				),
+			);
+			expect(exit._tag).toBe("Failure");
+		});
+	});
+
 	describe("repo", () => {
 		it("parses GITHUB_REPOSITORY into owner and repo", async () => {
 			const result = await run(Effect.flatMap(GitHubClient, (client) => client.repo));
@@ -97,6 +164,18 @@ describe("GitHubClientLive", () => {
 			delete process.env.GITHUB_REPOSITORY;
 			const exit = await runExit(Effect.flatMap(GitHubClient, (client) => client.repo));
 			expect(exit._tag).toBe("Failure");
+		});
+
+		it("fails when GITHUB_REPOSITORY is empty string", async () => {
+			process.env.GITHUB_REPOSITORY = "";
+			const exit = await runExit(Effect.flatMap(GitHubClient, (client) => client.repo));
+			expect(exit._tag).toBe("Failure");
+		});
+
+		it("handles repository with no slash gracefully", async () => {
+			process.env.GITHUB_REPOSITORY = "noslash";
+			const result = await run(Effect.flatMap(GitHubClient, (client) => client.repo));
+			expect(result).toEqual({ owner: "noslash", repo: "" });
 		});
 	});
 });

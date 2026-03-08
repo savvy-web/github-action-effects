@@ -1,6 +1,6 @@
 import { FileSystem } from "@effect/platform";
 import { Effect, Layer, Schema } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ConfigLoaderError } from "../errors/ConfigLoaderError.js";
 import { ConfigLoader } from "../services/ConfigLoader.js";
 import { ConfigLoaderLive } from "./ConfigLoaderLive.js";
@@ -109,6 +109,40 @@ describe("ConfigLoaderLive", () => {
 			);
 			expect(error.operation).toBe("parse");
 			expect(error.path).toBe("/bad.json");
+			expect(error.reason).toContain("Invalid JSON:");
+		});
+
+		it("includes Error.message in parse error reason when Error is thrown", async () => {
+			const files = {
+				"/bad.json": { content: "not valid json {" },
+			};
+
+			const error = await runFail(
+				files,
+				Effect.flatMap(ConfigLoader, (svc) => svc.loadJson("/bad.json", TestConfig)),
+			);
+			expect(error.reason).toMatch(/Invalid JSON: .+/);
+		});
+
+		it("uses String(error) in parse error reason when non-Error is thrown", async () => {
+			vi.spyOn(JSON, "parse").mockImplementation(() => {
+				throw "string error from parse";
+			});
+
+			const files = {
+				"/nonError.json": { content: '{"name":"a","version":1}' },
+			};
+
+			try {
+				const error = await runFail(
+					files,
+					Effect.flatMap(ConfigLoader, (svc) => svc.loadJson("/nonError.json", TestConfig)),
+				);
+				expect(error.operation).toBe("parse");
+				expect(error.reason).toBe("Invalid JSON: string error from parse");
+			} finally {
+				vi.restoreAllMocks();
+			}
 		});
 
 		it("fails with validate error for schema mismatch", async () => {
@@ -155,6 +189,50 @@ describe("ConfigLoaderLive", () => {
 			expect(error.path).toBe("/missing.jsonc");
 		});
 
+		it("fails with parse error containing Error.message when jsonc parse throws Error", async () => {
+			const jsoncParser = await import("jsonc-parser");
+			const spy = vi.spyOn(jsoncParser, "parse").mockImplementation(() => {
+				throw new Error("jsonc parse failure");
+			});
+
+			const files = {
+				"/bad.jsonc": { content: "{invalid" },
+			};
+
+			try {
+				const error = await runFail(
+					files,
+					Effect.flatMap(ConfigLoader, (svc) => svc.loadJsonc("/bad.jsonc", TestConfig)),
+				);
+				expect(error.operation).toBe("parse");
+				expect(error.reason).toBe("Invalid JSONC: jsonc parse failure");
+			} finally {
+				spy.mockRestore();
+			}
+		});
+
+		it("fails with parse error using String(error) when jsonc parse throws non-Error", async () => {
+			const jsoncParser = await import("jsonc-parser");
+			const spy = vi.spyOn(jsoncParser, "parse").mockImplementation(() => {
+				throw "jsonc string error";
+			});
+
+			const files = {
+				"/bad2.jsonc": { content: "{}" },
+			};
+
+			try {
+				const error = await runFail(
+					files,
+					Effect.flatMap(ConfigLoader, (svc) => svc.loadJsonc("/bad2.jsonc", TestConfig)),
+				);
+				expect(error.operation).toBe("parse");
+				expect(error.reason).toBe("Invalid JSONC: jsonc string error");
+			} finally {
+				spy.mockRestore();
+			}
+		});
+
 		it("fails with validate error for schema mismatch", async () => {
 			const files = {
 				"/wrong.jsonc": { content: '{ "name": 123, "version": "bad" }' },
@@ -191,6 +269,52 @@ describe("ConfigLoaderLive", () => {
 			);
 			expect(error.operation).toBe("read");
 			expect(error.path).toBe("/missing.yml");
+		});
+
+		it("fails with parse error containing Error.message when yaml parse throws Error", async () => {
+			vi.doMock("yaml", () => ({
+				parse: () => {
+					throw new Error("yaml parse failure");
+				},
+			}));
+
+			const files = {
+				"/bad.yml": { content: "invalid: yaml: content" },
+			};
+
+			try {
+				const error = await runFail(
+					files,
+					Effect.flatMap(ConfigLoader, (svc) => svc.loadYaml("/bad.yml", TestConfig)),
+				);
+				expect(error.operation).toBe("parse");
+				expect(error.reason).toBe("Invalid YAML: yaml parse failure");
+			} finally {
+				vi.doUnmock("yaml");
+			}
+		});
+
+		it("fails with parse error using String(error) when yaml parse throws non-Error", async () => {
+			vi.doMock("yaml", () => ({
+				parse: () => {
+					throw "yaml string error";
+				},
+			}));
+
+			const files = {
+				"/bad2.yml": { content: "key: value" },
+			};
+
+			try {
+				const error = await runFail(
+					files,
+					Effect.flatMap(ConfigLoader, (svc) => svc.loadYaml("/bad2.yml", TestConfig)),
+				);
+				expect(error.operation).toBe("parse");
+				expect(error.reason).toBe("Invalid YAML: yaml string error");
+			} finally {
+				vi.doUnmock("yaml");
+			}
 		});
 
 		it("fails with validate error for schema mismatch", async () => {
