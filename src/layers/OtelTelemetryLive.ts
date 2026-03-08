@@ -8,6 +8,7 @@ import { Effect, Layer } from "effect";
 export interface OtelConfig {
 	readonly serviceName?: string;
 	readonly serviceVersion?: string;
+	readonly resourceAttributes?: Record<string, string>;
 }
 
 /**
