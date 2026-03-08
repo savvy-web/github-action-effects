@@ -142,6 +142,8 @@ export type { ToolInstallOptions } from "./services/ToolInstaller.js";
 export { ToolInstaller } from "./services/ToolInstaller.js";
 export type { PollOptions, WorkflowRunStatus } from "./services/WorkflowDispatch.js";
 export { WorkflowDispatch } from "./services/WorkflowDispatch.js";
+export type { AccumulateResult } from "./utils/ErrorAccumulator.js";
+export { ErrorAccumulator } from "./utils/ErrorAccumulator.js";
 export { GithubMarkdown } from "./utils/GithubMarkdown.js";
 export type { Report } from "./utils/ReportBuilder.js";
 export { ReportBuilder } from "./utils/ReportBuilder.js";
