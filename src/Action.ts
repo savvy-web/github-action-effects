@@ -149,9 +149,13 @@ export const Action = {
 				}
 
 				// Emit Effect span trace via debug (visible with RUNNER_DEBUG=1)
-				const spanTrace = Cause.pretty(cause);
-				if (spanTrace.trim() !== "") {
-					core.debug(`Effect span trace:\n${spanTrace}`);
+				try {
+					const spanTrace = Cause.pretty(cause);
+					if (spanTrace.trim() !== "") {
+						core.debug(`Effect span trace:\n${spanTrace}`);
+					}
+				} catch {
+					// pretty failed — no span trace available
 				}
 
 				const fullMessage = stack ? `Action failed: ${message}\n${stack}` : `Action failed: ${message}`;
@@ -251,8 +255,8 @@ export const Action = {
 			) {
 				const obj = squashed as Record<string, unknown>;
 				const tag = obj._tag as string;
-				const reason = obj.reason ?? obj.message ?? "";
-				return `[${tag}] ${String(reason)}`;
+				const reason = obj.reason ?? obj.message;
+				return reason != null ? `[${tag}] ${String(reason)}` : `[${tag}]`;
 			}
 
 			// Standard Error

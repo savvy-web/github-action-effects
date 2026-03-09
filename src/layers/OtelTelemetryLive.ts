@@ -13,8 +13,8 @@ export interface OtelConfig {
 }
 
 /**
- * Create a layer that bridges Effect's Tracer to OpenTelemetry.
- * Requires `@effect/opentelemetry` and `@opentelemetry/api` as peer dependencies.
+ * Create a layer that bridges Effect's Tracer to OpenTelemetry
+ * via the global TracerProvider.
  *
  * When provided, this replaces the InMemoryTracer with an OTel-backed tracer.
  * All `Effect.withSpan` calls will export spans to the configured OTel collector.
@@ -30,6 +30,9 @@ export interface OtelConfig {
  *
  * @public
  */
+// Cast: @effect/opentelemetry layerGlobal returns a layer whose requirements
+// are satisfied by the Resource.layer composition; the cast aligns the type
+// with our Layer.Layer<never> return signature.
 export const OtelTelemetryLive = (config?: OtelConfig): Layer.Layer<never> =>
 	EffectOtel.Tracer.layerGlobal.pipe(
 		Layer.provide(
