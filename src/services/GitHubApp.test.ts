@@ -100,6 +100,28 @@ describe("GitHubApp", () => {
 		});
 	});
 
+	describe("botIdentity", () => {
+		it("returns bot identity for a custom app slug", async () => {
+			const state = GitHubAppTest.empty();
+			const result = await run(
+				state,
+				Effect.flatMap(GitHubApp, (svc) => Effect.succeed(svc.botIdentity("my-app"))),
+			);
+			expect(result.name).toBe("my-app[bot]");
+			expect(result.email).toBe("my-app[bot]@users.noreply.github.com");
+		});
+
+		it("returns default github-actions bot when no slug", async () => {
+			const state = GitHubAppTest.empty();
+			const result = await run(
+				state,
+				Effect.flatMap(GitHubApp, (svc) => Effect.succeed(svc.botIdentity())),
+			);
+			expect(result.name).toBe("github-actions[bot]");
+			expect(result.email).toBe("41898282+github-actions[bot]@users.noreply.github.com");
+		});
+	});
+
 	describe("GitHubAppError", () => {
 		it("is a tagged error with correct fields", () => {
 			const error = new GitHubAppError({

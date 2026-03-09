@@ -30,6 +30,14 @@ const makeTestGitHubApp = (state: GitHubAppTestState): GitHubApp => {
 				state.revokeCalls.push(token);
 			}),
 
+		botIdentity: (appSlug) => {
+			const name = appSlug ? `${appSlug}[bot]` : "github-actions[bot]";
+			const email = appSlug
+				? `${name}@users.noreply.github.com`
+				: "41898282+github-actions[bot]@users.noreply.github.com";
+			return { name, email };
+		},
+
 		withToken: (appId, privateKey, effect) =>
 			Effect.flatMap(impl.generateToken(appId, privateKey), (tokenInfo) =>
 				Effect.matchCauseEffect(effect(tokenInfo.token), {

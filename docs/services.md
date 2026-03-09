@@ -326,6 +326,53 @@ const program = Effect.gen(function* () {
 });
 ```
 
+### PullRequest
+
+Full pull request lifecycle management: get, list, create, update, merge,
+and the idempotent `getOrCreate` pattern.
+
+```typescript
+import { Effect } from "effect";
+import { PullRequest, PullRequestLive } from "@savvy-web/github-action-effects";
+
+const program = Effect.gen(function* () {
+  const pr = yield* PullRequest;
+
+  // Get a single PR
+  const info = yield* pr.get(123);
+
+  // List open PRs targeting main
+  const prs = yield* pr.list({ base: "main", state: "open" });
+
+  // Create a PR with optional auto-merge
+  const created = yield* pr.create({
+    title: "chore: update deps",
+    body: "Automated dependency update",
+    head: "deps/update",
+    base: "main",
+    autoMerge: "squash",
+  });
+
+  // Idempotent: find existing PR for head->base or create one
+  const { created: isNew } = yield* pr.getOrCreate({
+    head: "release/v1",
+    base: "main",
+    title: "Release v1.0.0",
+    body: "Release notes",
+  });
+
+  // Merge a PR
+  yield* pr.merge(created.number, { method: "squash" });
+
+  // Add labels and request reviewers
+  yield* pr.addLabels(created.number, ["automated", "dependencies"]);
+  yield* pr.requestReviewers(created.number, {
+    reviewers: ["octocat"],
+    teamReviewers: ["core-team"],
+  });
+});
+```
+
 ### PullRequestComment
 
 Create and manage PR comments with sticky (upsert) support.
@@ -378,6 +425,7 @@ const program = Effect.gen(function* () {
   // Commits (verified via Git Data API)
   const commitSha = yield* commits.commitFiles("main", "chore: update", [
     { path: "package.json", content: newContent },
+    { path: "obsolete.config.js", sha: null },  // delete a file
   ]);
 });
 ```

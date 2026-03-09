@@ -52,6 +52,14 @@ export const GitHubAppLive: Layer.Layer<GitHubApp> = Layer.succeed(GitHubApp, {
 	generateToken,
 	revokeToken,
 
+	botIdentity: (appSlug) => {
+		const name = appSlug ? `${appSlug}[bot]` : "github-actions[bot]";
+		const email = appSlug
+			? `${name}@users.noreply.github.com`
+			: "41898282+github-actions[bot]@users.noreply.github.com";
+		return { name, email };
+	},
+
 	withToken: (appId, privateKey, effect) =>
 		Effect.acquireUseRelease(
 			generateToken(appId, privateKey),

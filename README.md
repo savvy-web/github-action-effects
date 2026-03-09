@@ -57,10 +57,11 @@ Action.run(program);
 | GitHubIssue | List, close, comment, get linked issues from PRs | `@actions/github` |
 | GitHubApp | GitHub App token generation and revocation with bracket pattern | `@octokit/auth-app` |
 | CheckRun | Create, update, complete check runs with annotations | `@actions/github` |
+| PullRequest | Get, list, create, update, merge PRs; getOrCreate, labels, reviewers | `@actions/github` |
 | PullRequestComment | Create, upsert (sticky), find, delete PR comments | `@actions/github` |
 | GitTag | Create, delete, list, resolve tags via Git Data API | `@actions/github` |
 | GitBranch | Create, delete, exists, getSha, reset branches | `@actions/github` |
-| GitCommit | Create trees, commits, update refs, commitFiles convenience | `@actions/github` |
+| GitCommit | Create trees, commits, update refs, commitFiles convenience (supports file deletions) | `@actions/github` |
 | CommandRunner | Structured shell exec with capture, JSON parsing, line splitting | `@actions/exec` |
 | ConfigLoader | Load and validate JSON, JSONC, YAML config files | `jsonc-parser`, `yaml` |
 | DryRun | Mutation guard that skips side effects with a fallback value | -- |

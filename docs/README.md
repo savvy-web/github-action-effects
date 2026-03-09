@@ -78,10 +78,11 @@ npm install jsonc-parser yaml
 | GitHubIssue | List, close, comment, get linked issues |
 | GitHubApp | GitHub App token lifecycle with bracket pattern |
 | CheckRun | Create, update, complete check runs with annotations |
+| PullRequest | PR lifecycle: get, list, create, update, merge, getOrCreate, labels, reviewers |
 | PullRequestComment | Sticky (upsert) PR comments with marker keys |
 | GitTag | CRUD for tags via Git Data API |
 | GitBranch | CRUD for branches via Git Data API |
-| GitCommit | Create trees, commits, update refs |
+| GitCommit | Create trees, commits, update refs (supports file deletions via `sha: null`) |
 | CommandRunner | Structured shell execution with capture and JSON parsing |
 | ConfigLoader | Load and validate JSON, JSONC, YAML config files |
 | DryRun | Mutation guard with fallback values |

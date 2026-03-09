@@ -3,6 +3,16 @@ import { Context, Schema } from "effect";
 import type { GitHubAppError } from "../errors/GitHubAppError.js";
 
 /**
+ * Bot identity for commit attribution.
+ *
+ * @public
+ */
+export interface BotIdentity {
+	readonly name: string;
+	readonly email: string;
+}
+
+/**
  * An installation token generated from a GitHub App.
  *
  * @public
@@ -38,6 +48,17 @@ export interface GitHubApp {
 
 	/** Revoke a previously generated installation token. */
 	readonly revokeToken: (token: string) => Effect.Effect<void, GitHubAppError>;
+
+	/**
+	 * Get bot identity for commit attribution from an app slug.
+	 *
+	 * When a custom `appSlug` is provided, the email uses the format
+	 * `appSlug[bot]@users.noreply.github.com` (without a numeric user-ID prefix).
+	 * This may prevent commits from appearing as "verified" on GitHub.
+	 * The default `github-actions[bot]` identity includes the well-known numeric
+	 * ID prefix (`41898282+`) that GitHub recognises for verified attribution.
+	 */
+	readonly botIdentity: (appSlug?: string) => BotIdentity;
 
 	/**
 	 * Bracket pattern: generate token, run effect, then revoke.

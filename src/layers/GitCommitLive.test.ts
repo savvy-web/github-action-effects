@@ -68,6 +68,27 @@ describe("GitCommitLive", () => {
 			);
 		});
 
+		it("passes sha: null for deletion entries", async () => {
+			mockCreateTree.mockResolvedValue({ data: { sha: "tree-del" } });
+			const sha = await run(
+				Effect.flatMap(GitCommit, (svc) =>
+					svc.createTree([
+						{ path: "keep.txt", mode: "100644", content: "hello" },
+						{ path: "remove.txt", mode: "100644", sha: null },
+					]),
+				),
+			);
+			expect(sha).toBe("tree-del");
+			expect(mockCreateTree).toHaveBeenCalledWith(
+				expect.objectContaining({
+					tree: [
+						{ path: "keep.txt", mode: "100644", type: "blob", content: "hello" },
+						{ path: "remove.txt", mode: "100644", sha: null },
+					],
+				}),
+			);
+		});
+
 		it("fails on API error", async () => {
 			mockCreateTree.mockRejectedValue(new Error("api error"));
 			const exit = await runExit(
@@ -175,6 +196,31 @@ describe("GitCommitLive", () => {
 					ref: "heads/main",
 					sha: "new-commit-sha",
 					force: false,
+				}),
+			);
+		});
+
+		it("handles mixed additions and deletions", async () => {
+			mockGetRef.mockResolvedValue({ data: { object: { sha: "parent-sha" } } });
+			mockCreateTree.mockResolvedValue({ data: { sha: "new-tree-sha" } });
+			mockCreateCommit.mockResolvedValue({ data: { sha: "new-commit-sha" } });
+			mockUpdateRef.mockResolvedValue({ data: {} });
+
+			await run(
+				Effect.flatMap(GitCommit, (svc) =>
+					svc.commitFiles("main", "mixed changes", [
+						{ path: "added.md", content: "# New" },
+						{ path: "removed.md", sha: null },
+					]),
+				),
+			);
+
+			expect(mockCreateTree).toHaveBeenCalledWith(
+				expect.objectContaining({
+					tree: [
+						{ path: "added.md", mode: "100644", type: "blob", content: "# New" },
+						{ path: "removed.md", mode: "100644", sha: null },
+					],
 				}),
 			);
 		});

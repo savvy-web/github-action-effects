@@ -1,4 +1,21 @@
+---
+status: current
+module: github-action-effects
+category: architecture
+created: 2026-03-06
+updated: 2026-03-09
+last-synced: 2026-03-09
+completeness: 85
+related:
+  - ./index.md
+  - ./services.md
+  - ./layers.md
+dependencies: []
+---
+
 # Integration Points
+
+## Overview
 
 Peer dependencies, external integrations, and how services compose in
 `@savvy-web/github-action-effects`.
@@ -126,3 +143,18 @@ env var), `Action.run()` automatically wires up OTLP exporters for traces and
 metrics. `GitHubOtelAttributes.fromEnvironment()` maps GitHub environment
 variables to OTel semantic conventions for resource attributes. See
 [otel-exporter-inputs.md](./otel-exporter-inputs.md) for details.
+
+## Current State
+
+All peer dependencies and service tiers are documented with a complete dependency graph. Optional integrations for OpenTelemetry and the action builder are specified with their activation conditions.
+
+## Rationale
+
+Separating required from optional peer dependencies and organizing services into dependency tiers ensures consumers only install what they need, while the tiered graph makes layer composition predictable and testable at each level.
+
+## Related Documentation
+
+- [Architecture Index](./index.md) -- overall architecture and design overview
+- [Services](./services.md) -- service interface definitions
+- [Layers](./layers.md) -- layer dependency graph and composition
+- [OTel Exporter Inputs](./otel-exporter-inputs.md) -- OpenTelemetry exporter configuration

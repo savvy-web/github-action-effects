@@ -1,3 +1,18 @@
+---
+status: current
+module: github-action-effects
+category: architecture
+created: 2026-03-06
+updated: 2026-03-09
+last-synced: 2026-03-09
+completeness: 90
+related:
+  - ./index.md
+  - ./services.md
+  - ./testing-strategy.md
+dependencies: []
+---
+
 # Layers
 
 Layer patterns, live vs test implementations, and service dependency graph for
@@ -5,6 +20,16 @@ Layer patterns, live vs test implementations, and service dependency graph for
 
 See [index.md](./index.md) for architecture overview.
 See [services.md](./services.md) for service interface descriptions.
+
+---
+
+## Overview
+
+This document describes the layer architecture for all services. Each service
+has a `Live` layer backed by real platform calls (e.g., `@actions/core`,
+`@actions/github`) and a `Test` layer backed by in-memory state for unit
+testing. The document also covers the service dependency graph and layer
+composition patterns.
 
 ---
 
@@ -328,3 +353,24 @@ const MyActionLayer = Layer.mergeAll(
   CheckRunLive,
 ).pipe(Layer.provide(GitHubClientLive(token)))
 ```
+
+---
+
+## Current State
+
+All services have both live and test layer implementations. The three-tier
+dependency graph is stable, and layer composition patterns are well-established
+with `Action.run()` providing the core layers automatically.
+
+## Rationale
+
+Separating live and test layers allows services to be tested entirely in-memory
+without touching real GitHub APIs or `@actions/core`. The namespace object
+pattern for test layers (`.empty()` / `.layer(state)`) provides ergonomic setup
+while remaining api-extractor compatible.
+
+## Related Documentation
+
+- [index.md](./index.md) -- Architecture overview and design decisions
+- [services.md](./services.md) -- Service interface descriptions
+- [testing-strategy.md](./testing-strategy.md) -- Testing approach using test layers
