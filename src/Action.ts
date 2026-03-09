@@ -261,6 +261,7 @@ export const Action = {
 			) {
 				const obj = squashed as Record<string, unknown>;
 				const tag = obj._tag as string;
+				// Use || (not ??) so empty-string message (Data.TaggedError default) falls through to reason
 				const reason = obj.message || obj.reason;
 				return reason != null ? `[${tag}] ${String(reason)}` : `[${tag}]`;
 			}

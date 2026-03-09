@@ -1,5 +1,5 @@
 import * as github from "@actions/github";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClient } from "../services/GitHubClient.js";
 import { GitHubClientLive } from "./GitHubClientLive.js";
@@ -67,6 +67,19 @@ describe("GitHubClientLive", () => {
 				Effect.flatMap(GitHubClient, (client) => client.rest("test.500", () => Promise.reject(error))),
 			);
 			expect(exit._tag).toBe("Failure");
+		});
+
+		it("sanitizes HTML error responses", async () => {
+			const htmlError = Object.assign(new Error("<!DOCTYPE html><html><body>Unicorn!</body></html>"), { status: 500 });
+			const exit = await runExit(
+				Effect.flatMap(GitHubClient, (client) => client.rest("test.html", () => Promise.reject(htmlError))),
+			);
+			expect(exit._tag).toBe("Failure");
+			if (Exit.isFailure(exit)) {
+				const error = Cause.squash(exit.cause) as { reason: string };
+				expect(error.reason).toBe("GitHub API returned 500 (server error)");
+				expect(error.reason).not.toContain("<!DOCTYPE");
+			}
 		});
 	});
 
