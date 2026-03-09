@@ -93,8 +93,8 @@ export const NpmRegistryLive: Layer.Layer<NpmRegistry, never, CommandRunner> = L
 							name: (d.name as string) ?? pkg,
 							version: (d.version as string) ?? "0.0.0",
 							distTags: (d["dist-tags"] as Record<string, string>) ?? {},
-							integrity: (d.dist as Record<string, string>)?.integrity,
-							tarball: (d.dist as Record<string, string>)?.tarball,
+							integrity: (d["dist.integrity"] as string | undefined) ?? (d.dist as Record<string, string>)?.integrity,
+							tarball: (d["dist.tarball"] as string | undefined) ?? (d.dist as Record<string, string>)?.tarball,
 						};
 					}),
 					Effect.withSpan("NpmRegistry.getPackageInfo", {

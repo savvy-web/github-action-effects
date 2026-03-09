@@ -83,15 +83,13 @@ describe("NpmRegistryLive", () => {
 		expect(result).toEqual(["1.0.0"]);
 	});
 
-	it("getPackageInfo maps fields correctly", async () => {
+	it("getPackageInfo reads flat dot-notation keys from npm view", async () => {
 		const npmOutput = JSON.stringify({
 			name: "effect",
 			version: "3.2.0",
 			"dist-tags": { latest: "3.2.0" },
-			dist: {
-				integrity: "sha512-abc",
-				tarball: "https://example.com/effect.tgz",
-			},
+			"dist.integrity": "sha512-abc",
+			"dist.tarball": "https://registry.npmjs.org/effect/-/effect-3.2.0.tgz",
 		});
 		const runner = makeMockRunner(new Map([["name version dist-tags", npmOutput]]));
 		const layer = NpmRegistryLive.pipe(Layer.provide(runner));
@@ -103,7 +101,31 @@ describe("NpmRegistryLive", () => {
 		);
 		expect(result.name).toBe("effect");
 		expect(result.version).toBe("3.2.0");
+		expect(result.distTags).toEqual({ latest: "3.2.0" });
 		expect(result.integrity).toBe("sha512-abc");
+		expect(result.tarball).toBe("https://registry.npmjs.org/effect/-/effect-3.2.0.tgz");
+	});
+
+	it("getPackageInfo falls back to nested dist object", async () => {
+		const npmOutput = JSON.stringify({
+			name: "effect",
+			version: "3.2.0",
+			"dist-tags": { latest: "3.2.0" },
+			dist: {
+				integrity: "sha512-nested",
+				tarball: "https://example.com/effect.tgz",
+			},
+		});
+		const runner = makeMockRunner(new Map([["name version dist-tags", npmOutput]]));
+		const layer = NpmRegistryLive.pipe(Layer.provide(runner));
+		const result = await Effect.runPromise(
+			NpmRegistry.pipe(
+				Effect.flatMap((reg) => reg.getPackageInfo("effect")),
+				Effect.provide(layer),
+			),
+		);
+		expect(result.integrity).toBe("sha512-nested");
+		expect(result.tarball).toBe("https://example.com/effect.tgz");
 	});
 
 	it("getLatestVersion returns non-string data as string via String()", async () => {
