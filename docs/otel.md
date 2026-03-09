@@ -182,20 +182,14 @@ Mapped variables:
 | `RUNNER_OS` | `cicd.worker.os` |
 | `GITHUB_SERVER_URL` + `GITHUB_REPOSITORY` | `vcs.repository.url.full` |
 
-## Required Peer Dependencies
+## OTel Dependencies
 
-To use OTLP export (not needed for in-memory fallback):
+All OpenTelemetry packages (`@effect/opentelemetry`, `@opentelemetry/api`,
+`@opentelemetry/sdk-trace-node`, `@opentelemetry/sdk-metrics`,
+`@opentelemetry/resources`, and all OTLP exporter packages) are included as
+regular `dependencies` of this library. You do not need to install them
+separately.
 
-```bash
-npm install @effect/opentelemetry @opentelemetry/api \
-  @opentelemetry/sdk-trace-node @opentelemetry/sdk-metrics \
-  @opentelemetry/resources
-```
-
-Plus one exporter package matching your protocol:
-
-| Protocol | Trace Exporter | Metrics Exporter |
-| --- | --- | --- |
-| `grpc` | `@opentelemetry/exporter-trace-otlp-grpc` | `@opentelemetry/exporter-metrics-otlp-grpc` |
-| `http/protobuf` | `@opentelemetry/exporter-trace-otlp-proto` | `@opentelemetry/exporter-metrics-otlp-proto` |
-| `http/json` | `@opentelemetry/exporter-trace-otlp-http` | `@opentelemetry/exporter-metrics-otlp-http` |
+This design ensures that `@vercel/ncc` (used by `@savvy-web/github-action-builder`)
+can resolve all OTel imports statically. Previous versions used optional peer
+dependencies with dynamic `import()`, which caused failures in ncc bundles.

@@ -274,9 +274,14 @@ const packageName = yield* inputs.get("package-name", Schema.String).pipe(
 )
 ```
 
-The three error types — `ActionInputError`, `ActionOutputError`, and
-`ActionStateError` — are all `Data.TaggedError` instances. See
+The three error types -- `ActionInputError`, `ActionOutputError`, and
+`ActionStateError` -- are all `Data.TaggedError` instances. See
 [architecture.md](./architecture.md#error-types) for their fields.
+
+For custom error handlers that extract a human-readable message from an
+Effect `Cause`, use `Action.formatCause(cause)`. It returns a `[Tag] message`
+string that is parseable by both humans and AI. See
+[patterns.md](./patterns.md#actionformatcause) for details.
 
 ## Next Steps
 

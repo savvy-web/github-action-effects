@@ -133,8 +133,34 @@ export const Action = {
 			Effect.provide(fullLayer),
 			Effect.provide(ActionLoggerLayer),
 			Effect.catchAllCause((cause) => {
-				const message = Cause.pretty(cause);
-				return Effect.sync(() => core.setFailed(`Action failed: ${message}`));
+				const message = Action.formatCause(cause);
+
+				// Extract JS stack trace if available
+				let stack = "";
+				try {
+					const squashed = Cause.squash(cause);
+					if (squashed instanceof Error && squashed.stack) {
+						// Remove first line (error message already in `message`)
+						const lines = squashed.stack.split("\n");
+						stack = lines.slice(1).join("\n");
+					}
+				} catch {
+					// squash failed — no stack available
+				}
+
+				// Emit Effect span trace via debug (visible with RUNNER_DEBUG=1)
+				try {
+					const spanTrace = Cause.pretty(cause);
+					if (spanTrace.trim() !== "") {
+						core.debug(`Effect span trace:\n${spanTrace}`);
+					}
+				} catch {
+					// pretty failed — no span trace available
+				}
+
+				const fullMessage = stack ? `Action failed: ${message}\n${stack}` : `Action failed: ${message}`;
+
+				return Effect.sync(() => core.setFailed(fullMessage));
 			}),
 		);
 
@@ -204,4 +230,59 @@ export const Action = {
 
 	/** Resolve a LogLevelInput to a concrete ActionLogLevel. */
 	resolveLogLevel,
+
+	/**
+	 * Extract a human-readable error message from an Effect Cause.
+	 *
+	 * Uses a fallback chain that always produces a non-empty string:
+	 * 1. Cause.squash — extracts underlying error with [Tag] prefix
+	 * 2. Cause.pretty — fallback for interrupts and other causes
+	 * 3. Last resort — "Unknown error" sentinel
+	 *
+	 * Output uses a `[Tag] message` format for consistent parseability.
+	 */
+	formatCause: (cause: Cause.Cause<unknown>): string => {
+		// Try structured extraction first via Cause.squash
+		try {
+			const squashed = Cause.squash(cause);
+
+			// TaggedError pattern: has _tag and typically reason or message
+			if (
+				squashed != null &&
+				typeof squashed === "object" &&
+				"_tag" in squashed &&
+				typeof (squashed as Record<string, unknown>)._tag === "string"
+			) {
+				const obj = squashed as Record<string, unknown>;
+				const tag = obj._tag as string;
+				const reason = obj.reason ?? obj.message;
+				return reason != null ? `[${tag}] ${String(reason)}` : `[${tag}]`;
+			}
+
+			// Standard Error
+			if (squashed instanceof Error) {
+				return `[Error] ${squashed.message}`;
+			}
+
+			// Unknown shape — JSON stringify
+			const json = JSON.stringify(squashed);
+			if (json && json !== "{}") {
+				return `[UnknownError] ${json}`;
+			}
+		} catch {
+			// squash or stringify failed — fall through
+		}
+
+		// Fall back to Cause.pretty
+		try {
+			const pretty = Cause.pretty(cause);
+			if (pretty.trim() !== "") {
+				return pretty;
+			}
+		} catch {
+			// pretty failed — fall through to sentinel
+		}
+
+		return "Unknown error (no diagnostic information available)";
+	},
 } as const;

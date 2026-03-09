@@ -360,3 +360,33 @@ const program = Effect.gen(function* () {
 `Action.run` catches all uncaught errors and calls `core.setFailed`
 automatically, so you only need explicit error handling when you want
 custom behavior.
+
+### Action.formatCause
+
+For custom error handlers that need a human-readable message from an Effect
+`Cause`, use `Action.formatCause`:
+
+```typescript
+import { Effect, Cause } from "effect";
+import { Action } from "@savvy-web/github-action-effects";
+
+const program = myEffect.pipe(
+  Effect.catchAllCause((cause) => {
+    const message = Action.formatCause(cause);
+    // message is e.g. "[ActionInputError] Missing required input: token"
+    return Effect.logError(message);
+  }),
+);
+```
+
+`formatCause` uses a fallback chain that always produces a non-empty string:
+
+1. **`Cause.squash`** -- extracts the underlying error. If it is a
+   `TaggedError`, formats as `[Tag] reason`. If it is a standard `Error`,
+   formats as `[Error] message`.
+2. **`Cause.pretty`** -- fallback for interrupts and other cause types.
+3. **Sentinel** -- `"Unknown error (no diagnostic information available)"`
+   as a last resort.
+
+The `[Tag] message` format is designed for consistent parseability by both
+humans and AI systems.

@@ -128,6 +128,7 @@ It handles:
   platform services (FileSystem, Path, Terminal, CommandExecutor, WorkerManager)
 * Installing ActionLoggerLayer (routes Effect.log to core.info/debug)
 * Catching all errors via `Effect.catchAllCause` and calling `core.setFailed`
+  (uses `Cause.pretty` for formatting; planned upgrade to `Action.formatCause`)
 * Running with `Effect.runPromise`
 
 Note: `ActionStateLive` is not included in core layers because not all actions

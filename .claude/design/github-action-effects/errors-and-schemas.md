@@ -68,7 +68,7 @@ All errors use `Data.TaggedError` with explicit `Base` exports marked
 | `ToolInstallerError` | ToolInstaller | operation, name, reason |
 | `TokenPermissionError` | TokenPermissionChecker | missing permissions array |
 | `SemverResolverError` | SemverResolver | operation, version, reason |
-| `OtelExporterError` | OtelExporterLive | reason (config/import/parse failure) |
+| `OtelExporterError` | OtelExporterLive | operation (`"resolve"`, `"init"`, `"export"`), reason |
 
 ### Error Hierarchy
 
@@ -219,9 +219,9 @@ Action.run(program)
   -> parse otel-enabled/endpoint/protocol/headers inputs
   -> resolveOtelConfig(inputs, env)
   -> if enabled:
-       OtelExporterLive(config) dynamically imports protocol-specific packages
-       -> OTLPTraceExporter captures Effect.withSpan spans
-       -> OTLPMetricExporter forwards ActionTelemetry metrics
+       OtelExporterLive(config) uses static @effect/opentelemetry import
+       -> EffectOtel.Tracer.layerGlobal bridges Effect spans to OTel
+       -> GitHub resource attributes merged from GitHubOtelAttributes
   -> if disabled/auto-no-endpoint:
        InMemoryTracer captures spans for TelemetryReport rendering
 ```
