@@ -177,11 +177,11 @@ test layer state.
 **InMemoryTracer** -- span capture via Effect.withSpan, getSpans retrieval,
 isolated stores per layer provision.
 
-**OtelExporterLive** -- protocol-based dynamic import, config resolution,
-error handling for missing packages.
+**OtelExporterLive** -- config resolution, enabled/disabled branching,
+resource attribute merging.
 
-**OtelTelemetryLive** -- @effect/opentelemetry bridge, resource attribute
-configuration.
+**OtelTelemetryLive** -- @effect/opentelemetry bridge via static import,
+resource attribute configuration.
 
 ### Utilities
 

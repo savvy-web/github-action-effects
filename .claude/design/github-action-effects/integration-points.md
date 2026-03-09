@@ -149,9 +149,11 @@ required. Any Node.js 24 action can use these services.
 ### OpenTelemetry
 
 When OTel is enabled (via `otel-enabled` input or `OTEL_EXPORTER_OTLP_ENDPOINT`
-env var), `Action.run()` automatically wires up OTLP exporters for traces and
-metrics. `GitHubOtelAttributes.fromEnvironment()` maps GitHub environment
-variables to OTel semantic conventions for resource attributes. See
+env var), `Action.run()` automatically wires up the `@effect/opentelemetry`
+tracer bridge via static imports. `GitHubOtelAttributes.fromEnvironment()` maps
+GitHub environment variables to OTel semantic conventions for resource
+attributes. OTel packages are regular dependencies (not optional peers) to
+ensure reliable ncc bundling. See
 [otel-exporter-inputs.md](./otel-exporter-inputs.md) for details.
 
 ## Current State

@@ -56,7 +56,8 @@ output.
 | `http/protobuf` | `@opentelemetry/exporter-trace-otlp-proto` | `@opentelemetry/exporter-metrics-otlp-proto` |
 | `http/json` | `@opentelemetry/exporter-trace-otlp-http` | `@opentelemetry/exporter-metrics-otlp-http` |
 
-All packages are optional peer dependencies, dynamically imported at runtime.
+All packages are regular `dependencies` (not optional peers), statically
+imported. This ensures reliable `@vercel/ncc` bundling.
 
 ## Header Parsing
 
@@ -81,15 +82,15 @@ config:
 Covers:
 
 * Config validation failures (enabled but no endpoint)
-* Dynamic import failures (packages not installed, with installation
-  instructions)
-* Malformed header strings
+* Initialization failures
+* Export failures
 
 ### OtelExporterLive layer
 
-Takes resolved config, dynamically imports the correct exporter packages based
-on protocol, creates `OTLPTraceExporter` and `OTLPMetricExporter`, and provides
-them as Effect layers.
+Takes resolved `ResolvedOtelConfig`. When `enabled=false`, returns
+`InMemoryTracer.layer`. When `enabled=true`, uses a static import of
+`@effect/opentelemetry` to configure `EffectOtel.Tracer.layerGlobal` with
+GitHub-aware resource attributes.
 
 ### Action.run() integration
 
@@ -112,8 +113,8 @@ authors get OTel support with zero configuration.
 
 * `otel-enabled: "enabled"` with no endpoint: `OtelExporterError` with clear
   message
-* Dynamic import failure (packages not installed): `OtelExporterError` with
-  installation instructions
+* Initialization failure: `OtelExporterError` with operation `"init"`
+* Export failure: `OtelExporterError` with operation `"export"`
 * Invalid protocol value: schema validation catches at parse time
 * Malformed headers: `OtelExporterError` with parse details
 
@@ -130,7 +131,7 @@ The OTel exporter input design is fully specified with schema validation, dynami
 
 ## Rationale
 
-Standardizing OTel configuration as four action inputs with env var fallbacks allows org-level defaults while giving individual actions override control, and dynamic imports keep the dependency footprint minimal by only loading the exporter packages matching the selected protocol.
+Standardizing OTel configuration as four action inputs with env var fallbacks allows org-level defaults while giving individual actions override control. OTel packages are regular dependencies with static imports to ensure reliable ncc bundling.
 
 ## Related Documentation
 
