@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 0.5.0
+
+### Features
+
+* [`fba5094`](https://github.com/savvy-web/github-action-effects/commit/fba50941e3858c34187a360652b4f2a539294df3) Support file deletions in `GitCommit.createTree` and `commitFiles` via `sha: null` on `TreeEntry` and `FileChange` union types. Fixes #11.
+
 ## 0.4.0
 
 ### Breaking Changes
