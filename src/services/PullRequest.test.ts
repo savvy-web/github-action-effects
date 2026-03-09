@@ -226,6 +226,15 @@ describe("PullRequest", () => {
 			expect(state.prs[0].state).toBe("closed");
 			expect(state.mergedPrs).toContain(1);
 		});
+
+		it("fails when PR not found", async () => {
+			const state = PullRequestTest.empty();
+			const exit = await runExit(
+				state,
+				Effect.flatMap(PullRequest, (svc) => svc.merge(999)),
+			);
+			expect(Exit.isFailure(exit)).toBe(true);
+		});
 	});
 
 	describe("addLabels", () => {
@@ -255,6 +264,15 @@ describe("PullRequest", () => {
 			);
 			expect(state.prs[0].labels).toEqual(["bug", "priority"]);
 		});
+
+		it("fails when PR not found", async () => {
+			const state = PullRequestTest.empty();
+			const exit = await runExit(
+				state,
+				Effect.flatMap(PullRequest, (svc) => svc.addLabels(999, ["bug"])),
+			);
+			expect(Exit.isFailure(exit)).toBe(true);
+		});
 	});
 
 	describe("requestReviewers", () => {
@@ -282,6 +300,15 @@ describe("PullRequest", () => {
 				}),
 			);
 			expect(state.prs[0].teamReviewers).toEqual(["core-team"]);
+		});
+
+		it("fails when PR not found", async () => {
+			const state = PullRequestTest.empty();
+			const exit = await runExit(
+				state,
+				Effect.flatMap(PullRequest, (svc) => svc.requestReviewers(999, { reviewers: ["alice"] })),
+			);
+			expect(Exit.isFailure(exit)).toBe(true);
 		});
 	});
 

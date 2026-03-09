@@ -2,7 +2,8 @@ import { Effect } from "effect";
 import type { GitHubGraphQLError } from "../errors/GitHubGraphQLError.js";
 import { GitHubGraphQL } from "../services/GitHubGraphQL.js";
 
-const ENABLE_MUTATION = `
+/** @internal */
+export const ENABLE_MUTATION = `
   mutation EnableAutoMerge($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod) {
     enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, mergeMethod: $mergeMethod }) {
       clientMutationId
@@ -10,13 +11,21 @@ const ENABLE_MUTATION = `
   }
 `;
 
-const DISABLE_MUTATION = `
+/** @internal */
+export const DISABLE_MUTATION = `
   mutation DisableAutoMerge($pullRequestId: ID!) {
     disablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId }) {
       clientMutationId
     }
   }
 `;
+
+/** @internal */
+export const MERGE_METHOD_MAP = {
+	merge: "MERGE",
+	squash: "SQUASH",
+	rebase: "REBASE",
+} as const;
 
 /**
  * Namespace for PR auto-merge operations via GitHub GraphQL API.

@@ -9,6 +9,12 @@ import { PullRequest } from "../services/PullRequest.js";
  * @public
  */
 export interface PullRequestRecord extends PullRequestInfo {
+	/** Mutable for test updates. */
+	title: string;
+	/** Mutable for test updates. */
+	state: "open" | "closed";
+	/** Mutable for test updates. */
+	merged: boolean;
 	readonly labels: Array<string>;
 	readonly reviewers: Array<string>;
 	readonly teamReviewers: Array<string>;
@@ -99,13 +105,13 @@ const makeTestPullRequest = (state: PullRequestTestState): PullRequest => ({
 					return Effect.fail(new PullRequestError({ operation: "update", prNumber: number, reason: "PR not found" }));
 				}
 				if (options.title !== undefined) {
-					(pr as { title: string }).title = options.title;
+					pr.title = options.title;
 				}
 				if (options.body !== undefined) {
 					pr.body = options.body;
 				}
 				if (options.state !== undefined) {
-					(pr as { state: string }).state = options.state;
+					pr.state = options.state;
 				}
 				if (options.autoMerge !== undefined) {
 					pr.autoMerge = options.autoMerge;
@@ -122,7 +128,7 @@ const makeTestPullRequest = (state: PullRequestTestState): PullRequest => ({
 			Effect.flatMap((existing): Effect.Effect<PullRequestInfo & { readonly created: boolean }> => {
 				if (existing) {
 					if (options.title !== undefined) {
-						(existing as { title: string }).title = options.title;
+						existing.title = options.title;
 					}
 					existing.body = options.body;
 					if (options.autoMerge !== undefined) {
@@ -158,8 +164,8 @@ const makeTestPullRequest = (state: PullRequestTestState): PullRequest => ({
 				if (!pr) {
 					return Effect.fail(new PullRequestError({ operation: "merge", prNumber: number, reason: "PR not found" }));
 				}
-				(pr as { merged: boolean }).merged = true;
-				(pr as { state: string }).state = "closed";
+				pr.merged = true;
+				pr.state = "closed";
 				state.mergedPrs.push(number);
 				return Effect.void;
 			}),

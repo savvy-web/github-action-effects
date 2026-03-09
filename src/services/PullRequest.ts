@@ -32,7 +32,7 @@ export interface PullRequestListOptions {
 	/** Filter by state. Defaults to "open". */
 	readonly state?: "open" | "closed" | "all";
 	/** Results per page. Defaults to 30. */
-	readonly per_page?: number;
+	readonly perPage?: number;
 	/** When true, fetches all pages. Defaults to false. */
 	readonly paginate?: boolean;
 }
@@ -70,7 +70,12 @@ export interface PullRequest {
 		},
 	) => Effect.Effect<PullRequestInfo, PullRequestError>;
 
-	/** Find existing PR for head→base or create one; updates title/body if found. */
+	/**
+	 * Find existing PR for head→base or create one; updates title/body if found.
+	 *
+	 * Note: `draft` is only applied when creating a new PR; it is not changed
+	 * on an existing PR found via the update path.
+	 */
 	readonly getOrCreate: (options: {
 		readonly head: string;
 		readonly base: string;

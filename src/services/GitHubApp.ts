@@ -49,7 +49,15 @@ export interface GitHubApp {
 	/** Revoke a previously generated installation token. */
 	readonly revokeToken: (token: string) => Effect.Effect<void, GitHubAppError>;
 
-	/** Get bot identity for commit attribution from an app slug. */
+	/**
+	 * Get bot identity for commit attribution from an app slug.
+	 *
+	 * When a custom `appSlug` is provided, the email uses the format
+	 * `appSlug[bot]@users.noreply.github.com` (without a numeric user-ID prefix).
+	 * This may prevent commits from appearing as "verified" on GitHub.
+	 * The default `github-actions[bot]` identity includes the well-known numeric
+	 * ID prefix (`41898282+`) that GitHub recognises for verified attribution.
+	 */
 	readonly botIdentity: (appSlug?: string) => BotIdentity;
 
 	/**

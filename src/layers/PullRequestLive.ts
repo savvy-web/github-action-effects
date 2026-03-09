@@ -6,6 +6,7 @@ import { GitHubClient } from "../services/GitHubClient.js";
 import { GitHubGraphQL } from "../services/GitHubGraphQL.js";
 import type { PullRequestInfo } from "../services/PullRequest.js";
 import { PullRequest } from "../services/PullRequest.js";
+import { DISABLE_MUTATION, ENABLE_MUTATION, MERGE_METHOD_MAP } from "../utils/AutoMerge.js";
 
 interface RawPull {
 	readonly number: number;
@@ -68,28 +69,6 @@ const mapGraphQLError =
 			reason: error.reason,
 		});
 
-const ENABLE_AUTO_MERGE = `
-  mutation EnableAutoMerge($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod) {
-    enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, mergeMethod: $mergeMethod }) {
-      clientMutationId
-    }
-  }
-`;
-
-const DISABLE_AUTO_MERGE = `
-  mutation DisableAutoMerge($pullRequestId: ID!) {
-    disablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId }) {
-      clientMutationId
-    }
-  }
-`;
-
-const MERGE_METHOD_MAP = {
-	merge: "MERGE",
-	squash: "SQUASH",
-	rebase: "REBASE",
-} as const;
-
 export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | GitHubGraphQL> = Layer.effect(
 	PullRequest,
 	Effect.all([GitHubClient, GitHubGraphQL]).pipe(
@@ -104,11 +83,11 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 				if (autoMerge === undefined) return Effect.void;
 				if (autoMerge === false) {
 					return graphql
-						.mutation("disableAutoMerge", DISABLE_AUTO_MERGE, { pullRequestId: nodeId })
+						.mutation("disableAutoMerge", DISABLE_MUTATION, { pullRequestId: nodeId })
 						.pipe(Effect.asVoid, Effect.mapError(mapGraphQLError(prNumber)));
 				}
 				return graphql
-					.mutation("enableAutoMerge", ENABLE_AUTO_MERGE, {
+					.mutation("enableAutoMerge", ENABLE_MUTATION, {
 						pullRequestId: nodeId,
 						mergeMethod: MERGE_METHOD_MAP[autoMerge],
 					})
@@ -135,7 +114,7 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 							state: options?.state ?? "open",
 							...(options?.head ? { head: normalizeHead(owner, options.head) } : {}),
 							...(options?.base ? { base: options.base } : {}),
-							...(options?.per_page ? { per_page: options.per_page } : {}),
+							...(options?.perPage ? { per_page: options.perPage } : {}),
 						};
 
 						if (options?.paginate) {
