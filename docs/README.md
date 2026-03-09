@@ -78,6 +78,7 @@ npm install jsonc-parser yaml
 | GitHubIssue | List, close, comment, get linked issues |
 | GitHubApp | GitHub App token lifecycle with bracket pattern |
 | CheckRun | Create, update, complete check runs with annotations |
+| PullRequest | PR lifecycle: get, list, create, update, merge, getOrCreate, labels, reviewers |
 | PullRequestComment | Sticky (upsert) PR comments with marker keys |
 | GitTag | CRUD for tags via Git Data API |
 | GitBranch | CRUD for branches via Git Data API |

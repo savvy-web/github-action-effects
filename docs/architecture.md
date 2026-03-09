@@ -309,6 +309,7 @@ See [services.md](./services.md) for usage examples of each service.
 | GitHubIssue | GitHubIssueLive | Issue management and PR linking |
 | GitHubApp | GitHubAppLive | App token generation with bracket pattern |
 | CheckRun | CheckRunLive | Check run CRUD with annotations |
+| PullRequest | PullRequestLive | PR lifecycle: get, list, create, update, merge, getOrCreate |
 | PullRequestComment | PullRequestCommentLive | Sticky (upsert) PR comments |
 | GitTag | GitTagLive | Tag CRUD via Git Data API |
 | GitBranch | GitBranchLive | Branch CRUD via Git Data API |
@@ -371,6 +372,7 @@ All extended services ship with test layers following the same pattern:
 | GitHubIssueTest | GitHubIssueTestState |
 | GitHubAppTest | GitHubAppTestState |
 | CheckRunTest | CheckRunTestState |
+| PullRequestTest | PullRequestTestState |
 | PullRequestCommentTest | PullRequestCommentTestState |
 | GitTagTest | GitTagTestState |
 | GitBranchTest | GitBranchTestState |
