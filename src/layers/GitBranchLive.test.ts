@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
 import { GitBranch } from "../services/GitBranch.js";
@@ -298,6 +298,11 @@ describe("GitBranchLive", () => {
 				),
 			);
 			expect(exit._tag).toBe("Failure");
+			if (Exit.isFailure(exit)) {
+				const error = Cause.squash(exit.cause);
+				expect((error as { reason: string }).reason).toBe("GitHub API returned 500 (server error)");
+				expect((error as { reason: string }).reason).not.toContain("<!DOCTYPE");
+			}
 		}, 30000);
 	});
 });
