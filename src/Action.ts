@@ -227,9 +227,9 @@ export const Action = {
 				"_tag" in squashed &&
 				typeof (squashed as Record<string, unknown>)._tag === "string"
 			) {
-				const tag = (squashed as Record<string, unknown>)._tag as string;
-				const reason =
-					(squashed as Record<string, unknown>).reason ?? (squashed as Record<string, unknown>).message ?? "";
+				const obj = squashed as Record<string, unknown>;
+				const tag = obj._tag as string;
+				const reason = obj.reason ?? obj.message ?? "";
 				return `[${tag}] ${String(reason)}`;
 			}
 
@@ -248,9 +248,13 @@ export const Action = {
 		}
 
 		// Fall back to Cause.pretty
-		const pretty = Cause.pretty(cause);
-		if (pretty.trim() !== "") {
-			return pretty;
+		try {
+			const pretty = Cause.pretty(cause);
+			if (pretty.trim() !== "") {
+				return pretty;
+			}
+		} catch {
+			// pretty failed — fall through to sentinel
 		}
 
 		return "Unknown error (no diagnostic information available)";
