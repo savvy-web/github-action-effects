@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 0.6.2
+
+### Bug Fixes
+
+* [`509d2a2`](https://github.com/savvy-web/github-action-effects/commit/509d2a2a7a633f01bfe4051ef53508bc6f545deb) Fix `NpmRegistry.getPackageInfo` returning undefined for `integrity` and `tarball` fields due to `npm view` using flat dot-notation keys (`"dist.integrity"`) instead of nested objects. Fixes #21.
+
 ## 0.6.1
 
 ### Bug Fixes
