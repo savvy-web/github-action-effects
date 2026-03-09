@@ -6,10 +6,11 @@ code in this repository.
 ## Project Status
 
 Effect-based utility library for building robust, well-logged, and
-schema-validated GitHub Actions. Provides 29 Effect services covering inputs,
+schema-validated GitHub Actions. Provides 30 Effect services covering inputs,
 logging, outputs, state, telemetry, GitHub API operations, git operations,
 config loading, tool management, package manager abstraction, npm registry
-queries, package publishing, workspace detection, and token permission checks.
+queries, package publishing, workspace detection, PR lifecycle management,
+and token permission checks.
 
 ## Design Documentation
 
@@ -62,7 +63,7 @@ pnpm vitest run src/services/ActionInputs.test.ts
 
 ```text
 src/
-  services/    -- Effect service interfaces (29 services)
+  services/    -- Effect service interfaces (30 services)
   layers/      -- Live and Test layer implementations + InMemoryTracer
   errors/      -- Tagged error types (Data.TaggedError)
   schemas/     -- Effect Schema definitions (LogLevel, Changeset, PackageManager, etc.)
@@ -89,6 +90,7 @@ src/
 | RateLimiter | API rate limit awareness + retry | — |
 | CheckRun | Check runs + annotations | — |
 | CommandRunner | Structured shell execution | @actions/exec |
+| PullRequest | PR lifecycle (CRUD, merge, labels, reviewers) | @actions/github |
 | PullRequestComment | PR comment management | — |
 | WorkflowDispatch | Trigger + poll workflows | — |
 | TokenPermissionChecker | Token permission validation + enforcement | — |
