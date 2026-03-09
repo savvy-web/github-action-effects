@@ -3,6 +3,41 @@ import { GitHubAppError } from "../errors/GitHubAppError.js";
 import type { InstallationToken } from "../services/GitHubApp.js";
 import { GitHubApp } from "../services/GitHubApp.js";
 
+interface Installation {
+	readonly id: number;
+	readonly account: { readonly login: string } | null;
+}
+
+const resolveInstallationId = async (auth: (opts: { type: "app" }) => Promise<{ token: string }>): Promise<number> => {
+	const { token: jwt } = await auth({ type: "app" });
+
+	const response = await fetch("https://api.github.com/app/installations", {
+		headers: {
+			Authorization: `Bearer ${jwt}`,
+			Accept: "application/vnd.github+json",
+		},
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to list installations: ${response.status}`);
+	}
+
+	const installations = (await response.json()) as Array<Installation>;
+
+	if (installations.length === 0) {
+		throw new Error("No installations found for this GitHub App");
+	}
+
+	const repo = process.env.GITHUB_REPOSITORY;
+	if (repo) {
+		const owner = repo.split("/")[0];
+		const match = installations.find((i) => i.account?.login?.toLowerCase() === owner?.toLowerCase());
+		if (match) return match.id;
+	}
+
+	return installations[0].id;
+};
+
 const generateToken = (
 	appId: string,
 	privateKey: string,
@@ -12,9 +47,12 @@ const generateToken = (
 		try: async () => {
 			const { createAppAuth } = await import("@octokit/auth-app");
 			const auth = createAppAuth({ appId, privateKey });
+
+			const resolvedId = installationId ?? (await resolveInstallationId(auth));
+
 			const result = await auth({
 				type: "installation",
-				...(installationId !== undefined ? { installationId } : {}),
+				installationId: resolvedId,
 			});
 			return {
 				token: result.token,
