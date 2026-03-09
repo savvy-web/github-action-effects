@@ -255,7 +255,7 @@ export const Action = {
 			) {
 				const obj = squashed as Record<string, unknown>;
 				const tag = obj._tag as string;
-				const reason = obj.reason ?? obj.message;
+				const reason = obj.message || obj.reason;
 				return reason != null ? `[${tag}] ${String(reason)}` : `[${tag}]`;
 			}
 
