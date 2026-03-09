@@ -25,4 +25,12 @@ export class CommandRunnerError extends CommandRunnerErrorBase<{
 
 	/** Human-readable description of what went wrong. */
 	readonly reason: string;
-}> {}
+}> {
+	get message(): string {
+		const cmd = this.args.length > 0 ? `${this.command} ${this.args.join(" ")}` : this.command;
+		const parts = [`Command "${cmd}" failed`];
+		if (this.exitCode !== undefined) parts.push(`(exit ${this.exitCode})`);
+		if (this.stderr) parts.push(`: ${this.stderr.slice(0, 500)}`);
+		return parts.join(" ");
+	}
+}

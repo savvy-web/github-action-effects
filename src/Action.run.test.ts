@@ -88,4 +88,28 @@ describe("Action.run", () => {
 		expect(core.setFailed).not.toHaveBeenCalled();
 		expect(core.summary.addRaw).not.toHaveBeenCalled();
 	});
+
+	it("flushes buffered log output on failure", async () => {
+		const program = Effect.gen(function* () {
+			yield* Effect.log("diagnostic info before crash");
+			yield* Effect.fail("boom");
+		});
+
+		await Action.run(program);
+		expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("Action failed"));
+		const infoCalls = vi.mocked(core.info).mock.calls.map((c) => c[0]);
+		expect(infoCalls.some((c) => typeof c === "string" && c.includes("diagnostic info before crash"))).toBe(true);
+		expect(infoCalls.some((c) => typeof c === "string" && c.includes("Buffered output"))).toBe(true);
+	});
+
+	it("discards buffered log output on success", async () => {
+		const program = Effect.gen(function* () {
+			yield* Effect.log("should not appear in info output");
+		});
+
+		await Action.run(program);
+		expect(core.setFailed).not.toHaveBeenCalled();
+		const infoCalls = vi.mocked(core.info).mock.calls.map((c) => c[0]);
+		expect(infoCalls.some((c) => typeof c === "string" && c.includes("should not appear"))).toBe(false);
+	});
 });

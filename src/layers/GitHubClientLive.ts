@@ -8,7 +8,14 @@ const isRetryableStatus = (status: number): boolean => status === 429 || status 
 const wrapError = (operation: string, error: unknown): GitHubClientError => {
 	const status =
 		typeof error === "object" && error !== null && "status" in error ? (error as { status: number }).status : undefined;
-	const message = error instanceof Error ? error.message : String(error);
+	let message = error instanceof Error ? error.message : String(error);
+
+	// Detect HTML error responses (GitHub "Unicorn" pages) and replace with clean message
+	if (message.includes("<!DOCTYPE") || message.includes("<html")) {
+		message =
+			status !== undefined ? `GitHub API returned ${status} (server error)` : "GitHub API returned an HTML error page";
+	}
+
 	return new GitHubClientError({
 		operation,
 		status,
