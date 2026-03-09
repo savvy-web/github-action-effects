@@ -133,8 +133,30 @@ export const Action = {
 			Effect.provide(fullLayer),
 			Effect.provide(ActionLoggerLayer),
 			Effect.catchAllCause((cause) => {
-				const message = Cause.pretty(cause);
-				return Effect.sync(() => core.setFailed(`Action failed: ${message}`));
+				const message = Action.formatCause(cause);
+
+				// Extract JS stack trace if available
+				let stack = "";
+				try {
+					const squashed = Cause.squash(cause);
+					if (squashed instanceof Error && squashed.stack) {
+						// Remove first line (error message already in `message`)
+						const lines = squashed.stack.split("\n");
+						stack = lines.slice(1).join("\n");
+					}
+				} catch {
+					// squash failed — no stack available
+				}
+
+				// Emit Effect span trace via debug (visible with RUNNER_DEBUG=1)
+				const spanTrace = Cause.pretty(cause);
+				if (spanTrace.trim() !== "") {
+					core.debug(`Effect span trace:\n${spanTrace}`);
+				}
+
+				const fullMessage = stack ? `Action failed: ${message}\n${stack}` : `Action failed: ${message}`;
+
+				return Effect.sync(() => core.setFailed(fullMessage));
 			}),
 		);
 

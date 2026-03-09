@@ -159,4 +159,13 @@ describe("Action.formatCause", () => {
 		const message = Action.formatCause(cause);
 		expect(message.length).toBeGreaterThan(0);
 	});
+
+	it("produces non-empty output for Die with TaggedError", () => {
+		class LayerSetupError extends Data.TaggedError("LayerSetupError")<{ readonly reason: string }> {}
+		const error = new LayerSetupError({ reason: "missing dependency" });
+		const cause = Cause.die(error);
+		const msg = Action.formatCause(cause);
+		expect(msg).not.toBe("");
+		expect(msg.length).toBeGreaterThan(5);
+	});
 });
