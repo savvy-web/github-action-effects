@@ -13,7 +13,8 @@ import type { OtelEnabled } from "./schemas/OtelExporter.js";
 import { resolveOtelConfig } from "./schemas/OtelExporter.js";
 import type { ActionInputs } from "./services/ActionInputs.js";
 import { ActionInputs as ActionInputsTag } from "./services/ActionInputs.js";
-import type { ActionLogger } from "./services/ActionLogger.js";
+import type { ActionLogger as ActionLoggerType } from "./services/ActionLogger.js";
+import { ActionLogger } from "./services/ActionLogger.js";
 import type { ActionOutputs } from "./services/ActionOutputs.js";
 import { TelemetryReport } from "./utils/TelemetryReport.js";
 
@@ -43,7 +44,7 @@ export interface InputConfig<S extends Schema.Schema.AnyNoContext = Schema.Schem
 }
 
 /** Core services provided automatically by {@link Action.run}. */
-export type CoreServices = ActionInputs | ActionLogger | ActionOutputs | PlatformNode.NodeContext.NodeContext;
+export type CoreServices = ActionInputs | ActionLoggerType | ActionOutputs | PlatformNode.NodeContext.NodeContext;
 
 /**
  * Infer the output type from an input config record.
@@ -128,7 +129,12 @@ export const Action = {
 			}
 		}).pipe(Effect.catchAll(() => Effect.void));
 
-		const runnable = program.pipe(
+		const bufferedProgram = Effect.gen(function* () {
+			const logger = yield* ActionLogger;
+			yield* logger.withBuffer("action", program);
+		});
+
+		const runnable = bufferedProgram.pipe(
 			Effect.onExit(() => writeTelemetrySummary),
 			Effect.provide(fullLayer),
 			Effect.provide(ActionLoggerLayer),
