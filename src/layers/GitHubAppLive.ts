@@ -8,21 +8,36 @@ interface Installation {
 	readonly account: { readonly login: string } | null;
 }
 
-const resolveInstallationId = async (auth: (opts: { type: "app" }) => Promise<{ token: string }>): Promise<number> => {
-	const { token: jwt } = await auth({ type: "app" });
+const fetchAllInstallations = async (jwt: string): Promise<Array<Installation>> => {
+	const installations: Array<Installation> = [];
+	let url: string | null = "https://api.github.com/app/installations?per_page=100";
 
-	const response = await fetch("https://api.github.com/app/installations", {
-		headers: {
-			Authorization: `Bearer ${jwt}`,
-			Accept: "application/vnd.github+json",
-		},
-	});
+	while (url) {
+		const response = await fetch(url, {
+			headers: {
+				Authorization: `Bearer ${jwt}`,
+				Accept: "application/vnd.github+json",
+			},
+		});
 
-	if (!response.ok) {
-		throw new Error(`Failed to list installations: ${response.status}`);
+		if (!response.ok) {
+			throw new Error(`Failed to list installations: ${response.status}`);
+		}
+
+		const page = (await response.json()) as Array<Installation>;
+		installations.push(...page);
+
+		const linkHeader = response.headers.get("link");
+		const nextMatch = linkHeader?.match(/<([^>]+)>;\s*rel="next"/);
+		url = nextMatch ? nextMatch[1] : null;
 	}
 
-	const installations = (await response.json()) as Array<Installation>;
+	return installations;
+};
+
+const resolveInstallationId = async (auth: (opts: { type: "app" }) => Promise<{ token: string }>): Promise<number> => {
+	const { token: jwt } = await auth({ type: "app" });
+	const installations = await fetchAllInstallations(jwt);
 
 	if (installations.length === 0) {
 		throw new Error("No installations found for this GitHub App");
@@ -33,6 +48,10 @@ const resolveInstallationId = async (auth: (opts: { type: "app" }) => Promise<{ 
 		const owner = repo.split("/")[0];
 		const match = installations.find((i) => i.account?.login?.toLowerCase() === owner?.toLowerCase());
 		if (match) return match.id;
+		throw new Error(
+			`No installation found for owner "${owner}" (from GITHUB_REPOSITORY="${repo}"). ` +
+				`Available installations: ${installations.map((i) => i.account?.login ?? "unknown").join(", ")}`,
+		);
 	}
 
 	return installations[0].id;
