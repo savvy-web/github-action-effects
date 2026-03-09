@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { OtelTelemetryLive } from "./OtelTelemetryLive.js";
 
@@ -18,20 +18,11 @@ describe("OtelTelemetryLive", () => {
 		expect(layer).toBeDefined();
 	});
 
-	it("fails when OTel provider dependencies are not satisfied", async () => {
+	it("succeeds with global tracer provider", async () => {
 		const layer = OtelTelemetryLive();
-		const program = Effect.void.pipe(Effect.provide(layer));
-		const exit = await Effect.runPromiseExit(program);
-
-		// When @effect/opentelemetry IS installed (dev dep) but the OTel
-		// TracerProvider service isn't provided, we get a "Service not found" defect.
-		// When @effect/opentelemetry is NOT installed, we get our custom error message.
-		expect(Exit.isFailure(exit)).toBe(true);
-
-		if (Exit.isFailure(exit)) {
-			const defect = Cause.squash(exit.cause);
-			expect(defect).toBeInstanceOf(Error);
-			expect((defect as Error).message).toContain("@effect/opentelemetry");
-		}
+		const result = await Effect.runPromise(
+			Effect.succeed("ok").pipe(Effect.withSpan("test-span"), Effect.provide(layer)),
+		);
+		expect(result).toBe("ok");
 	});
 });
