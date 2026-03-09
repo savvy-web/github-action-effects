@@ -28,21 +28,28 @@ const mockInstallationsResponse = (
 	headers: { get: (name: string) => (name === "link" && nextUrl ? `<${nextUrl}>; rel="next"` : null) },
 });
 
-/** Mock the auto-discovery flow: JWT → list installations → resolve ID. */
-const mockAutoDiscovery = (installationId: number) => {
+/** Mock the auto-discovery flow: JWT → list installations → resolve ID. Sets GITHUB_REPOSITORY to match. */
+const mockAutoDiscovery = (installationId: number, owner = "test-owner") => {
+	process.env.GITHUB_REPOSITORY = `${owner}/test-repo`;
 	mockAuth.mockResolvedValueOnce({ token: "jwt_for_discovery" });
-	mockFetch.mockResolvedValueOnce(
-		mockInstallationsResponse([{ id: installationId, account: { login: "test-owner" } }]),
-	);
+	mockFetch.mockResolvedValueOnce(mockInstallationsResponse([{ id: installationId, account: { login: owner } }]));
 };
+
+const savedGithubRepository = process.env.GITHUB_REPOSITORY;
 
 beforeEach(() => {
 	vi.resetAllMocks();
 	globalThis.fetch = mockFetch as unknown as typeof fetch;
+	delete process.env.GITHUB_REPOSITORY;
 });
 
 afterAll(() => {
 	globalThis.fetch = originalFetch;
+	if (savedGithubRepository !== undefined) {
+		process.env.GITHUB_REPOSITORY = savedGithubRepository;
+	} else {
+		delete process.env.GITHUB_REPOSITORY;
+	}
 });
 
 const { createAppAuth } = await import("@octokit/auth-app");
