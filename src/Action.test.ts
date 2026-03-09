@@ -137,6 +137,7 @@ describe("Action.formatCause", () => {
 	it("extracts message from a Die cause with standard Error", () => {
 		const cause = Cause.die(new Error("unexpected boom"));
 		const message = Action.formatCause(cause);
+		expect(message).toContain("[Error]");
 		expect(message).toContain("unexpected boom");
 	});
 

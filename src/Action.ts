@@ -209,8 +209,8 @@ export const Action = {
 	 * Extract a human-readable error message from an Effect Cause.
 	 *
 	 * Uses a fallback chain that always produces a non-empty string:
-	 * 1. Cause.pretty — works for most typed errors
-	 * 2. Cause.squash — extracts underlying error with [Tag] prefix
+	 * 1. Cause.squash — extracts underlying error with [Tag] prefix
+	 * 2. Cause.pretty — fallback for interrupts and other causes
 	 * 3. Last resort — "Unknown error" sentinel
 	 *
 	 * Output uses a `[Tag] message` format for consistent parseability.
@@ -235,7 +235,7 @@ export const Action = {
 
 			// Standard Error
 			if (squashed instanceof Error) {
-				return squashed.message;
+				return `[Error] ${squashed.message}`;
 			}
 
 			// Unknown shape — JSON stringify
