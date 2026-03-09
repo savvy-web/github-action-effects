@@ -34,9 +34,6 @@ npm install @actions/tool-cache
 # GitHub App authentication (GitHubApp)
 npm install @octokit/auth-app
 
-# OpenTelemetry export
-npm install @effect/opentelemetry @opentelemetry/api @opentelemetry/sdk-trace-node @opentelemetry/sdk-metrics @opentelemetry/resources
-
 # Config file loading (ConfigLoader)
 npm install jsonc-parser yaml
 ```
@@ -53,6 +50,8 @@ npm install jsonc-parser yaml
 - [OpenTelemetry](./otel.md) -- OTel configuration, tracing, and metrics
 - [Patterns](./patterns.md) -- Common patterns: dry-run, error accumulation,
   permission checking, workspace detection
+- [Error Handling](./error-handling.md) -- `Action.formatCause`, `Action.run`
+  error handling, and the `[Tag] message` format
 
 ## Services at a Glance
 
@@ -100,7 +99,7 @@ npm install jsonc-parser yaml
 
 | Namespace | Purpose |
 | --- | --- |
-| `Action` | Top-level helpers: `run`, `parseInputs`, `makeLogger`, `setLogLevel`, `resolveLogLevel` |
+| `Action` | Top-level helpers: `run`, `parseInputs`, `formatCause`, `makeLogger`, `setLogLevel`, `resolveLogLevel` |
 | `GithubMarkdown` | Pure GFM builder functions: `table`, `heading`, `bold`, `details`, `checklist`, etc. |
 | `AutoMerge` | Enable/disable PR auto-merge via GraphQL |
 | `SemverResolver` | Semver comparison, range satisfaction, increment, parse |

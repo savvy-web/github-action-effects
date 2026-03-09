@@ -139,6 +139,7 @@ expect(outputState.outputs).toContainEqual({ name: "result", value: "my-pkg" });
 - [Testing](./docs/testing.md) -- testing with in-memory layers
 - [OpenTelemetry](./docs/otel.md) -- OTel configuration and tracing guide
 - [Patterns](./docs/patterns.md) -- dry-run mode, error accumulation, permission checking, and more
+- [Error Handling](./docs/error-handling.md) -- `Action.formatCause` and error handling patterns
 
 ## License
 
