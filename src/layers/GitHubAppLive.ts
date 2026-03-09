@@ -3,6 +3,60 @@ import { GitHubAppError } from "../errors/GitHubAppError.js";
 import type { InstallationToken } from "../services/GitHubApp.js";
 import { GitHubApp } from "../services/GitHubApp.js";
 
+interface Installation {
+	readonly id: number;
+	readonly account: { readonly login: string } | null;
+}
+
+const fetchAllInstallations = async (jwt: string): Promise<Array<Installation>> => {
+	const installations: Array<Installation> = [];
+	let url: string | null = "https://api.github.com/app/installations?per_page=100";
+
+	while (url) {
+		const response = await fetch(url, {
+			headers: {
+				Authorization: `Bearer ${jwt}`,
+				Accept: "application/vnd.github+json",
+			},
+		});
+
+		if (!response.ok) {
+			throw new Error(`Failed to list installations: ${response.status}`);
+		}
+
+		const page = (await response.json()) as Array<Installation>;
+		installations.push(...page);
+
+		const linkHeader = response.headers.get("link");
+		const nextMatch = linkHeader?.match(/<([^>]+)>;\s*rel="next"/);
+		url = nextMatch ? nextMatch[1] : null;
+	}
+
+	return installations;
+};
+
+const resolveInstallationId = async (auth: (opts: { type: "app" }) => Promise<{ token: string }>): Promise<number> => {
+	const { token: jwt } = await auth({ type: "app" });
+	const installations = await fetchAllInstallations(jwt);
+
+	if (installations.length === 0) {
+		throw new Error("No installations found for this GitHub App");
+	}
+
+	const repo = process.env.GITHUB_REPOSITORY;
+	if (repo) {
+		const owner = repo.split("/")[0];
+		const match = installations.find((i) => i.account?.login?.toLowerCase() === owner?.toLowerCase());
+		if (match) return match.id;
+		throw new Error(
+			`No installation found for owner "${owner}" (from GITHUB_REPOSITORY="${repo}"). ` +
+				`Available installations: ${installations.map((i) => i.account?.login ?? "unknown").join(", ")}`,
+		);
+	}
+
+	return installations[0].id;
+};
+
 const generateToken = (
 	appId: string,
 	privateKey: string,
@@ -12,9 +66,12 @@ const generateToken = (
 		try: async () => {
 			const { createAppAuth } = await import("@octokit/auth-app");
 			const auth = createAppAuth({ appId, privateKey });
+
+			const resolvedId = installationId ?? (await resolveInstallationId(auth));
+
 			const result = await auth({
 				type: "installation",
-				...(installationId !== undefined ? { installationId } : {}),
+				installationId: resolvedId,
 			});
 			return {
 				token: result.token,
