@@ -1,5 +1,24 @@
 # @savvy-web/pnpm-module-template
 
+## 0.6.0
+
+### Features
+
+* [`d632223`](https://github.com/savvy-web/github-action-effects/commit/d6322233af73df9fe0a041baa8493e73cad2f412) Add `Action.formatCause` for robust error extraction from Effect causes
+  with `[Tag] message` format and fallback chain that never returns empty
+
+### Bug Fixes
+
+* [`d632223`](https://github.com/savvy-web/github-action-effects/commit/d6322233af73df9fe0a041baa8493e73cad2f412) Fix `Action.run` silent failures by upgrading `catchAllCause` with
+  diagnostic output (error message, JS stack trace, Effect span trace via
+  `core.debug`). Fixes #15.
+
+### Other
+
+* [`d632223`](https://github.com/savvy-web/github-action-effects/commit/d6322233af73df9fe0a041baa8493e73cad2f412) Move OTel packages from optional peer dependencies to regular dependencies
+  with static imports, eliminating dynamic `import()` failures in ncc bundles
+* Remove unused `OtelExporterError` after OTel layer rewrite
+
 ## 0.5.0
 
 ### Features
