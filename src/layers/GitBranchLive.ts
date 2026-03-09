@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Duration, Effect, Layer, Schedule } from "effect";
 import { GitBranchError } from "../errors/GitBranchError.js";
 import type { GitHubClientError } from "../errors/GitHubClientError.js";
 import { GitBranch } from "../services/GitBranch.js";
@@ -8,6 +8,18 @@ const mapError =
 	(branch: string, operation: "create" | "delete" | "get" | "reset") =>
 	(error: GitHubClientError): GitBranchError =>
 		new GitBranchError({ branch, operation, reason: error.reason });
+
+/** Retry schedule for transient GitHub API errors (3 retries, exponential backoff from 1s). */
+const retrySchedule = Schedule.intersect(Schedule.exponential(Duration.seconds(1)), Schedule.recurs(3));
+
+/** Retry an effect when the GitHubClientError is marked retryable. */
+const retryOnTransient = <A>(effect: Effect.Effect<A, GitHubClientError>): Effect.Effect<A, GitHubClientError> =>
+	effect.pipe(
+		Effect.retry({
+			schedule: retrySchedule,
+			while: (error) => error.retryable,
+		}),
+	);
 
 /** Minimal Octokit shape for git refs API calls. */
 interface OctokitGit {
@@ -38,6 +50,7 @@ export const GitBranchLive: Layer.Layer<GitBranch, never, GitHubClient> = Layer.
 				),
 			).pipe(
 				Effect.asVoid,
+				retryOnTransient,
 				Effect.mapError(mapError(name, "create")),
 				Effect.withSpan("GitBranch.create", { attributes: { "branch.name": name } }),
 			),
@@ -73,6 +86,7 @@ export const GitBranchLive: Layer.Layer<GitBranch, never, GitHubClient> = Layer.
 				),
 			).pipe(
 				Effect.asVoid,
+				retryOnTransient,
 				Effect.mapError(mapError(name, "delete")),
 				Effect.withSpan("GitBranch.delete", { attributes: { "branch.name": name } }),
 			),
@@ -105,6 +119,7 @@ export const GitBranchLive: Layer.Layer<GitBranch, never, GitHubClient> = Layer.
 				),
 			).pipe(
 				Effect.asVoid,
+				retryOnTransient,
 				Effect.mapError(mapError(name, "reset")),
 				Effect.withSpan("GitBranch.reset", { attributes: { "branch.name": name } }),
 			),
