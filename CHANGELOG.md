@@ -1,5 +1,13 @@
 # @savvy-web/pnpm-module-template
 
+## 0.6.3
+
+### Bug Fixes
+
+* [`ccbbf97`](https://github.com/savvy-web/github-action-effects/commit/ccbbf97e6c531283f9a20f5b0b23f7dbaa27d84f) Retry GitBranch operations on transient 5xx errors with exponential backoff (#24)
+* Auto-buffer action output at info level and flush on failure (#25)
+* Enrich CommandRunnerError.message with command, args, and stderr context (#26)
+
 ## 0.6.2
 
 ### Bug Fixes
