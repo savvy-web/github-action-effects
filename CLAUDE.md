@@ -6,9 +6,10 @@ code in this repository.
 ## Project Status
 
 Effect-based utility library for building robust, well-logged, and
-schema-validated GitHub Actions. Provides 18 Effect services covering inputs,
+schema-validated GitHub Actions. Provides 29 Effect services covering inputs,
 logging, outputs, state, telemetry, GitHub API operations, git operations,
-config loading, tool management, and package manager abstraction.
+config loading, tool management, package manager abstraction, npm registry
+queries, package publishing, workspace detection, and token permission checks.
 
 ## Design Documentation
 
@@ -17,6 +18,7 @@ config loading, tool management, and package manager abstraction.
 
 Load when making architectural changes, adding new services, modifying layer
 composition, or understanding design decisions.
+
 **Do NOT load unless directly relevant to your task.**
 
 ## Commands
@@ -60,7 +62,7 @@ pnpm vitest run src/services/ActionInputs.test.ts
 
 ```text
 src/
-  services/    -- Effect service interfaces (18 services)
+  services/    -- Effect service interfaces (29 services)
   layers/      -- Live and Test layer implementations + InMemoryTracer
   errors/      -- Tagged error types (Data.TaggedError)
   schemas/     -- Effect Schema definitions (LogLevel, Changeset, PackageManager, etc.)
@@ -78,19 +80,28 @@ src/
 | ActionTelemetry | Metrics recording (metrics-only) | — |
 | ActionCache | Cache save/restore | @actions/cache |
 | ActionEnvironment | GitHub/runner context access | — |
+| DryRun | Mutation guard with fallback values | — |
 | GitHubClient | Octokit REST/GraphQL wrapper | @actions/github |
+| GitHubGraphQL | Typed GraphQL query/mutation execution | @actions/github |
 | GitHubApp | App authentication lifecycle | @octokit/auth-app |
+| GitHubIssue | Issue CRUD (list, get, create, update, label) | @actions/github |
+| GitHubRelease | Release + asset management | @actions/github |
 | RateLimiter | API rate limit awareness + retry | — |
 | CheckRun | Check runs + annotations | — |
 | CommandRunner | Structured shell execution | @actions/exec |
 | PullRequestComment | PR comment management | — |
 | WorkflowDispatch | Trigger + poll workflows | — |
+| TokenPermissionChecker | Token permission validation + enforcement | — |
 | ChangesetAnalyzer | Parse/generate changeset files | — |
 | GitBranch | Branch management via Git Data API | — |
-| GitCommit | Verified commits via Git Data API | — |
+| GitCommit | Verified commits + file deletions via Git Data API | — |
+| GitTag | Tag CRUD via Git Data API | — |
 | ConfigLoader | JSON/JSONC/YAML config loading | jsonc-parser, yaml |
 | ToolInstaller | Tool binary management | @actions/tool-cache |
+| NpmRegistry | npm registry queries (versions, dist-tags, info) | — |
+| PackagePublish | Pack + publish to registries | — |
 | PackageManagerAdapter | Unified PM interface | — |
+| WorkspaceDetector | Monorepo workspace detection + listing | — |
 
 ### Telemetry
 
