@@ -1,6 +1,6 @@
 {
 	"name": "@savvy-web/github-action-effects",
-	"version": "0.6.0",
+	"version": "0.6.1",
 	"private": true,
 	"description": "Effect-based utility library for building robust, well-logged, and schema-validated GitHub Actions.",
 	"homepage": "https://github.com/savvy-web/github-action-effects#readme",

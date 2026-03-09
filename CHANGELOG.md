@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 0.6.1
+
+### Bug Fixes
+
+* [`87e2ce3`](https://github.com/savvy-web/github-action-effects/commit/87e2ce33648daceeb399d2c217b47cdf767d4cdc) Fix GitHubApp.withToken failing with "installationId option is required" by auto-discovering the installation ID when not explicitly provided. The fix authenticates as the app (JWT), lists installations, and matches by GITHUB\_REPOSITORY owner. Fixes #18.
+
 ## 0.6.0
 
 ### Features
