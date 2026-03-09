@@ -109,7 +109,8 @@ src/
 
 - All service methods instrumented with `Effect.withSpan`
 - `InMemoryTracer` captures spans for GitHub-native output
-- Optional `OtelTelemetryLive` bridges to OpenTelemetry exporters
+- `OtelTelemetryLive` bridges to OpenTelemetry exporters (OTel packages are
+  regular dependencies, statically imported)
 
 ### Key Patterns
 
