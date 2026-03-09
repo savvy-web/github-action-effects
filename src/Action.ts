@@ -204,4 +204,55 @@ export const Action = {
 
 	/** Resolve a LogLevelInput to a concrete ActionLogLevel. */
 	resolveLogLevel,
+
+	/**
+	 * Extract a human-readable error message from an Effect Cause.
+	 *
+	 * Uses a fallback chain that always produces a non-empty string:
+	 * 1. Cause.pretty — works for most typed errors
+	 * 2. Cause.squash — extracts underlying error with [Tag] prefix
+	 * 3. Last resort — "Unknown error" sentinel
+	 *
+	 * Output uses a `[Tag] message` format for consistent parseability.
+	 */
+	formatCause: (cause: Cause.Cause<unknown>): string => {
+		// Try structured extraction first via Cause.squash
+		try {
+			const squashed = Cause.squash(cause);
+
+			// TaggedError pattern: has _tag and typically reason or message
+			if (
+				squashed != null &&
+				typeof squashed === "object" &&
+				"_tag" in squashed &&
+				typeof (squashed as Record<string, unknown>)._tag === "string"
+			) {
+				const tag = (squashed as Record<string, unknown>)._tag as string;
+				const reason =
+					(squashed as Record<string, unknown>).reason ?? (squashed as Record<string, unknown>).message ?? "";
+				return `[${tag}] ${String(reason)}`;
+			}
+
+			// Standard Error
+			if (squashed instanceof Error) {
+				return squashed.message;
+			}
+
+			// Unknown shape — JSON stringify
+			const json = JSON.stringify(squashed);
+			if (json && json !== "{}") {
+				return `[UnknownError] ${json}`;
+			}
+		} catch {
+			// squash or stringify failed — fall through
+		}
+
+		// Fall back to Cause.pretty
+		const pretty = Cause.pretty(cause);
+		if (pretty.trim() !== "") {
+			return pretty;
+		}
+
+		return "Unknown error (no diagnostic information available)";
+	},
 } as const;

@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Cause, Data, Effect, FiberId, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { Action } from "./Action.js";
 import { ActionInputError } from "./errors/ActionInputError.js";
@@ -121,5 +121,41 @@ describe("Action.parseInputs", () => {
 			),
 		);
 		expect(result).toEqual({ a: "true", b: "false" });
+	});
+});
+
+describe("Action.formatCause", () => {
+	it("extracts message from a Fail cause with TaggedError", () => {
+		class TestError extends Data.TaggedError("TestError")<{ reason: string }> {}
+		const error = new TestError({ reason: "something broke" });
+		const cause = Cause.fail(error);
+		const message = Action.formatCause(cause);
+		expect(message).toContain("[TestError]");
+		expect(message).toContain("something broke");
+	});
+
+	it("extracts message from a Die cause with standard Error", () => {
+		const cause = Cause.die(new Error("unexpected boom"));
+		const message = Action.formatCause(cause);
+		expect(message).toContain("unexpected boom");
+	});
+
+	it("extracts message from a Die cause with non-Error value", () => {
+		const cause = Cause.die({ code: 42, detail: "weird" });
+		const message = Action.formatCause(cause);
+		expect(message).not.toBe("");
+		expect(message).toContain("42");
+	});
+
+	it("never returns an empty string", () => {
+		const cause = Cause.empty;
+		const message = Action.formatCause(cause);
+		expect(message.length).toBeGreaterThan(0);
+	});
+
+	it("handles interrupt cause", () => {
+		const cause = Cause.interrupt(FiberId.make(1, 0));
+		const message = Action.formatCause(cause);
+		expect(message.length).toBeGreaterThan(0);
 	});
 });
