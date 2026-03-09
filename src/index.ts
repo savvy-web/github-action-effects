@@ -141,7 +141,14 @@ export type { GitHubContext as GitHubContextType, RunnerContext as RunnerContext
 export { GitHubContext, RunnerContext } from "./schemas/Environment.js";
 export { CapturedOutput, ChecklistItem, Status } from "./schemas/GithubMarkdown.js";
 export type { FileChange as FileChangeType, TreeEntry as TreeEntryType } from "./schemas/GitTree.js";
-export { FileChange, TreeEntry } from "./schemas/GitTree.js";
+export {
+	FileChange,
+	FileChangeContent,
+	FileChangeDeletion,
+	TreeEntry,
+	TreeEntryContent,
+	TreeEntryDeletion,
+} from "./schemas/GitTree.js";
 export { ActionLogLevel, LogLevelInput } from "./schemas/LogLevel.js";
 export type { NpmPackageInfo as NpmPackageInfoType } from "./schemas/NpmPackage.js";
 export { NpmPackageInfo } from "./schemas/NpmPackage.js";

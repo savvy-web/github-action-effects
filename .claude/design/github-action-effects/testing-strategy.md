@@ -75,7 +75,9 @@ and matchedKey, cache errors, test layer in-memory Map.
 from GitHubClientError, test layer in-memory branch state.
 
 **GitCommit** -- createTree/createCommit/updateRef/commitFiles, Git Data API
-interactions, test layer in-memory state.
+interactions, test layer in-memory state. Both createTree and commitFiles
+support file deletions via `sha: null` entries (TreeEntryDeletion /
+FileChangeDeletion).
 
 **GitTag** -- create/delete/list/resolve operations, prefix filtering, test
 layer in-memory tag state.

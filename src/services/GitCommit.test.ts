@@ -15,7 +15,10 @@ const run = <A, E>(state: ReturnType<typeof GitCommitTest.empty>, effect: Effect
 // -- Service method shorthands --
 
 const createTree = (
-	entries: Array<{ path: string; mode: "100644" | "100755" | "040000"; content: string }>,
+	entries: Array<
+		| { path: string; mode: "100644" | "100755" | "040000"; content: string }
+		| { path: string; mode: "100644" | "100755" | "040000"; sha: null }
+	>,
 	baseTree?: string,
 ) => Effect.flatMap(GitCommit, (svc) => svc.createTree(entries, baseTree));
 
@@ -25,8 +28,11 @@ const createCommit = (message: string, treeSha: string, parentShas: Array<string
 const updateRef = (ref: string, sha: string, force?: boolean) =>
 	Effect.flatMap(GitCommit, (svc) => svc.updateRef(ref, sha, force));
 
-const commitFiles = (branch: string, message: string, files: Array<{ path: string; content: string }>) =>
-	Effect.flatMap(GitCommit, (svc) => svc.commitFiles(branch, message, files));
+const commitFiles = (
+	branch: string,
+	message: string,
+	files: Array<{ path: string; content: string } | { path: string; sha: null }>,
+) => Effect.flatMap(GitCommit, (svc) => svc.commitFiles(branch, message, files));
 
 describe("GitCommit", () => {
 	describe("createTree", () => {
@@ -37,6 +43,25 @@ describe("GitCommit", () => {
 			expect(state.trees).toHaveLength(1);
 			expect(state.trees[0]?.entries[0]?.path).toBe("file.txt");
 			expect(state.trees[0]?.baseTree).toBe("base-sha");
+		});
+
+		it("records deletion entries with sha: null", async () => {
+			const state = GitCommitTest.empty();
+			const sha = await run(
+				state,
+				createTree(
+					[
+						{ path: "keep.txt", mode: "100644", content: "hello" },
+						{ path: "remove.txt", mode: "100644", sha: null },
+					],
+					"base-sha",
+				),
+			);
+			expect(sha).toBe("tree-sha-1");
+			expect(state.trees[0]?.entries).toEqual([
+				{ path: "keep.txt", mode: "100644", content: "hello" },
+				{ path: "remove.txt", mode: "100644", sha: null },
+			]);
 		});
 
 		it("increments SHA counter across calls", async () => {
@@ -90,6 +115,22 @@ describe("GitCommit", () => {
 			expect(state.refUpdates).toHaveLength(1);
 			expect(state.refUpdates[0]?.ref).toBe("main");
 			expect(state.commits[0]?.message).toBe("add files");
+		});
+
+		it("handles mixed additions and deletions", async () => {
+			const state = GitCommitTest.empty();
+			const sha = await run(
+				state,
+				commitFiles("main", "mixed changes", [
+					{ path: "added.md", content: "# New" },
+					{ path: "removed.md", sha: null },
+				]),
+			);
+			expect(sha).toMatch(/^commit-sha-/);
+			expect(state.trees[0]?.entries).toEqual([
+				{ path: "added.md", mode: "100644", content: "# New" },
+				{ path: "removed.md", mode: "100644", sha: null },
+			]);
 		});
 	});
 

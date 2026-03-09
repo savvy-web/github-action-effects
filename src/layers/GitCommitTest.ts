@@ -57,7 +57,11 @@ const makeTestGitCommit = (state: GitCommitTestState): GitCommit => {
 				treeCounter++;
 				const treeSha = `tree-sha-${treeCounter}`;
 				state.trees.push({
-					entries: files.map((f) => ({ path: f.path, mode: "100644" as const, content: f.content })),
+					entries: files.map((f) =>
+						"sha" in f
+							? { path: f.path, mode: "100644" as const, sha: f.sha }
+							: { path: f.path, mode: "100644" as const, content: f.content },
+					),
 					baseTree: `parent-of-${branch}`,
 					sha: treeSha,
 				});

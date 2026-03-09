@@ -32,12 +32,11 @@ export const GitCommitLive: Layer.Layer<GitCommit, never, GitHubClient> = Layer.
 					asGit(octokit).rest.git.createTree({
 						owner,
 						repo,
-						tree: entries.map((e) => ({
-							path: e.path,
-							mode: e.mode,
-							type: "blob",
-							content: e.content,
-						})),
+						tree: entries.map((e) =>
+							"sha" in e
+								? { path: e.path, mode: e.mode, sha: e.sha }
+								: { path: e.path, mode: e.mode, type: "blob", content: e.content },
+						),
 						...(baseTree !== undefined ? { base_tree: baseTree } : {}),
 					}),
 				),
@@ -104,12 +103,11 @@ export const GitCommitLive: Layer.Layer<GitCommit, never, GitHubClient> = Layer.
 						asGit(octokit).rest.git.createTree({
 							owner,
 							repo,
-							tree: files.map((f) => ({
-								path: f.path,
-								mode: "100644" as const,
-								type: "blob",
-								content: f.content,
-							})),
+							tree: files.map((f) =>
+								"sha" in f
+									? { path: f.path, mode: "100644" as const, sha: f.sha }
+									: { path: f.path, mode: "100644" as const, type: "blob", content: f.content },
+							),
 							base_tree: parentSha,
 						}),
 					)

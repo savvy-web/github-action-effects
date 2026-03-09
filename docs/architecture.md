@@ -312,7 +312,7 @@ See [services.md](./services.md) for usage examples of each service.
 | PullRequestComment | PullRequestCommentLive | Sticky (upsert) PR comments |
 | GitTag | GitTagLive | Tag CRUD via Git Data API |
 | GitBranch | GitBranchLive | Branch CRUD via Git Data API |
-| GitCommit | GitCommitLive | Tree/commit creation, ref updates |
+| GitCommit | GitCommitLive | Tree/commit creation, ref updates, file deletions |
 
 ### Package Management Services
 

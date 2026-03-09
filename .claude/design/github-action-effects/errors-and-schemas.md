@@ -85,8 +85,12 @@ inferred via `typeof X.Type`.
 | `BumpType` | `schemas/Changeset.ts` | Bump type (`"major"`, `"minor"`, `"patch"`) |
 | `Changeset` | `schemas/Changeset.ts` | Parsed changeset file |
 | `ChangesetFile` | `schemas/Changeset.ts` | Changeset file with path |
-| `FileChange` | `schemas/GitTree.ts` | File change for Git Data API commits |
-| `TreeEntry` | `schemas/GitTree.ts` | Git tree entry |
+| `FileChange` | `schemas/GitTree.ts` | File change for Git Data API commits (union of `FileChangeContent` and `FileChangeDeletion`) |
+| `FileChangeContent` | `schemas/GitTree.ts` | File change that adds or updates a file (path, content) |
+| `FileChangeDeletion` | `schemas/GitTree.ts` | File change that deletes a file (path, sha: null) |
+| `TreeEntry` | `schemas/GitTree.ts` | Git tree entry (union of `TreeEntryContent` and `TreeEntryDeletion`) |
+| `TreeEntryContent` | `schemas/GitTree.ts` | Tree entry that adds or updates a file (path, mode, content) |
+| `TreeEntryDeletion` | `schemas/GitTree.ts` | Tree entry that deletes a file (path, mode, sha: null) |
 | `PackageManagerName` | `schemas/PackageManager.ts` | PM name enum |
 | `PackageManagerInfo` | `schemas/PackageManager.ts` | Detected PM info |
 | `NpmPackageInfo` | `schemas/NpmPackage.ts` | npm registry package metadata |

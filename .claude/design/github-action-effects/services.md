@@ -231,14 +231,19 @@ Branch management via the GitHub Git Data API.
 
 ### GitCommit Service
 
-Create verified commits via the GitHub Git Data API.
+Create verified commits via the GitHub Git Data API. Supports both file
+additions/updates and file deletions.
 
 **Interface:**
 
-- `createTree(entries, baseTree?)` -- Create a tree object, return SHA
+- `createTree(entries, baseTree?)` -- Create a tree object, return SHA.
+  Each entry is a `TreeEntry` (union of `TreeEntryContent` for add/update
+  and `TreeEntryDeletion` with `sha: null` for deletion)
 - `createCommit(message, treeSha, parentShas)` -- Create a commit object, return SHA
 - `updateRef(ref, sha, force?)` -- Update a ref to point at a new SHA
-- `commitFiles(branch, message, files)` -- Convenience: commit files to a branch
+- `commitFiles(branch, message, files)` -- Convenience: commit files to a
+  branch. Each file is a `FileChange` (union of `FileChangeContent` for
+  add/update and `FileChangeDeletion` with `sha: null` for deletion)
 
 **Error type:** `GitCommitError`
 

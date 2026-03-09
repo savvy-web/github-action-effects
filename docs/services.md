@@ -378,6 +378,7 @@ const program = Effect.gen(function* () {
   // Commits (verified via Git Data API)
   const commitSha = yield* commits.commitFiles("main", "chore: update", [
     { path: "package.json", content: newContent },
+    { path: "obsolete.config.js", sha: null },  // delete a file
   ]);
 });
 ```
