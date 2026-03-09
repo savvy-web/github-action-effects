@@ -102,6 +102,8 @@ single export, reducing barrel clutter and improving discoverability.
 - `Action.makeLogger()` -- Create the Effect Logger for GitHub Actions
 - `Action.setLogLevel(level)` -- Set action log level for current scope
 - `Action.resolveLogLevel(input)` -- Resolve LogLevelInput to ActionLogLevel
+- `Action.formatCause(cause)` -- Extract human-readable error message from an
+  Effect `Cause` using a `[Tag] message` fallback chain
 
 **`GithubMarkdown`** (from `src/utils/GithubMarkdown.ts`) groups GFM builders:
 
@@ -691,7 +693,9 @@ Action.run(program, layer): void   // merge additional layers with standard laye
    `otel-headers`) and conditionally wires up OtelExporterLive or
    InMemoryTracer based on resolved config.
 3. Catches all errors (via `Effect.catchAllCause`) and routes them to
-   `core.setFailed()` with `Cause.pretty` formatting
+   `core.setFailed()` with `Cause.pretty` formatting. (Planned: upgrade to
+   use `Action.formatCause` for structured `[Tag] message` output, plus JS
+   stack trace and Effect span trace via `core.debug()`.)
 4. Runs the program with `Effect.runPromise()`
 5. Merges any user-supplied `layer` with the core layers
 6. Last-resort catch on the promise sets `process.exitCode = 1` if even

@@ -54,7 +54,14 @@ services.
 | `semver` | SemverResolver | Semver comparison and resolution |
 | `jsonc-parser` | ConfigLoader.loadJsonc | JSONC config file support |
 | `yaml` | ConfigLoader.loadYaml | YAML config file support |
-| `@effect/opentelemetry` | OtelTelemetryLive | Effect tracer to OTel bridge |
+
+All optional peers are marked `optional: true` in `peerDependenciesMeta`.
+
+### Regular Dependencies (Bundled)
+
+| Package | Used By | Purpose |
+| --- | --- | --- |
+| `@effect/opentelemetry` | OtelExporterLive, OtelTelemetryLive | Effect tracer to OTel bridge |
 | `@opentelemetry/api` | OtelTelemetryLive | OTel API types |
 | `@opentelemetry/exporter-trace-otlp-grpc` | OtelExporterLive | gRPC trace export |
 | `@opentelemetry/exporter-trace-otlp-proto` | OtelExporterLive | HTTP/protobuf trace export |
@@ -62,10 +69,13 @@ services.
 | `@opentelemetry/exporter-metrics-otlp-grpc` | OtelExporterLive | gRPC metric export |
 | `@opentelemetry/exporter-metrics-otlp-proto` | OtelExporterLive | HTTP/protobuf metric export |
 | `@opentelemetry/exporter-metrics-otlp-http` | OtelExporterLive | HTTP/JSON metric export |
+| `@opentelemetry/resources` | OtelExporterLive | OTel resource definitions |
+| `@opentelemetry/sdk-metrics` | OtelExporterLive | OTel metrics SDK |
+| `@opentelemetry/sdk-trace-node` | OtelExporterLive | OTel tracing SDK |
 
-All optional peers are marked `optional: true` in `peerDependenciesMeta`.
-OTel exporter packages are dynamically imported at runtime based on protocol
-configuration; only the packages matching the selected protocol are needed.
+OTel packages are regular `dependencies` (not optional peers) because
+`@vercel/ncc` cannot resolve dynamic `import()` calls. Static imports with
+bundled dependencies ensure reliable ncc compilation.
 
 ---
 

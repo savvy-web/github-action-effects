@@ -130,8 +130,8 @@ Observability:
   ActionTelemetryTest    — in-memory metrics + attributes
 
   InMemoryTracer.layer   — captures Effect.withSpan spans in memory for reporting
-  OtelTelemetryLive      — bridges Effect tracer to OpenTelemetry (optional peer dep)
-  OtelExporterLive       — dynamically imports OTLP exporters based on protocol config
+  OtelTelemetryLive      — bridges Effect tracer to OpenTelemetry (static import, regular dep)
+  OtelExporterLive       — configures OTel exporter via static @effect/opentelemetry import
 
 Platform:
   NodeContext.layer      — @effect/platform-node: FileSystem, Path, Terminal,
@@ -224,17 +224,19 @@ against requirements using hierarchical level comparison.
 
 ### OtelExporterLive
 
-Takes resolved `OtelConfig`, dynamically imports OTLP exporter packages
-based on protocol (`grpc`, `http/protobuf`, `http/json`), and creates trace
-and metric exporters. Provides them as Effect layers. Falls back gracefully
-with installation instructions if packages are missing.
+Takes resolved `ResolvedOtelConfig`. When `enabled=false`, returns
+`InMemoryTracer.layer`. When `enabled=true`, uses a static import of
+`@effect/opentelemetry` to configure `EffectOtel.Tracer.layerGlobal` with
+GitHub-aware resource attributes from `GitHubOtelAttributes.fromEnvironment()`.
+OTel packages are regular dependencies (not optional peers), so static
+imports work reliably in ncc bundles.
 
 ### OtelTelemetryLive
 
-Bridges Effect's `Tracer` to `@effect/opentelemetry`. When provided, replaces
-InMemoryTracer with an OTel-backed tracer. Accepts optional
-`resourceAttributes` for setting OTel resource attributes (e.g., from
-`GitHubOtelAttributes.fromEnvironment()`).
+Bridges Effect's `Tracer` to `@effect/opentelemetry` via a static import.
+When provided, replaces InMemoryTracer with an OTel-backed tracer. Accepts
+optional `OtelConfig` with `serviceName`, `serviceVersion`, and
+`resourceAttributes`.
 
 ### InMemoryTracer
 

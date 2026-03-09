@@ -29,7 +29,6 @@ export { GitHubIssueError, GitHubIssueErrorBase } from "./errors/GitHubIssueErro
 export { GitHubReleaseError, GitHubReleaseErrorBase } from "./errors/GitHubReleaseError.js";
 export { GitTagError, GitTagErrorBase } from "./errors/GitTagError.js";
 export { NpmRegistryError, NpmRegistryErrorBase } from "./errors/NpmRegistryError.js";
-export { OtelExporterError, OtelExporterErrorBase } from "./errors/OtelExporterError.js";
 export { PackageManagerError, PackageManagerErrorBase } from "./errors/PackageManagerError.js";
 export { PackagePublishError, PackagePublishErrorBase } from "./errors/PackagePublishError.js";
 export { PullRequestCommentError, PullRequestCommentErrorBase } from "./errors/PullRequestCommentError.js";

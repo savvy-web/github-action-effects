@@ -77,7 +77,9 @@ GitHub Actions development suffers from four recurring pain points:
 - **Utility-first** -- Provide composable services, not an opinionated framework
 - **Effect-native** -- All services are Effect services with proper Layer composition
 - **Peer dependencies** -- `effect` and `@actions/*` packages are peers; users
-  bring their own versions (action-builder bundles with ncc anyway)
+  bring their own versions (action-builder bundles with ncc anyway). OTel
+  packages are regular dependencies (bundled by ncc) to avoid dynamic import
+  failures.
 - **Single entry point** -- One barrel export at `@savvy-web/github-action-effects`
 - **Incrementally adoptable** -- Use one service or all of them; no all-or-nothing
 
@@ -89,12 +91,18 @@ GitHub Actions development suffers from four recurring pain points:
 
 #### AD-1: Peer Dependencies for effect and @actions/*
 
-- **Decision:** `effect` and all `@actions/*` packages are peer dependencies
+- **Decision:** `effect` and all `@actions/*` packages are peer dependencies.
+  OpenTelemetry packages (`@effect/opentelemetry`, `@opentelemetry/*`) are
+  regular `dependencies`, not peer dependencies.
 - **Rationale:** `@savvy-web/github-action-builder` bundles everything with
   `@vercel/ncc` into a single file. Peer deps let the bundler resolve versions
   from the consumer's package.json, avoiding duplication and version conflicts.
+  OTel packages were moved from optional peers to regular dependencies because
+  ncc cannot resolve dynamic `import()` calls -- static imports with bundled
+  packages are required for reliable ncc output.
 - **Trade-off:** Users must install effect themselves. This is acceptable since
-  this library targets Effect-using action authors.
+  this library targets Effect-using action authors. OTel packages add to
+  bundle size but are necessary for correct ncc compilation.
 
 #### AD-2: Single Entry Point with Direct Imports
 
