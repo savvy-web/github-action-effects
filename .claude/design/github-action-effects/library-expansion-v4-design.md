@@ -1,5 +1,21 @@
+---
+status: archived
+module: github-action-effects
+category: architecture
+created: 2026-03-06
+updated: 2026-03-09
+last-synced: 2026-03-09
+completeness: 100
+related:
+  - ./index.md
+  - ./services.md
+dependencies: []
+---
+
 # Library Expansion v4: Targeted Gap-Fillers — Design
 
+> **Archived:** This design document has been fully implemented and is retained for historical reference.
+>
 > **Status: COMPLETED.** All 6 services from this design have been
 > implemented and are documented in [services.md](./services.md),
 > [layers.md](./layers.md), and [errors-and-schemas.md](./errors-and-schemas.md).
@@ -7,10 +23,27 @@
 
 **Date:** 2026-03-08
 
-**Goal:** Add 6 focused abstractions that fill concrete gaps identified by
-analyzing 5 production GitHub Actions (workflow-release-action,
-workflow-runtime-action, workflow-control-action, pnpm-config-dependency-action,
-silk-sync-action).
+## Overview
+
+Add 6 focused abstractions that fill concrete gaps identified by analyzing 5
+production GitHub Actions. Each abstraction covers a pattern observed in
+multiple consumers: REST pagination, GraphQL support, dry-run mode, npm registry
+queries, error accumulation, and workspace detection.
+
+## Current State
+
+At the time of this design (v0.4.0), the library provided 20 services covering
+inputs, logging, outputs, state, telemetry, GitHub API operations, git
+operations, config loading, tool management, and package manager abstraction.
+Analysis of 5 production actions revealed 6 recurring patterns not yet
+abstracted.
+
+## Rationale
+
+Each of the 6 additions addresses a pattern duplicated across multiple
+production actions. Extracting them into the shared library eliminates
+copy-paste, standardizes error handling, and ensures consistent telemetry
+instrumentation via Effect.withSpan.
 
 **Principle:** Composable services, not a framework. Each abstraction has
 multiple observed consumers. No business logic — only reusable primitives.
@@ -286,3 +319,8 @@ Each service follows the established pattern:
 
 Ship as v0.5.0 (minor, breaking changes limited to GitHubClient interface
 addition). Single changeset covering all 6 additions.
+
+## Related Documentation
+
+* [index.md](./index.md) — Design document index
+* [services.md](./services.md) — Full service catalog including v4 additions

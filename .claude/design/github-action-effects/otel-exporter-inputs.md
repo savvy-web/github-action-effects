@@ -1,3 +1,17 @@
+---
+status: current
+module: github-action-effects
+category: architecture
+created: 2026-03-06
+updated: 2026-03-09
+last-synced: 2026-03-09
+completeness: 85
+related:
+  - ./index.md
+  - ./services.md
+dependencies: []
+---
+
 # OTel Exporter Inputs Design
 
 ## Overview
@@ -109,3 +123,16 @@ authors get OTel support with zero configuration.
 * Schema tests for config resolution (input priority over env var over defaults)
 * Header parsing edge cases
 * Auto mode resolution (with and without endpoint present)
+
+## Current State
+
+The OTel exporter input design is fully specified with schema validation, dynamic protocol-based package imports, and integration into `Action.run()`. Implementation covers all three OTLP protocols with automatic env var fallback resolution.
+
+## Rationale
+
+Standardizing OTel configuration as four action inputs with env var fallbacks allows org-level defaults while giving individual actions override control, and dynamic imports keep the dependency footprint minimal by only loading the exporter packages matching the selected protocol.
+
+## Related Documentation
+
+* [Architecture Index](./index.md) -- overall architecture and design overview
+* [Services](./services.md) -- service interface definitions including ActionTelemetry

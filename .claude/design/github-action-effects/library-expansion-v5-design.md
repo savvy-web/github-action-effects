@@ -1,5 +1,21 @@
+---
+status: archived
+module: github-action-effects
+category: architecture
+created: 2026-03-08
+updated: 2026-03-09
+last-synced: 2026-03-09
+completeness: 100
+related:
+  - ./index.md
+  - ./services.md
+dependencies: []
+---
+
 # Library Expansion v5: Release, Publishing & Observability — Design
 
+> **Archived:** This design document has been fully implemented and is retained for historical reference.
+>
 > **Status: COMPLETED.** All 8 abstractions from this design have been
 > implemented and are documented in [services.md](./services.md),
 > [layers.md](./layers.md), and [errors-and-schemas.md](./errors-and-schemas.md).
@@ -7,8 +23,25 @@
 
 **Date:** 2026-03-08
 
-**Goal:** Add 8 abstractions covering release management, package publishing,
-token validation, and observability standardization. Builds on v0.5.0 services.
+## Overview
+
+Add 8 abstractions covering release management, package publishing, token
+validation, and observability standardization. Builds on v0.5.0 services to
+address remaining gaps identified in 5 production GitHub Actions.
+
+## Current State
+
+At the time of this design (v0.5.0), the library provided the original 20
+services plus the 6 v4 additions (pagination, GraphQL, dry-run, npm registry,
+error accumulation, workspace detection). Analysis of the same 5 production
+actions revealed 8 further patterns not yet abstracted.
+
+## Rationale
+
+The remaining gaps — GitHub Releases, issue management, git tagging, semver
+resolution, auto-merge, package publishing, token validation, and OTel context
+attributes — were each duplicated across multiple production actions. Extracting
+them completes the library's coverage of observed production patterns.
 
 **Principle:** Composable services, not a framework. Each abstraction has
 multiple observed consumers across 5 production GitHub Actions.
@@ -377,3 +410,8 @@ directly without mock layers.
 ## Release
 
 Ship as v0.6.0 (minor). Single changeset covering all 8 additions.
+
+## Related Documentation
+
+- [index.md](./index.md) — Design document index
+- [services.md](./services.md) — Full service catalog including v5 additions

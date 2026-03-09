@@ -1,3 +1,17 @@
+---
+status: current
+module: github-action-effects
+category: architecture
+created: 2026-03-06
+updated: 2026-03-09
+last-synced: 2026-03-09
+completeness: 90
+related:
+  - ./index.md
+  - ./services.md
+dependencies: []
+---
+
 # Errors and Schemas
 
 Error types, schema patterns, and data encoding for
@@ -5,6 +19,16 @@ Error types, schema patterns, and data encoding for
 
 See [index.md](./index.md) for architecture overview.
 See [services.md](./services.md) for service interfaces that use these types.
+
+---
+
+## Overview
+
+This document describes the error handling and schema validation patterns used
+across all services. Errors use `Data.TaggedError` with a `Base` export pattern
+for api-extractor compatibility. Schemas use `Schema.Struct` with annotations
+for validated types, covering everything from log levels and environment contexts
+to Git tree entries and telemetry data.
 
 ---
 
@@ -211,3 +235,23 @@ TokenPermissionChecker.assertSufficient(requirements)
   -> returns PermissionCheckResult with granted/required/missing/extra/satisfied
   -> fails with TokenPermissionError if missing permissions
 ```
+
+---
+
+## Current State
+
+All 27 error types and 30+ schemas are fully defined and in use across the
+service catalog. The error hierarchy with domain-specific wrapping of
+`GitHubClientError` is stable.
+
+## Rationale
+
+Tagged errors with structured fields enable pattern matching and programmatic
+error handling in Effect pipelines. The `Base` export pattern works around
+api-extractor limitations with class-based `Data.TaggedError`. Schema validation
+at service boundaries catches invalid data early with clear error messages.
+
+## Related Documentation
+
+- [index.md](./index.md) -- Architecture overview and design decisions
+- [services.md](./services.md) -- Service interfaces that use these error and schema types

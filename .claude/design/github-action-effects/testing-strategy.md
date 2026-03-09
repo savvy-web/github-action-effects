@@ -1,3 +1,18 @@
+---
+status: current
+module: github-action-effects
+category: architecture
+created: 2026-03-06
+updated: 2026-03-09
+last-synced: 2026-03-09
+completeness: 85
+related:
+  - ./index.md
+  - ./services.md
+  - ./layers.md
+dependencies: []
+---
+
 # Testing Strategy
 
 Testing approach, coverage requirements, and test layer patterns for
@@ -5,6 +20,15 @@ Testing approach, coverage requirements, and test layer patterns for
 
 See [index.md](./index.md) for architecture overview.
 See [layers.md](./layers.md) for test layer implementations.
+
+---
+
+## Overview
+
+This document describes the testing strategy for the library, covering unit
+test organization, coverage requirements, and what each service tests. All
+tests use Effect test layers with in-memory backing to avoid real platform
+dependencies.
 
 ---
 
@@ -193,3 +217,24 @@ edge cases, auto mode with/without endpoint.
 
 Deferred until initial services are stable. Will use `nektos/act` via the
 action-builder's `persistLocal` feature to run actions in Docker containers.
+
+---
+
+## Current State
+
+Unit tests cover all 27 services, 6 namespace/utility objects, and key schemas.
+Coverage meets the 80% threshold. Integration tests are deferred pending service
+stabilization.
+
+## Rationale
+
+In-memory test layers allow fast, deterministic testing without GitHub API
+credentials or runner infrastructure. The co-located test file pattern keeps
+tests discoverable alongside their implementations, and the forks pool ensures
+compatibility with Effect-TS runtime requirements.
+
+## Related Documentation
+
+- [index.md](./index.md) -- Architecture overview and design decisions
+- [services.md](./services.md) -- Service interfaces being tested
+- [layers.md](./layers.md) -- Test layer implementations used in tests

@@ -1,3 +1,19 @@
+---
+status: current
+module: github-action-effects
+category: architecture
+created: 2026-03-06
+updated: 2026-03-09
+last-synced: 2026-03-09
+completeness: 90
+related:
+  - ./index.md
+  - ./layers.md
+  - ./errors-and-schemas.md
+  - ./testing-strategy.md
+dependencies: []
+---
+
 # Services
 
 All service interface descriptions, namespace objects, and utility namespaces
@@ -8,7 +24,7 @@ See [layers.md](./layers.md) for live and test layer implementations.
 
 ---
 
-## Service Overview
+## Overview
 
 Twenty-seven service modules plus six namespace/utility objects, each
 independently usable. `Action.run()` automatically provides
@@ -684,3 +700,25 @@ Action.run(program, layer): void   // merge additional layers with standard laye
 **Note:** `ActionStateLive` is not included in the core layers because not
 all actions need multi-phase state; users who need it pass it as the second
 `layer` argument.
+
+---
+
+## Current State
+
+All 27 service modules and 6 namespace/utility objects are fully defined with
+interfaces, error types, and both live and test layer implementations. The
+service catalog is stable and actively used by downstream actions.
+
+## Rationale
+
+Services are designed as independent, composable Effect modules so that action
+authors can pick only what they need without pulling in unnecessary dependencies.
+The namespace object pattern keeps the public API surface small while remaining
+compatible with api-extractor.
+
+## Related Documentation
+
+- [index.md](./index.md) -- Architecture overview and design decisions
+- [layers.md](./layers.md) -- Live and test layer implementations
+- [errors-and-schemas.md](./errors-and-schemas.md) -- Error types and schema patterns
+- [testing-strategy.md](./testing-strategy.md) -- Testing approach and coverage

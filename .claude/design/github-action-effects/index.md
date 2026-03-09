@@ -3,10 +3,16 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-08
-last-synced: 2026-03-08
+updated: 2026-03-09
+last-synced: 2026-03-09
 completeness: 95
-related: []
+related:
+  - ./services.md
+  - ./layers.md
+  - ./errors-and-schemas.md
+  - ./testing-strategy.md
+  - ./integration-points.md
+  - ./otel-exporter-inputs.md
 dependencies: []
 ---
 
@@ -25,6 +31,10 @@ schema-validated GitHub Actions with Node.js 24.
 | [testing-strategy.md](./testing-strategy.md) | Testing approach, coverage requirements, test layer patterns |
 | [integration-points.md](./integration-points.md) | Peer dependencies, how services compose, data flow diagrams |
 | [otel-exporter-inputs.md](./otel-exporter-inputs.md) | OTel exporter input design and Action.run() integration |
+
+## Current State
+
+The library is actively developed and provides 20 Effect services spanning core action I/O, GitHub API integration, git operations, build tooling, and observability, along with utility namespaces for markdown generation, report building, and telemetry output.
 
 ## Overview
 
