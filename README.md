@@ -63,7 +63,7 @@ Action.run(program);
 | GitBranch | Create, delete, exists, getSha, reset branches | `@actions/github` |
 | GitCommit | Create trees, commits, update refs, commitFiles convenience (supports file deletions) | `@actions/github` |
 | CommandRunner | Structured shell exec with capture, JSON parsing, line splitting | `@actions/exec` |
-| ConfigLoader | Load and validate JSON, JSONC, YAML config files | `jsonc-parser`, `yaml` |
+| ConfigLoader | Load and validate JSON, JSONC, YAML config files | -- |
 | DryRun | Mutation guard that skips side effects with a fallback value | -- |
 | NpmRegistry | Query npm for versions, dist-tags, package info | -- |
 | PackagePublish | Auth setup, pack, publish, verify integrity, multi-registry | -- |
@@ -98,7 +98,7 @@ Action.run(program);
 | `otel-protocol` | `"grpc"` | `"grpc"`, `"http/protobuf"`, or `"http/json"` |
 | `otel-headers` | `""` | Comma-separated `key=value` pairs for OTLP headers |
 
-When no endpoint is configured, tracing falls back to an in-memory tracer and a timing summary is appended to the step summary automatically.
+When no endpoint is configured, tracing falls back to an in-memory tracer. A timing summary is appended to the step summary when `log-level` is set to `debug` (or `auto` with `RUNNER_DEBUG=1`).
 
 ## Testing
 
@@ -134,8 +134,10 @@ expect(outputState.outputs).toContainEqual({ name: "result", value: "my-pkg" });
 ## Documentation
 
 - [Example Action](./docs/example-action.md) -- end-to-end tutorial
+- [Advanced Action](./docs/advanced-action.md) -- three-stage app (pre/main/post) with GitHub App auth, OTel, state, and log levels
 - [Services Guide](./docs/services.md) -- detailed guide for each service
 - [Architecture](./docs/architecture.md) -- API reference and layer composition
+- [Peer Dependencies](./docs/peer-dependencies.md) -- required and optional peer dependencies with service mapping
 - [Testing](./docs/testing.md) -- testing with in-memory layers
 - [OpenTelemetry](./docs/otel.md) -- OTel configuration and tracing guide
 - [Patterns](./docs/patterns.md) -- dry-run mode, error accumulation, permission checking, and more
