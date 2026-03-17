@@ -54,10 +54,28 @@ export const SemverResolver = {
 	 */
 	latestInRange: (versions: Array<string>, range: string): Effect.Effect<string, SemverResolverError> =>
 		Effect.gen(function* () {
-			const parsed = yield* Effect.all(versions.map(SemVer.fromString));
-			const r = yield* Range.fromString(range);
+			const parsed = yield* Effect.all(versions.map(SemVer.fromString)).pipe(
+				Effect.mapError(
+					() =>
+						new SemverResolverError({
+							operation: "latestInRange",
+							version: range,
+							reason: "Invalid input",
+						}),
+				),
+			);
+			const r = yield* Range.fromString(range).pipe(
+				Effect.mapError(
+					() =>
+						new SemverResolverError({
+							operation: "latestInRange",
+							version: range,
+							reason: "Invalid input",
+						}),
+				),
+			);
 			const result = Range.maxSatisfying(parsed, r);
-			return Option.match(result, {
+			return yield* Option.match(result, {
 				onNone: () =>
 					Effect.fail(
 						new SemverResolverError({
@@ -68,18 +86,7 @@ export const SemverResolver = {
 					),
 				onSome: (v) => Effect.succeed(v.toString()),
 			});
-		}).pipe(
-			Effect.flatten,
-			Effect.mapError((e) =>
-				e instanceof SemverResolverError
-					? e
-					: new SemverResolverError({
-							operation: "latestInRange",
-							version: range,
-							reason: "Invalid input",
-						}),
-			),
-		),
+		}),
 
 	/**
 	 * Increment a version by a given bump type.
