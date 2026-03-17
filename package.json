@@ -3,6 +3,18 @@
 	"version": "0.6.3",
 	"private": true,
 	"description": "Effect-based utility library for building robust, well-logged, and schema-validated GitHub Actions.",
+	"keywords": [
+		"github-actions",
+		"effect",
+		"effect-ts",
+		"actions",
+		"octokit",
+		"opentelemetry",
+		"schema-validation",
+		"typed-errors",
+		"service-layer",
+		"dependency-injection"
+	],
 	"homepage": "https://github.com/savvy-web/github-action-effects#readme",
 	"bugs": {
 		"url": "https://github.com/savvy-web/github-action-effects/issues"
@@ -56,7 +68,9 @@
 		"@opentelemetry/resources": ">=1.30.0",
 		"@opentelemetry/sdk-metrics": ">=1.30.0",
 		"@opentelemetry/sdk-trace-node": ">=1.30.0",
-		"semver": "^7.7.4"
+		"jsonc-effect": "^0.2.0",
+		"semver-effect": "^0.1.0",
+		"yaml-effect": "^0.1.5"
 	},
 	"devDependencies": {
 		"@actions/cache": "^6.0.0",
@@ -75,10 +89,7 @@
 		"@savvy-web/lint-staged": "^0.6.0",
 		"@savvy-web/rslib-builder": "^0.18.1",
 		"@savvy-web/vitest": "^0.2.1",
-		"@types/semver": "^7.7.1",
-		"effect": "^3.20.0",
-		"jsonc-parser": "^3.3.1",
-		"yaml": "^2.8.2"
+		"effect": "^3.20.0"
 	},
 	"peerDependencies": {
 		"@actions/cache": "^6.0.0",
@@ -89,9 +100,7 @@
 		"@effect/platform": ">=0.94.0",
 		"@effect/platform-node": ">=0.104.0",
 		"@octokit/auth-app": ">=8.0.0",
-		"effect": "^3.19.0",
-		"jsonc-parser": ">=3.0.0",
-		"yaml": ">=2.0.0"
+		"effect": "^3.19.0"
 	},
 	"peerDependenciesMeta": {
 		"@actions/cache": {
@@ -120,12 +129,6 @@
 		},
 		"effect": {
 			"optional": false
-		},
-		"jsonc-parser": {
-			"optional": true
-		},
-		"yaml": {
-			"optional": true
 		}
 	},
 	"packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017",

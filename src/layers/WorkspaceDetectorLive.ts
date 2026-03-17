@@ -1,17 +1,9 @@
 import { FileSystem } from "@effect/platform";
 import { Effect, Layer } from "effect";
+import { parse as parseYaml } from "yaml-effect";
 import { WorkspaceDetectorError } from "../errors/WorkspaceDetectorError.js";
 import type { WorkspaceInfo, WorkspacePackage } from "../schemas/Workspace.js";
 import { WorkspaceDetector } from "../services/WorkspaceDetector.js";
-
-const importYaml = Effect.tryPromise({
-	try: () => import("yaml"),
-	catch: () =>
-		new WorkspaceDetectorError({
-			operation: "detect",
-			reason: "yaml is not installed. Add it as a dependency to detect pnpm workspaces.",
-		}),
-});
 
 const makeInfo = (type: WorkspaceInfo["type"], patterns: string[]): WorkspaceInfo => ({
 	root: ".",
@@ -48,20 +40,22 @@ export const WorkspaceDetectorLive: Layer.Layer<WorkspaceDetector, never, FileSy
 			fileExists("pnpm-workspace.yaml").pipe(
 				Effect.flatMap((hasPnpmWorkspace): Effect.Effect<WorkspaceInfo, WorkspaceDetectorError> => {
 					if (hasPnpmWorkspace) {
-						return Effect.all([readFileString("pnpm-workspace.yaml"), importYaml] as const).pipe(
-							Effect.flatMap(([content, yamlMod]) =>
-								Effect.try({
-									try: () => {
-										const parsed = yamlMod.parse(content) as { packages?: string[] };
-										return makeInfo("pnpm", parsed.packages ?? ["packages/*"]);
-									},
-									catch: (error) =>
-										new WorkspaceDetectorError({
-											operation: "detect",
-											reason: `Failed to parse pnpm-workspace.yaml: ${error instanceof Error ? error.message : String(error)}`,
-										}),
-								}),
+						return readFileString("pnpm-workspace.yaml").pipe(
+							Effect.flatMap((content) =>
+								parseYaml(content).pipe(
+									Effect.mapError(
+										(error) =>
+											new WorkspaceDetectorError({
+												operation: "detect",
+												reason: `Failed to parse pnpm-workspace.yaml: ${error.message}`,
+											}),
+									),
+								),
 							),
+							Effect.map((parsed) => {
+								const data = parsed as { packages?: string[] };
+								return makeInfo("pnpm", data.packages ?? ["packages/*"]);
+							}),
 						);
 					}
 
