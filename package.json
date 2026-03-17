@@ -17,6 +17,7 @@
 		"email": "spencer@savvyweb.systems",
 		"url": "https://savvyweb.systems"
 	},
+	"sideEffects": false,
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts"
