@@ -5,5 +5,6 @@
 	"changeset-heading-hierarchy": true,
 	"changeset-required-sections": true,
 	"changeset-content-structure": true,
-	"changeset-uncategorized-content": true
+	"changeset-uncategorized-content": true,
+	"changeset-dependency-table-format": true
 }
