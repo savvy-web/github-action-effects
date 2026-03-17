@@ -1,5 +1,51 @@
 # @savvy-web/pnpm-module-template
 
+## 0.7.0
+
+### Features
+
+* [`363246a`](https://github.com/savvy-web/github-action-effects/commit/363246a4ba14dc60a633fe36ec3e08f9bf276ef6) Telemetry timing reports are now only written to step summaries when
+  `log-level` is set to `debug` (or `auto` with `RUNNER_DEBUG=1`),
+  reducing clutter in action output for most users.
+
+### Refactoring
+
+* [`363246a`](https://github.com/savvy-web/github-action-effects/commit/363246a4ba14dc60a633fe36ec3e08f9bf276ef6) Replace imperative parsing libraries with pure Effect implementations.
+  SemverResolver now uses `semver-effect`, ConfigLoaderLive uses
+  `jsonc-effect` and `yaml-effect`, and WorkspaceDetectorLive uses
+  `yaml-effect`. All three provide typed errors natively, eliminating
+  manual `Effect.try` wrappers. `jsonc-parser` and `yaml` are no longer
+  required as peer dependencies.
+
+### Dependencies
+
+* | [`363246a`](https://github.com/savvy-web/github-action-effects/commit/363246a4ba14dc60a633fe36ec3e08f9bf276ef6) | Dependency     | Type    | Action | From   | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------- | :------ | :----- | :----- | -- |
+  | semver-effect                                                                                                   | dependency     | added   | —      | ^0.1.0 |    |
+  | jsonc-effect                                                                                                    | dependency     | added   | —      | ^0.2.0 |    |
+  | yaml-effect                                                                                                     | dependency     | added   | —      | ^0.1.5 |    |
+  | semver                                                                                                          | dependency     | removed | ^7.7.4 | —      |    |
+  | @types/semver                                                                                                   | devDependency  | removed | ^7.7.1 | —      |    |
+  | jsonc-parser                                                                                                    | peerDependency | removed | ^3.3.1 | —      |    |
+  | yaml                                                                                                            | peerDependency | removed | ^2.8.2 | —      |    |
+
+- | [`89d7a8b`](https://github.com/savvy-web/github-action-effects/commit/89d7a8b9248f8058ecfbdca9bb6073d2ff5113d9) | Dependency     | Type    | Action   | From     | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------- | :------ | :------- | :------- | -- |
+  | @effect/opentelemetry                                                                                           | dependency     | updated | ^0.61.0  | ^0.62.0  |    |
+  | @effect/cluster                                                                                                 | devDependency  | added   | —        | ^0.57.0  |    |
+  | @effect/platform                                                                                                | devDependency  | updated | ^0.94.0  | ^0.95.0  |    |
+  | @effect/platform-node                                                                                           | devDependency  | updated | ^0.104.0 | ^0.105.0 |    |
+  | @effect/rpc                                                                                                     | devDependency  | added   | —        | ^0.74.0  |    |
+  | @effect/sql                                                                                                     | devDependency  | added   | —        | ^0.50.0  |    |
+  | effect                                                                                                          | devDependency  | updated | ^3.19.19 | ^3.20.0  |    |
+  | @savvy-web/changesets                                                                                           | devDependency  | updated | ^0.4.2   | ^0.5.1   |    |
+  | @savvy-web/commitlint                                                                                           | devDependency  | updated | ^0.4.0   | ^0.4.1   |    |
+  | @savvy-web/lint-staged                                                                                          | devDependency  | updated | ^0.5.1   | ^0.6.0   |    |
+  | @savvy-web/rslib-builder                                                                                        | devDependency  | updated | ^0.16.0  | ^0.18.1  |    |
+  | @savvy-web/vitest                                                                                               | devDependency  | updated | ^0.2.0   | ^0.2.1   |    |
+  | @actions/cache                                                                                                  | peerDependency | updated | ^4.0.0   | ^6.0.0   |    |
+  | @actions/tool-cache                                                                                             | peerDependency | updated | ^3.0.0   | ^4.0.0   |    |
+
 ## 0.6.3
 
 ### Bug Fixes
