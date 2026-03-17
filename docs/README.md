@@ -33,19 +33,23 @@ npm install @actions/tool-cache
 
 # GitHub App authentication (GitHubApp)
 npm install @octokit/auth-app
-
-# Config file loading (ConfigLoader)
-npm install jsonc-parser yaml
 ```
+
+See [Peer Dependencies](./peer-dependencies.md) for a complete breakdown of
+which services require which packages.
 
 ## Table of Contents
 
 - [Example Action](./example-action.md) -- End-to-end walkthrough building a
   GitHub Action
+- [Advanced Action](./advanced-action.md) -- Three-stage app (pre/main/post)
+  with GitHub App auth, OTel, state, and log levels
 - [Services Guide](./services.md) -- Detailed guide for each service with usage
   examples
 - [Architecture](./architecture.md) -- API reference, layer composition, and
   logging pipeline
+- [Peer Dependencies](./peer-dependencies.md) -- Required and optional peer
+  dependencies with service mapping
 - [Testing Guide](./testing.md) -- Testing with in-memory test layers
 - [OpenTelemetry](./otel.md) -- OTel configuration, tracing, and metrics
 - [Patterns](./patterns.md) -- Common patterns: dry-run, error accumulation,
