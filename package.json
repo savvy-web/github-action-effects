@@ -3,6 +3,18 @@
 	"version": "0.6.3",
 	"private": true,
 	"description": "Effect-based utility library for building robust, well-logged, and schema-validated GitHub Actions.",
+	"keywords": [
+		"github-actions",
+		"effect",
+		"effect-ts",
+		"actions",
+		"octokit",
+		"opentelemetry",
+		"schema-validation",
+		"typed-errors",
+		"service-layer",
+		"dependency-injection"
+	],
 	"homepage": "https://github.com/savvy-web/github-action-effects#readme",
 	"bugs": {
 		"url": "https://github.com/savvy-web/github-action-effects/issues"
