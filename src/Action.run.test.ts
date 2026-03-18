@@ -30,6 +30,8 @@ beforeEach(() => {
 	vi.stubEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "");
 	vi.stubEnv("OTEL_EXPORTER_OTLP_PROTOCOL", "");
 	vi.stubEnv("OTEL_EXPORTER_OTLP_HEADERS", "");
+	// Reset getInput to default (tests that need "debug" override this)
+	vi.mocked(core.getInput).mockImplementation(() => "");
 });
 
 afterEach(() => {
@@ -65,7 +67,8 @@ describe("Action.run", () => {
 		expect(core.setFailed).not.toHaveBeenCalled();
 	});
 
-	it("writes telemetry summary when spans are recorded", async () => {
+	it("writes telemetry summary when log level is debug", async () => {
+		vi.mocked(core.getInput).mockImplementation((name: string) => (name === "log-level" ? "debug" : ""));
 		const program = Effect.void.pipe(Effect.withSpan("test-operation"));
 
 		await Action.run(program);
@@ -74,7 +77,8 @@ describe("Action.run", () => {
 		expect(core.summary.write).toHaveBeenCalled();
 	});
 
-	it("writes telemetry summary even when the program fails", async () => {
+	it("writes telemetry summary on failure when log level is debug", async () => {
+		vi.mocked(core.getInput).mockImplementation((name: string) => (name === "log-level" ? "debug" : ""));
 		const program = Effect.fail("boom").pipe(Effect.withSpan("failing-operation"));
 
 		await Action.run(program);
@@ -83,7 +87,16 @@ describe("Action.run", () => {
 		expect(core.summary.write).toHaveBeenCalled();
 	});
 
+	it("skips telemetry summary when log level is not debug", async () => {
+		const program = Effect.void.pipe(Effect.withSpan("test-operation"));
+
+		await Action.run(program);
+		expect(core.setFailed).not.toHaveBeenCalled();
+		expect(core.summary.addRaw).not.toHaveBeenCalled();
+	});
+
 	it("does not write telemetry summary when no spans are recorded", async () => {
+		vi.mocked(core.getInput).mockImplementation((name: string) => (name === "log-level" ? "debug" : ""));
 		await Action.run(Effect.void);
 		expect(core.setFailed).not.toHaveBeenCalled();
 		expect(core.summary.addRaw).not.toHaveBeenCalled();

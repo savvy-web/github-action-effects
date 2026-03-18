@@ -1,8 +1,20 @@
 {
 	"name": "@savvy-web/github-action-effects",
-	"version": "0.6.3",
+	"version": "0.7.0",
 	"private": true,
 	"description": "Effect-based utility library for building robust, well-logged, and schema-validated GitHub Actions.",
+	"keywords": [
+		"github-actions",
+		"effect",
+		"effect-ts",
+		"actions",
+		"octokit",
+		"opentelemetry",
+		"schema-validation",
+		"typed-errors",
+		"service-layer",
+		"dependency-injection"
+	],
 	"homepage": "https://github.com/savvy-web/github-action-effects#readme",
 	"bugs": {
 		"url": "https://github.com/savvy-web/github-action-effects/issues"
@@ -17,6 +29,7 @@
 		"email": "spencer@savvyweb.systems",
 		"url": "https://savvyweb.systems"
 	},
+	"sideEffects": false,
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts"
@@ -44,7 +57,7 @@
 		"types:check": "tsgo --noEmit"
 	},
 	"dependencies": {
-		"@effect/opentelemetry": ">=0.61.0",
+		"@effect/opentelemetry": "^0.62.0",
 		"@opentelemetry/api": ">=1.0.0",
 		"@opentelemetry/exporter-metrics-otlp-grpc": ">=0.57.0",
 		"@opentelemetry/exporter-metrics-otlp-http": ">=0.57.0",
@@ -55,7 +68,9 @@
 		"@opentelemetry/resources": ">=1.30.0",
 		"@opentelemetry/sdk-metrics": ">=1.30.0",
 		"@opentelemetry/sdk-trace-node": ">=1.30.0",
-		"semver": "^7.7.4"
+		"jsonc-effect": "^0.2.0",
+		"semver-effect": "^0.1.0",
+		"yaml-effect": "^0.1.5"
 	},
 	"devDependencies": {
 		"@actions/cache": "^6.0.0",
@@ -63,31 +78,29 @@
 		"@actions/exec": "^3.0.0",
 		"@actions/github": "^9.0.0",
 		"@actions/tool-cache": "^4.0.0",
-		"@effect/platform": ">=0.94.0",
-		"@effect/platform-node": ">=0.104.0",
+		"@effect/cluster": "^0.57.0",
+		"@effect/platform": "^0.95.0",
+		"@effect/platform-node": "^0.105.0",
+		"@effect/rpc": "^0.74.0",
+		"@effect/sql": "^0.50.0",
 		"@octokit/auth-app": "^8.2.0",
-		"@savvy-web/changesets": "^0.4.2",
-		"@savvy-web/commitlint": "^0.4.0",
-		"@savvy-web/lint-staged": "^0.5.1",
-		"@savvy-web/rslib-builder": "^0.16.0",
-		"@savvy-web/vitest": "^0.2.0",
-		"@types/semver": "^7.7.1",
-		"effect": "^3.19.19",
-		"jsonc-parser": "^3.3.1",
-		"yaml": "^2.8.2"
+		"@savvy-web/changesets": "^0.5.3",
+		"@savvy-web/commitlint": "^0.4.2",
+		"@savvy-web/lint-staged": "^0.6.1",
+		"@savvy-web/rslib-builder": "^0.18.3",
+		"@savvy-web/vitest": "^0.2.2",
+		"effect": "^3.20.0"
 	},
 	"peerDependencies": {
-		"@actions/cache": "^4.0.0",
+		"@actions/cache": "^6.0.0",
 		"@actions/core": "^3.0.0",
 		"@actions/exec": "^3.0.0",
 		"@actions/github": "^9.0.0",
-		"@actions/tool-cache": "^3.0.0",
+		"@actions/tool-cache": "^4.0.0",
 		"@effect/platform": ">=0.94.0",
 		"@effect/platform-node": ">=0.104.0",
 		"@octokit/auth-app": ">=8.0.0",
-		"effect": "^3.19.0",
-		"jsonc-parser": ">=3.0.0",
-		"yaml": ">=2.0.0"
+		"effect": "^3.19.0"
 	},
 	"peerDependenciesMeta": {
 		"@actions/cache": {
@@ -116,19 +129,13 @@
 		},
 		"effect": {
 			"optional": false
-		},
-		"jsonc-parser": {
-			"optional": true
-		},
-		"yaml": {
-			"optional": true
 		}
 	},
-	"packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017",
+	"packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be",
 	"devEngines": {
 		"packageManager": {
 			"name": "pnpm",
-			"version": "10.30.3",
+			"version": "10.32.1",
 			"onFail": "ignore"
 		},
 		"runtime": [

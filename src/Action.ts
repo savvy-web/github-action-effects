@@ -8,6 +8,7 @@ import { ActionLoggerLayer, ActionLoggerLive, makeActionLogger, setLogLevel } fr
 import { ActionOutputsLive } from "./layers/ActionOutputsLive.js";
 import { InMemoryTracer } from "./layers/InMemoryTracer.js";
 import { OtelExporterLive } from "./layers/OtelExporterLive.js";
+import type { LogLevelInput } from "./schemas/LogLevel.js";
 import { resolveLogLevel } from "./schemas/LogLevel.js";
 import type { OtelEnabled } from "./schemas/OtelExporter.js";
 import { resolveOtelConfig } from "./schemas/OtelExporter.js";
@@ -118,7 +119,12 @@ export const Action = {
 			? Layer.mergeAll(CoreLive, otelLayer, layer)
 			: Layer.mergeAll(CoreLive, otelLayer);
 
+		// Only write telemetry to step summary when log level is debug
+		const logLevelInput = (core.getInput("log-level") || "auto") as LogLevelInput;
+		const effectiveLogLevel = resolveLogLevel(logLevelInput);
+
 		const writeTelemetrySummary = Effect.gen(function* () {
+			if (effectiveLogLevel !== "debug") return;
 			const spans = yield* InMemoryTracer.getSpans();
 			if (spans.length > 0) {
 				const summaries = spans.map((s) => {

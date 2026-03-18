@@ -13,10 +13,10 @@ export interface ConfigLoader {
 	/** Load and validate a JSON config file. */
 	readonly loadJson: <T>(path: string, schema: Schema.Schema<T>) => Effect.Effect<T, ConfigLoaderError>;
 
-	/** Load and validate a JSONC (JSON with Comments) config file. Requires `jsonc-parser` peer dependency. */
+	/** Load and validate a JSONC (JSON with Comments) config file. */
 	readonly loadJsonc: <T>(path: string, schema: Schema.Schema<T>) => Effect.Effect<T, ConfigLoaderError>;
 
-	/** Load and validate a YAML config file. Requires `yaml` peer dependency. */
+	/** Load and validate a YAML config file. */
 	readonly loadYaml: <T>(path: string, schema: Schema.Schema<T>) => Effect.Effect<T, ConfigLoaderError>;
 
 	/** Check if a config file exists at the given path. */
