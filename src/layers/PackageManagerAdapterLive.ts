@@ -46,7 +46,7 @@ const parsePackageManagerField = (value: string): { name: PackageManagerName; ve
 };
 
 const getCachePathEffect = (
-	runner: CommandRunner,
+	runner: typeof CommandRunner.Service,
 	name: PackageManagerName,
 ): Effect.Effect<Array<string>, PackageManagerError> => {
 	if (name === "npm") {
@@ -228,7 +228,7 @@ export const PackageManagerAdapterLive: Layer.Layer<
 					Effect.withSpan("PackageManagerAdapter.getLockfilePaths"),
 				);
 
-			const exec: PackageManagerAdapter["exec"] = (args, options) =>
+			const exec: (typeof PackageManagerAdapter.Service)["exec"] = (args, options) =>
 				detect().pipe(
 					Effect.flatMap((info) =>
 						runner.execCapture(info.name, args, options).pipe(

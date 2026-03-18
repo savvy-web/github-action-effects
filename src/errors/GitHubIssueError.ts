@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for GitHubIssueError.
- *
- * @internal
- */
-export const GitHubIssueErrorBase = Data.TaggedError("GitHubIssueError");
-
-/**
  * Error from GitHub Issue operations.
  */
-export class GitHubIssueError extends GitHubIssueErrorBase<{
+export class GitHubIssueError extends Data.TaggedError("GitHubIssueError")<{
 	/** The operation that failed. */
 	readonly operation: "list" | "close" | "comment" | "getLinkedIssues";
 

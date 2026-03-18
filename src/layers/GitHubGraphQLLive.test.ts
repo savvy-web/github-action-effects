@@ -11,7 +11,7 @@ const makeMockGitHubClient = (
 	Layer.succeed(GitHubClient, {
 		rest: () => Effect.die("not used"),
 		paginate: () => Effect.die("not used"),
-		graphql: graphqlFn as GitHubClient["graphql"],
+		graphql: graphqlFn as (typeof GitHubClient.Service)["graphql"],
 		repo: Effect.die("not used"),
 	});
 

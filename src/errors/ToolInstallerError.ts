@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for ToolInstallerError.
- *
- * @internal
- */
-export const ToolInstallerErrorBase = Data.TaggedError("ToolInstallerError");
-
-/**
  * Error from tool installation operations.
  */
-export class ToolInstallerError extends ToolInstallerErrorBase<{
+export class ToolInstallerError extends Data.TaggedError("ToolInstallerError")<{
 	/** The tool name. */
 	readonly tool: string;
 

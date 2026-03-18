@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for PullRequestError.
- *
- * @internal
- */
-export const PullRequestErrorBase = Data.TaggedError("PullRequestError");
-
-/**
  * Error from pull request operations.
  */
-export class PullRequestError extends PullRequestErrorBase<{
+export class PullRequestError extends Data.TaggedError("PullRequestError")<{
 	/** The operation that failed. */
 	readonly operation:
 		| "get"

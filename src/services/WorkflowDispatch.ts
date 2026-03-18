@@ -25,33 +25,29 @@ export interface PollOptions {
 }
 
 /**
- * Service interface for triggering and monitoring GitHub Actions workflow runs.
+ * Service for triggering and monitoring GitHub Actions workflow runs.
  *
  * @public
  */
-export interface WorkflowDispatch {
-	/** Trigger a workflow run. */
-	readonly dispatch: (
-		workflow: string,
-		ref: string,
-		inputs?: Record<string, string>,
-	) => Effect.Effect<void, WorkflowDispatchError>;
+export class WorkflowDispatch extends Context.Tag("github-action-effects/WorkflowDispatch")<
+	WorkflowDispatch,
+	{
+		/** Trigger a workflow run. */
+		readonly dispatch: (
+			workflow: string,
+			ref: string,
+			inputs?: Record<string, string>,
+		) => Effect.Effect<void, WorkflowDispatchError>;
 
-	/** Trigger a workflow run and poll until completion. Returns the run conclusion. */
-	readonly dispatchAndWait: (
-		workflow: string,
-		ref: string,
-		inputs?: Record<string, string>,
-		pollOptions?: PollOptions,
-	) => Effect.Effect<string, WorkflowDispatchError>;
+		/** Trigger a workflow run and poll until completion. Returns the run conclusion. */
+		readonly dispatchAndWait: (
+			workflow: string,
+			ref: string,
+			inputs?: Record<string, string>,
+			pollOptions?: PollOptions,
+		) => Effect.Effect<string, WorkflowDispatchError>;
 
-	/** Get the status of a workflow run by ID. */
-	readonly getRunStatus: (runId: number) => Effect.Effect<WorkflowRunStatus, WorkflowDispatchError>;
-}
-
-/**
- * WorkflowDispatch tag for dependency injection.
- *
- * @public
- */
-export const WorkflowDispatch = Context.GenericTag<WorkflowDispatch>("WorkflowDispatch");
+		/** Get the status of a workflow run by ID. */
+		readonly getRunStatus: (runId: number) => Effect.Effect<WorkflowRunStatus, WorkflowDispatchError>;
+	}
+>() {}

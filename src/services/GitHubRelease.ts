@@ -30,42 +30,38 @@ export interface ReleaseAsset {
 }
 
 /**
- * Service interface for GitHub Release operations.
+ * Service for GitHub Release operations.
  *
  * @public
  */
-export interface GitHubRelease {
-	/** Create a new GitHub release. */
-	readonly create: (options: {
-		readonly tag: string;
-		readonly name: string;
-		readonly body: string;
-		readonly draft?: boolean;
-		readonly prerelease?: boolean;
-		readonly generateReleaseNotes?: boolean;
-	}) => Effect.Effect<ReleaseData, GitHubReleaseError>;
+export class GitHubRelease extends Context.Tag("github-action-effects/GitHubRelease")<
+	GitHubRelease,
+	{
+		/** Create a new GitHub release. */
+		readonly create: (options: {
+			readonly tag: string;
+			readonly name: string;
+			readonly body: string;
+			readonly draft?: boolean;
+			readonly prerelease?: boolean;
+			readonly generateReleaseNotes?: boolean;
+		}) => Effect.Effect<ReleaseData, GitHubReleaseError>;
 
-	/** Upload an asset to an existing release. */
-	readonly uploadAsset: (
-		releaseId: number,
-		name: string,
-		data: Uint8Array | string,
-		contentType: string,
-	) => Effect.Effect<ReleaseAsset, GitHubReleaseError>;
+		/** Upload an asset to an existing release. */
+		readonly uploadAsset: (
+			releaseId: number,
+			name: string,
+			data: Uint8Array | string,
+			contentType: string,
+		) => Effect.Effect<ReleaseAsset, GitHubReleaseError>;
 
-	/** Get a release by its tag name. */
-	readonly getByTag: (tag: string) => Effect.Effect<ReleaseData, GitHubReleaseError>;
+		/** Get a release by its tag name. */
+		readonly getByTag: (tag: string) => Effect.Effect<ReleaseData, GitHubReleaseError>;
 
-	/** List releases, optionally paginated. */
-	readonly list: (options?: {
-		readonly perPage?: number;
-		readonly maxPages?: number;
-	}) => Effect.Effect<Array<ReleaseData>, GitHubReleaseError>;
-}
-
-/**
- * GitHubRelease tag for dependency injection.
- *
- * @public
- */
-export const GitHubRelease = Context.GenericTag<GitHubRelease>("GitHubRelease");
+		/** List releases, optionally paginated. */
+		readonly list: (options?: {
+			readonly perPage?: number;
+			readonly maxPages?: number;
+		}) => Effect.Effect<Array<ReleaseData>, GitHubReleaseError>;
+	}
+>() {}

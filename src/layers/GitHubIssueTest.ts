@@ -15,7 +15,7 @@ export interface GitHubIssueTestState {
 	readonly linkedIssues: Map<number, Array<{ number: number; title: string }>>;
 }
 
-const makeTestClient = (state: GitHubIssueTestState): GitHubIssue => ({
+const makeTestClient = (state: GitHubIssueTestState): typeof GitHubIssue.Service => ({
 	list: (options) => {
 		let issues = Array.from(state.issues.values());
 		if (options?.state && options.state !== "all") {

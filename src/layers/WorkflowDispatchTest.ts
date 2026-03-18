@@ -25,7 +25,7 @@ export interface WorkflowDispatchTestState {
 	waitConclusion: string;
 }
 
-const makeTestWorkflowDispatch = (state: WorkflowDispatchTestState): WorkflowDispatch => ({
+const makeTestWorkflowDispatch = (state: WorkflowDispatchTestState): typeof WorkflowDispatch.Service => ({
 	dispatch: (workflow, ref, inputs) =>
 		Effect.sync(() => {
 			state.dispatches.push({ workflow, ref, inputs });

@@ -10,7 +10,7 @@ const mockDeleteRef = vi.fn();
 const mockGetRef = vi.fn();
 const mockListMatchingRefs = vi.fn();
 
-const mockClient: GitHubClient = {
+const mockClient: typeof GitHubClient.Service = {
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 		Effect.tryPromise({
 			try: () =>

@@ -20,7 +20,7 @@ export interface ToolInstallerTestState {
 
 const cacheKey = (name: string, version: string): string => `${name}@${version}`;
 
-const makeTestToolInstaller = (state: ToolInstallerTestState): ToolInstaller => ({
+const makeTestToolInstaller = (state: ToolInstallerTestState): typeof ToolInstaller.Service => ({
 	install: (name: string, version: string, _downloadUrl: string, options?: ToolInstallOptions) => {
 		const basePath = `/tools/${name}/${version}`;
 		const toolPath = options?.binSubPath ? `${basePath}/${options.binSubPath}` : basePath;

@@ -26,7 +26,7 @@ const lockfilePathsMap: Record<string, Array<string>> = {
 	deno: ["deno.lock"],
 };
 
-const makeTestAdapter = (state: PackageManagerAdapterTestState): PackageManagerAdapter => ({
+const makeTestAdapter = (state: PackageManagerAdapterTestState): typeof PackageManagerAdapter.Service => ({
 	detect: () => Effect.succeed(state.info),
 
 	install: () => Effect.void,

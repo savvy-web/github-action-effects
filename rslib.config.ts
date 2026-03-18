@@ -1,6 +1,9 @@
 import { NodeLibraryBuilder } from "@savvy-web/rslib-builder";
 
 export default NodeLibraryBuilder.create({
+	apiModel: {
+		suppressWarnings: [{ messageId: "ae-forgotten-export", pattern: "_base" }],
+	},
 	externals: [
 		"@actions/cache",
 		"@actions/core",
@@ -11,20 +14,7 @@ export default NodeLibraryBuilder.create({
 		"@effect/platform",
 		"@effect/platform-node",
 		"@octokit/auth-app",
-		"@opentelemetry/api",
-		"@opentelemetry/exporter-metrics-otlp-grpc",
-		"@opentelemetry/exporter-metrics-otlp-http",
-		"@opentelemetry/exporter-metrics-otlp-proto",
-		"@opentelemetry/exporter-trace-otlp-grpc",
-		"@opentelemetry/exporter-trace-otlp-http",
-		"@opentelemetry/exporter-trace-otlp-proto",
-		"@opentelemetry/resources",
-		"@opentelemetry/sdk-metrics",
-		"@opentelemetry/sdk-trace-node",
 		"effect",
-		"jsonc-parser",
-		"semver",
-		"yaml",
 	],
 	transform({ pkg }) {
 		delete pkg.devDependencies;

@@ -4,6 +4,30 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  silk:
+    '@effect/cluster':
+      specifier: ^0.57.0
+      version: 0.57.0
+    '@effect/opentelemetry':
+      specifier: ^0.62.0
+      version: 0.62.0
+    '@effect/platform':
+      specifier: ^0.95.0
+      version: 0.95.0
+    '@effect/platform-node':
+      specifier: ^0.105.0
+      version: 0.105.0
+    '@effect/rpc':
+      specifier: ^0.74.0
+      version: 0.74.0
+    '@effect/sql':
+      specifier: ^0.50.0
+      version: 0.50.0
+    effect:
+      specifier: ^3.20.0
+      version: 3.20.0
+
 overrides:
   '@isaacs/brace-expansion': ^5.0.1
   lodash: ^4.17.23
@@ -18,44 +42,44 @@ importers:
   .:
     dependencies:
       '@effect/opentelemetry':
-        specifier: ^0.62.0
+        specifier: catalog:silk
         version: 0.62.0(@effect/platform@0.95.0(effect@3.20.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.213.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)(effect@3.20.0)
       '@opentelemetry/api':
-        specifier: '>=1.0.0'
+        specifier: ^1.9.0
         version: 1.9.0
       '@opentelemetry/exporter-metrics-otlp-grpc':
-        specifier: '>=0.57.0'
+        specifier: ^0.213.0
         version: 0.213.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/exporter-metrics-otlp-http':
-        specifier: '>=0.57.0'
+        specifier: ^0.213.0
         version: 0.213.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/exporter-metrics-otlp-proto':
-        specifier: '>=0.57.0'
+        specifier: ^0.213.0
         version: 0.213.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/exporter-trace-otlp-grpc':
-        specifier: '>=0.57.0'
+        specifier: ^0.213.0
         version: 0.213.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/exporter-trace-otlp-http':
-        specifier: '>=0.57.0'
+        specifier: ^0.213.0
         version: 0.213.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/exporter-trace-otlp-proto':
-        specifier: '>=0.57.0'
+        specifier: ^0.213.0
         version: 0.213.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/resources':
-        specifier: '>=1.30.0'
+        specifier: ^2.6.0
         version: 2.6.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-metrics':
-        specifier: '>=1.30.0'
+        specifier: ^2.6.0
         version: 2.6.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-node':
-        specifier: '>=1.30.0'
+        specifier: ^2.6.0
         version: 2.6.0(@opentelemetry/api@1.9.0)
       jsonc-effect:
         specifier: ^0.2.0
         version: 0.2.0
       semver-effect:
-        specifier: ^0.1.0
-        version: 0.1.0(effect@3.20.0)
+        specifier: ^0.2.0
+        version: 0.2.0(effect@3.20.0)
       yaml-effect:
         specifier: ^0.1.5
         version: 0.1.5(effect@3.20.0)
@@ -76,19 +100,19 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
       '@effect/cluster':
-        specifier: ^0.57.0
+        specifier: catalog:silk
         version: 0.57.0(@effect/platform@0.95.0(effect@3.20.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/platform@0.95.0(effect@3.20.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(effect@3.20.0))(effect@3.20.0)
       '@effect/platform':
-        specifier: ^0.95.0
+        specifier: catalog:silk
         version: 0.95.0(effect@3.20.0)
       '@effect/platform-node':
-        specifier: ^0.105.0
+        specifier: catalog:silk
         version: 0.105.0(@effect/cluster@0.57.0(@effect/platform@0.95.0(effect@3.20.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/workflow@0.17.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/platform@0.95.0(effect@3.20.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(effect@3.20.0))(effect@3.20.0))(@effect/platform@0.95.0(effect@3.20.0))(@effect/rpc@0.74.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/sql@0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(effect@3.20.0)
       '@effect/rpc':
-        specifier: ^0.74.0
+        specifier: catalog:silk
         version: 0.74.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0)
       '@effect/sql':
-        specifier: ^0.50.0
+        specifier: catalog:silk
         version: 0.50.0(@effect/experimental@0.59.0(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0))(@effect/platform@0.95.0(effect@3.20.0))(effect@3.20.0)
       '@octokit/auth-app':
         specifier: ^8.2.0
@@ -109,7 +133,7 @@ importers:
         specifier: ^0.2.2
         version: 0.2.2(@types/node@25.5.0)(@typescript/native-preview@7.0.0-dev.20260317.1)(@vitest/coverage-v8@4.1.0(vitest@4.1.0(@opentelemetry/api@1.9.0)(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(jiti@2.6.1)(yaml@2.8.2))))(typescript@5.9.3)(vitest@4.1.0(@opentelemetry/api@1.9.0)(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(jiti@2.6.1)(yaml@2.8.2)))
       effect:
-        specifier: ^3.20.0
+        specifier: catalog:silk
         version: 3.20.0
     publishDirectory: dist/dev
 
@@ -3219,10 +3243,10 @@ packages:
   secure-keys@1.0.0:
     resolution: {integrity: sha512-nZi59hW3Sl5P3+wOO89eHBAAGwmCPd2aE1+dLZV5MO+ItQctIvAqihzaAXIQhvtH4KJPxM080HsnqltR2y8cWg==}
 
-  semver-effect@0.1.0:
-    resolution: {integrity: sha512-QMV5tYjNaw0rshAg9niTMkqdQrCZ/0js4nskBIzzdEx/LAcHEGPMGQbTlR++YC9JUkSssGjh/YC/JaMRV7JExw==}
+  semver-effect@0.2.0:
+    resolution: {integrity: sha512-N2ieg9JiBQ3DZDzklqyUHF/1Lx4nOxHeKkAb0YYOkwj8sz4PyqPFEXzPHotLKdgCchIVUpvJpO/+ekPgH2T+6w==}
     peerDependencies:
-      effect: ^3.19.19
+      effect: ^3.19.0
 
   semver@7.5.4:
     resolution: {integrity: sha512-1bCSESV6Pv+i21Hvpxp3Dx+pSD8lIPt8uVjRrxAUt/nbswYc+tK6Y2btiULjd4+fnq15PX+nqQDC7Oft7WkwcA==}
@@ -7359,7 +7383,7 @@ snapshots:
 
   secure-keys@1.0.0: {}
 
-  semver-effect@0.1.0(effect@3.20.0):
+  semver-effect@0.2.0(effect@3.20.0):
     dependencies:
       effect: 3.20.0
 

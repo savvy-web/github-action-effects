@@ -47,7 +47,7 @@ const getEntry = (
 	return Effect.succeed(entry);
 };
 
-const makeTestClient = (state: NpmRegistryTestState): NpmRegistry => ({
+const makeTestClient = (state: NpmRegistryTestState): typeof NpmRegistry.Service => ({
 	getLatestVersion: (pkg: string) => getEntry(state, pkg, "view").pipe(Effect.map((entry) => entry.latest)),
 
 	getDistTags: (pkg: string) => getEntry(state, pkg, "view").pipe(Effect.map((entry) => entry.distTags)),

@@ -38,79 +38,77 @@ export interface PullRequestListOptions {
 }
 
 /**
- * Service interface for pull request lifecycle management.
+ * Service for pull request lifecycle management.
  *
  * @public
  */
-export interface PullRequest {
-	/** Get a single PR by number. */
-	readonly get: (number: number) => Effect.Effect<PullRequestInfo, PullRequestError>;
+export class PullRequest extends Context.Tag("github-action-effects/PullRequest")<
+	PullRequest,
+	{
+		/** Get a single PR by number. */
+		readonly get: (number: number) => Effect.Effect<PullRequestInfo, PullRequestError>;
 
-	/** List PRs matching filters. */
-	readonly list: (options?: PullRequestListOptions) => Effect.Effect<ReadonlyArray<PullRequestInfo>, PullRequestError>;
+		/** List PRs matching filters. */
+		readonly list: (
+			options?: PullRequestListOptions,
+		) => Effect.Effect<ReadonlyArray<PullRequestInfo>, PullRequestError>;
 
-	/** Create a new PR. */
-	readonly create: (options: {
-		readonly title: string;
-		readonly body: string;
-		readonly head: string;
-		readonly base: string;
-		readonly draft?: boolean;
-		readonly autoMerge?: "merge" | "squash" | "rebase" | false;
-	}) => Effect.Effect<PullRequestInfo, PullRequestError>;
-
-	/** Update an existing PR. */
-	readonly update: (
-		number: number,
-		options: {
-			readonly title?: string;
-			readonly body?: string;
-			readonly state?: "open" | "closed";
+		/** Create a new PR. */
+		readonly create: (options: {
+			readonly title: string;
+			readonly body: string;
+			readonly head: string;
+			readonly base: string;
+			readonly draft?: boolean;
 			readonly autoMerge?: "merge" | "squash" | "rebase" | false;
-		},
-	) => Effect.Effect<PullRequestInfo, PullRequestError>;
+		}) => Effect.Effect<PullRequestInfo, PullRequestError>;
 
-	/**
-	 * Find existing PR for head→base or create one; updates title/body if found.
-	 *
-	 * Note: `draft` is only applied when creating a new PR; it is not changed
-	 * on an existing PR found via the update path.
-	 */
-	readonly getOrCreate: (options: {
-		readonly head: string;
-		readonly base: string;
-		readonly title: string;
-		readonly body: string;
-		readonly draft?: boolean;
-		readonly autoMerge?: "merge" | "squash" | "rebase" | false;
-	}) => Effect.Effect<PullRequestInfo & { readonly created: boolean }, PullRequestError>;
+		/** Update an existing PR. */
+		readonly update: (
+			number: number,
+			options: {
+				readonly title?: string;
+				readonly body?: string;
+				readonly state?: "open" | "closed";
+				readonly autoMerge?: "merge" | "squash" | "rebase" | false;
+			},
+		) => Effect.Effect<PullRequestInfo, PullRequestError>;
 
-	/** Immediately merge a PR. */
-	readonly merge: (
-		number: number,
-		options?: {
-			readonly method?: "merge" | "squash" | "rebase";
-			readonly commitTitle?: string;
-			readonly commitMessage?: string;
-		},
-	) => Effect.Effect<void, PullRequestError>;
+		/**
+		 * Find existing PR for head→base or create one; updates title/body if found.
+		 *
+		 * Note: `draft` is only applied when creating a new PR; it is not changed
+		 * on an existing PR found via the update path.
+		 */
+		readonly getOrCreate: (options: {
+			readonly head: string;
+			readonly base: string;
+			readonly title: string;
+			readonly body: string;
+			readonly draft?: boolean;
+			readonly autoMerge?: "merge" | "squash" | "rebase" | false;
+		}) => Effect.Effect<PullRequestInfo & { readonly created: boolean }, PullRequestError>;
 
-	/** Add labels to a PR. */
-	readonly addLabels: (number: number, labels: ReadonlyArray<string>) => Effect.Effect<void, PullRequestError>;
+		/** Immediately merge a PR. */
+		readonly merge: (
+			number: number,
+			options?: {
+				readonly method?: "merge" | "squash" | "rebase";
+				readonly commitTitle?: string;
+				readonly commitMessage?: string;
+			},
+		) => Effect.Effect<void, PullRequestError>;
 
-	/** Request reviewers for a PR. */
-	readonly requestReviewers: (
-		number: number,
-		options: {
-			readonly reviewers?: ReadonlyArray<string>;
-			readonly teamReviewers?: ReadonlyArray<string>;
-		},
-	) => Effect.Effect<void, PullRequestError>;
-}
+		/** Add labels to a PR. */
+		readonly addLabels: (number: number, labels: ReadonlyArray<string>) => Effect.Effect<void, PullRequestError>;
 
-/**
- * PullRequest tag for dependency injection.
- *
- * @public
- */
-export const PullRequest = Context.GenericTag<PullRequest>("PullRequest");
+		/** Request reviewers for a PR. */
+		readonly requestReviewers: (
+			number: number,
+			options: {
+				readonly reviewers?: ReadonlyArray<string>;
+				readonly teamReviewers?: ReadonlyArray<string>;
+			},
+		) => Effect.Effect<void, PullRequestError>;
+	}
+>() {}

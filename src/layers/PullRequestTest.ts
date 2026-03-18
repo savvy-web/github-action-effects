@@ -48,7 +48,7 @@ const toInfo = (record: PullRequestRecord): PullRequestInfo => ({
 	merged: record.merged,
 });
 
-const makeTestPullRequest = (state: PullRequestTestState): PullRequest => ({
+const makeTestPullRequest = (state: PullRequestTestState): typeof PullRequest.Service => ({
 	get: (number) =>
 		Effect.sync(() => findPr(state, number)).pipe(
 			Effect.flatMap((pr) =>

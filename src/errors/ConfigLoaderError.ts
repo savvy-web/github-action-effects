@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for ConfigLoaderError.
- *
- * @internal
- */
-export const ConfigLoaderErrorBase = Data.TaggedError("ConfigLoaderError");
-
-/**
  * Error from config loading operations.
  */
-export class ConfigLoaderError extends ConfigLoaderErrorBase<{
+export class ConfigLoaderError extends Data.TaggedError("ConfigLoaderError")<{
 	/** The file path that caused the error. */
 	readonly path: string;
 

@@ -32,7 +32,7 @@ const makeMockRunner = (responses: Map<string, string>) =>
 		},
 		execJson: () => Effect.die("not used"),
 		execLines: () => Effect.die("not used"),
-	} as CommandRunner);
+	} as typeof CommandRunner.Service);
 
 describe("NpmRegistryLive", () => {
 	it("getLatestVersion parses npm view output", async () => {

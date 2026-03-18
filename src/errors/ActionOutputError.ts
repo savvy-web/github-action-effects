@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for ActionOutputError.
- *
- * @internal
- */
-export const ActionOutputErrorBase = Data.TaggedError("ActionOutputError");
-
-/**
  * Error when a GitHub Action output fails schema validation or writing.
  */
-export class ActionOutputError extends ActionOutputErrorBase<{
+export class ActionOutputError extends Data.TaggedError("ActionOutputError")<{
 	/** The output name. */
 	readonly outputName: string;
 

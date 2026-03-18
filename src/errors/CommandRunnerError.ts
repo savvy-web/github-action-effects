@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for CommandRunnerError.
- *
- * @internal
- */
-export const CommandRunnerErrorBase = Data.TaggedError("CommandRunnerError");
-
-/**
  * Error when a shell command fails or produces unexpected output.
  */
-export class CommandRunnerError extends CommandRunnerErrorBase<{
+export class CommandRunnerError extends Data.TaggedError("CommandRunnerError")<{
 	/** The command that was executed. */
 	readonly command: string;
 

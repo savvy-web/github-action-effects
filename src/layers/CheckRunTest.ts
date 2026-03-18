@@ -26,8 +26,8 @@ export interface CheckRunTestState {
 	nextId: number;
 }
 
-const makeTestCheckRun = (state: CheckRunTestState): CheckRun => {
-	const impl: CheckRun = {
+const makeTestCheckRun = (state: CheckRunTestState): typeof CheckRun.Service => {
+	const impl: typeof CheckRun.Service = {
 		create: (name, headSha) =>
 			Effect.sync(() => {
 				const id = state.nextId++;

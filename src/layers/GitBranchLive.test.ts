@@ -10,7 +10,7 @@ const mockGetRef = vi.fn();
 const mockDeleteRef = vi.fn();
 const mockUpdateRef = vi.fn();
 
-const mockClient: GitHubClient = {
+const mockClient: typeof GitHubClient.Service = {
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 		Effect.tryPromise({
 			try: () =>
@@ -37,7 +37,7 @@ const mockClient: GitHubClient = {
 	repo: Effect.succeed({ owner: "test-owner", repo: "test-repo" }),
 };
 
-const makeMockClient = (): GitHubClient => ({
+const makeMockClient = (): typeof GitHubClient.Service => ({
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 		Effect.tryPromise({
 			try: () =>
@@ -123,7 +123,7 @@ describe("GitBranchLive", () => {
 
 		it("returns false on 404", async () => {
 			mockGetRef.mockRejectedValue(new Error("Not Found"));
-			const mockClientWith404: GitHubClient = {
+			const mockClientWith404: typeof GitHubClient.Service = {
 				...mockClient,
 				rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 					Effect.tryPromise({

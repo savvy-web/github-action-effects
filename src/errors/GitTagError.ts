@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for GitTagError.
- *
- * @internal
- */
-export const GitTagErrorBase = Data.TaggedError("GitTagError");
-
-/**
  * Error from tag management operations.
  */
-export class GitTagError extends GitTagErrorBase<{
+export class GitTagError extends Data.TaggedError("GitTagError")<{
 	/** The operation that failed. */
 	readonly operation: "create" | "delete" | "list" | "resolve";
 

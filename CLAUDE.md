@@ -114,8 +114,8 @@ src/
 
 ### Key Patterns
 
-- Services use `Context.GenericTag<Interface>("name")` (not class-based `Context.Tag`)
-- Error base classes marked `@internal` for api-extractor compatibility
+- Services use `class Foo extends Context.Tag("github-action-effects/Foo")<Foo, { ... }>() {}`
+- Errors use `class FooError extends Data.TaggedError("FooError")<{ ... }> {}` (no Base export)
 - Live layers wrap `@actions/core`; Test layers use in-memory state
 - Test layers use namespace object pattern: `ActionLoggerTest.empty()` / `ActionLoggerTest.layer(state)`
 

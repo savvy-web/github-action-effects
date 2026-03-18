@@ -19,7 +19,7 @@ const defaultResponse: CommandResponse = { exitCode: 0, stdout: "", stderr: "" }
 const makeKey = (command: string, args: ReadonlyArray<string>): string =>
 	args.length > 0 ? `${command} ${[...args].join(" ")}` : command;
 
-const makeTestRunner = (responses: ReadonlyMap<string, CommandResponse>): CommandRunner => {
+const makeTestRunner = (responses: ReadonlyMap<string, CommandResponse>): typeof CommandRunner.Service => {
 	const lookup = (command: string, args: ReadonlyArray<string>): CommandResponse => {
 		const key = makeKey(command, args);
 		return responses.get(key) ?? responses.get(command) ?? defaultResponse;

@@ -78,7 +78,9 @@ const toErrorMissing = (
 		return entry;
 	});
 
-const makeTestTokenPermissionChecker = (state: TokenPermissionCheckerTestState): TokenPermissionChecker => ({
+const makeTestTokenPermissionChecker = (
+	state: TokenPermissionCheckerTestState,
+): typeof TokenPermissionChecker.Service => ({
 	check: (requirements) =>
 		Effect.sync(() => {
 			state.checkCalls.push(requirements);

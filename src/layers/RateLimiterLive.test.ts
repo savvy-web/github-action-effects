@@ -1,14 +1,14 @@
 import { Effect, Exit, Layer } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
-import type { GitHubClient } from "../services/GitHubClient.js";
-import { GitHubClient as GitHubClientTag } from "../services/GitHubClient.js";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value needed for Layer.succeed
+import { GitHubClient } from "../services/GitHubClient.js";
 import { RateLimiter } from "../services/RateLimiter.js";
 import { RateLimiterLive } from "./RateLimiterLive.js";
 
 const mockRateLimitGet = vi.fn();
 
-const mockClient: GitHubClient = {
+const mockClient: typeof GitHubClient.Service = {
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 		Effect.tryPromise({
 			try: () =>
@@ -30,7 +30,7 @@ const mockClient: GitHubClient = {
 	repo: Effect.succeed({ owner: "test-owner", repo: "test-repo" }),
 };
 
-const testLayer = Layer.provide(RateLimiterLive, Layer.succeed(GitHubClientTag, mockClient));
+const testLayer = Layer.provide(RateLimiterLive, Layer.succeed(GitHubClient, mockClient));
 
 const run = <A, E>(effect: Effect.Effect<A, E, RateLimiter>) => Effect.runPromise(Effect.provide(effect, testLayer));
 

@@ -14,7 +14,7 @@ export interface GitTagTestState {
 	readonly deleteCalls: Array<string>;
 }
 
-const makeTestClient = (state: GitTagTestState): GitTag => ({
+const makeTestClient = (state: GitTagTestState): typeof GitTag.Service => ({
 	create: (tag, sha) => {
 		state.createCalls.push({ tag, sha });
 		state.tags.set(tag, sha);
