@@ -21,7 +21,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/savvy-web/github-action-effects.git"
+		"url": "git+https://github.com/savvy-web/github-action-effects.git"
 	},
 	"license": "MIT",
 	"author": {
@@ -57,19 +57,19 @@
 		"types:check": "tsgo --noEmit"
 	},
 	"dependencies": {
-		"@effect/opentelemetry": "^0.62.0",
-		"@opentelemetry/api": ">=1.0.0",
-		"@opentelemetry/exporter-metrics-otlp-grpc": ">=0.57.0",
-		"@opentelemetry/exporter-metrics-otlp-http": ">=0.57.0",
-		"@opentelemetry/exporter-metrics-otlp-proto": ">=0.57.0",
-		"@opentelemetry/exporter-trace-otlp-grpc": ">=0.57.0",
-		"@opentelemetry/exporter-trace-otlp-http": ">=0.57.0",
-		"@opentelemetry/exporter-trace-otlp-proto": ">=0.57.0",
-		"@opentelemetry/resources": ">=1.30.0",
-		"@opentelemetry/sdk-metrics": ">=1.30.0",
-		"@opentelemetry/sdk-trace-node": ">=1.30.0",
+		"@effect/opentelemetry": "catalog:silk",
+		"@opentelemetry/api": "^1.9.0",
+		"@opentelemetry/exporter-metrics-otlp-grpc": "^0.213.0",
+		"@opentelemetry/exporter-metrics-otlp-http": "^0.213.0",
+		"@opentelemetry/exporter-metrics-otlp-proto": "^0.213.0",
+		"@opentelemetry/exporter-trace-otlp-grpc": "^0.213.0",
+		"@opentelemetry/exporter-trace-otlp-http": "^0.213.0",
+		"@opentelemetry/exporter-trace-otlp-proto": "^0.213.0",
+		"@opentelemetry/resources": "^2.6.0",
+		"@opentelemetry/sdk-metrics": "^02.6.0",
+		"@opentelemetry/sdk-trace-node": "^2.6.0",
 		"jsonc-effect": "^0.2.0",
-		"semver-effect": "^0.1.0",
+		"semver-effect": "^0.2.0",
 		"yaml-effect": "^0.1.5"
 	},
 	"devDependencies": {
@@ -78,18 +78,18 @@
 		"@actions/exec": "^3.0.0",
 		"@actions/github": "^9.0.0",
 		"@actions/tool-cache": "^4.0.0",
-		"@effect/cluster": "^0.57.0",
-		"@effect/platform": "^0.95.0",
-		"@effect/platform-node": "^0.105.0",
-		"@effect/rpc": "^0.74.0",
-		"@effect/sql": "^0.50.0",
+		"@effect/cluster": "catalog:silk",
+		"@effect/platform": "catalog:silk",
+		"@effect/platform-node": "catalog:silk",
+		"@effect/rpc": "catalog:silk",
+		"@effect/sql": "catalog:silk",
 		"@octokit/auth-app": "^8.2.0",
 		"@savvy-web/changesets": "^0.5.3",
 		"@savvy-web/commitlint": "^0.4.2",
 		"@savvy-web/lint-staged": "^0.6.1",
 		"@savvy-web/rslib-builder": "^0.18.3",
 		"@savvy-web/vitest": "^0.2.2",
-		"effect": "^3.20.0"
+		"effect": "catalog:silk"
 	},
 	"peerDependencies": {
 		"@actions/cache": "^6.0.0",
@@ -97,10 +97,13 @@
 		"@actions/exec": "^3.0.0",
 		"@actions/github": "^9.0.0",
 		"@actions/tool-cache": "^4.0.0",
-		"@effect/platform": ">=0.94.0",
-		"@effect/platform-node": ">=0.104.0",
-		"@octokit/auth-app": ">=8.0.0",
-		"effect": "^3.19.0"
+		"@effect/cluster": "catalog:silkPeers",
+		"@effect/platform": "catalog:silkPeers",
+		"@effect/platform-node": "catalog:silkPeers",
+		"@effect/rpc": "catalog:silkPeers",
+		"@effect/sql": "catalog:silkPeers",
+		"@octokit/auth-app": "^8.2.0",
+		"effect": "catalog:silkPeers"
 	},
 	"peerDependenciesMeta": {
 		"@actions/cache": {
@@ -118,10 +121,19 @@
 		"@actions/tool-cache": {
 			"optional": true
 		},
+		"@effect/cluster": {
+			"optional": false
+		},
 		"@effect/platform": {
 			"optional": false
 		},
 		"@effect/platform-node": {
+			"optional": false
+		},
+		"@effect/rpc": {
+			"optional": false
+		},
+		"@effect/sql": {
 			"optional": false
 		},
 		"@octokit/auth-app": {

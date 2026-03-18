@@ -16,8 +16,8 @@ export const SemverResolver = {
 	 */
 	compare: (a: string, b: string): Effect.Effect<-1 | 0 | 1, SemverResolverError> =>
 		Effect.gen(function* () {
-			const va = yield* SemVer.fromString(a);
-			const vb = yield* SemVer.fromString(b);
+			const va = yield* SemVer.parse(a);
+			const vb = yield* SemVer.parse(b);
 			return SemVer.compare(va, vb);
 		}).pipe(
 			Effect.mapError(
@@ -35,8 +35,8 @@ export const SemverResolver = {
 	 */
 	satisfies: (version: string, range: string): Effect.Effect<boolean, SemverResolverError> =>
 		Effect.gen(function* () {
-			const v = yield* SemVer.fromString(version);
-			const r = yield* Range.fromString(range);
+			const v = yield* SemVer.parse(version);
+			const r = yield* Range.parse(range);
 			return Range.satisfies(v, r);
 		}).pipe(
 			Effect.mapError(
@@ -54,7 +54,7 @@ export const SemverResolver = {
 	 */
 	latestInRange: (versions: Array<string>, range: string): Effect.Effect<string, SemverResolverError> =>
 		Effect.gen(function* () {
-			const parsed = yield* Effect.all(versions.map(SemVer.fromString)).pipe(
+			const parsed = yield* Effect.all(versions.map(SemVer.parse)).pipe(
 				Effect.mapError(
 					() =>
 						new SemverResolverError({
@@ -64,7 +64,7 @@ export const SemverResolver = {
 						}),
 				),
 			);
-			const r = yield* Range.fromString(range).pipe(
+			const r = yield* Range.parse(range).pipe(
 				Effect.mapError(
 					() =>
 						new SemverResolverError({
@@ -95,8 +95,8 @@ export const SemverResolver = {
 		version: string,
 		bump: "major" | "minor" | "patch" | "prerelease",
 	): Effect.Effect<string, SemverResolverError> =>
-		SemVer.fromString(version).pipe(
-			Effect.map((v) => SemVer.bump[bump](v).toString()),
+		SemVer.parse(version).pipe(
+			Effect.map((v) => v.bump[bump]().toString()),
 			Effect.mapError(
 				() =>
 					new SemverResolverError({
@@ -122,7 +122,7 @@ export const SemverResolver = {
 		},
 		SemverResolverError
 	> =>
-		SemVer.fromString(version).pipe(
+		SemVer.parse(version).pipe(
 			Effect.map((v) => ({
 				major: v.major,
 				minor: v.minor,
