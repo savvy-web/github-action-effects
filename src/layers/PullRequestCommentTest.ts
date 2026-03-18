@@ -14,7 +14,7 @@ export interface PullRequestCommentTestState {
 
 const marker = (key: string): string => `<!-- savvy-web:${key} -->`;
 
-const makeTestPRComment = (state: PullRequestCommentTestState): PullRequestComment => ({
+const makeTestPRComment = (state: PullRequestCommentTestState): typeof PullRequestComment.Service => ({
 	create: (prNumber, body) =>
 		Effect.sync(() => {
 			const id = state.nextId++;

@@ -15,35 +15,34 @@ export interface IssueData {
 }
 
 /**
- * Service interface for GitHub Issue operations.
+ * Service for GitHub Issue operations.
  *
  * @public
  */
-export interface GitHubIssue {
-	/** List issues, optionally filtered by state, labels, or milestone. */
-	readonly list: (options?: {
-		readonly state?: "open" | "closed" | "all";
-		readonly labels?: Array<string>;
-		readonly milestone?: number;
-		readonly perPage?: number;
-		readonly maxPages?: number;
-	}) => Effect.Effect<Array<IssueData>, GitHubIssueError>;
+export class GitHubIssue extends Context.Tag("github-action-effects/GitHubIssue")<
+	GitHubIssue,
+	{
+		/** List issues, optionally filtered by state, labels, or milestone. */
+		readonly list: (options?: {
+			readonly state?: "open" | "closed" | "all";
+			readonly labels?: Array<string>;
+			readonly milestone?: number;
+			readonly perPage?: number;
+			readonly maxPages?: number;
+		}) => Effect.Effect<Array<IssueData>, GitHubIssueError>;
 
-	/** Close an issue with an optional reason. */
-	readonly close: (issueNumber: number, reason?: "completed" | "not_planned") => Effect.Effect<void, GitHubIssueError>;
+		/** Close an issue with an optional reason. */
+		readonly close: (
+			issueNumber: number,
+			reason?: "completed" | "not_planned",
+		) => Effect.Effect<void, GitHubIssueError>;
 
-	/** Add a comment to an issue. */
-	readonly comment: (issueNumber: number, body: string) => Effect.Effect<{ id: number }, GitHubIssueError>;
+		/** Add a comment to an issue. */
+		readonly comment: (issueNumber: number, body: string) => Effect.Effect<{ id: number }, GitHubIssueError>;
 
-	/** Get issues linked to a pull request via closing references. */
-	readonly getLinkedIssues: (
-		prNumber: number,
-	) => Effect.Effect<Array<{ number: number; title: string }>, GitHubIssueError>;
-}
-
-/**
- * GitHubIssue tag for dependency injection.
- *
- * @public
- */
-export const GitHubIssue = Context.GenericTag<GitHubIssue>("GitHubIssue");
+		/** Get issues linked to a pull request via closing references. */
+		readonly getLinkedIssues: (
+			prNumber: number,
+		) => Effect.Effect<Array<{ number: number; title: string }>, GitHubIssueError>;
+	}
+>() {}

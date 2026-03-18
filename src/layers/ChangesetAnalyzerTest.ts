@@ -12,7 +12,7 @@ export interface ChangesetAnalyzerTestState {
 	readonly generated: Array<ChangesetFile>;
 }
 
-const makeTestChangesetAnalyzer = (state: ChangesetAnalyzerTestState): ChangesetAnalyzer => ({
+const makeTestChangesetAnalyzer = (state: ChangesetAnalyzerTestState): typeof ChangesetAnalyzer.Service => ({
 	parseAll: (_dir?: string) => Effect.succeed(state.changesets),
 
 	hasChangesets: (_dir?: string) => Effect.succeed(state.changesets.length > 0),

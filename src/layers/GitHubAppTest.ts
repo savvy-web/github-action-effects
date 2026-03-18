@@ -13,8 +13,8 @@ export interface GitHubAppTestState {
 	readonly tokenToReturn: InstallationToken;
 }
 
-const makeTestGitHubApp = (state: GitHubAppTestState): GitHubApp => {
-	const impl: GitHubApp = {
+const makeTestGitHubApp = (state: GitHubAppTestState): typeof GitHubApp.Service => {
+	const impl: typeof GitHubApp.Service = {
 		generateToken: (appId, privateKey, installationId) =>
 			Effect.sync(() => {
 				const call: { appId: string; privateKey: string; installationId?: number } = { appId, privateKey };

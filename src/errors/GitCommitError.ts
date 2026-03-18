@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for GitCommitError.
- *
- * @internal
- */
-export const GitCommitErrorBase = Data.TaggedError("GitCommitError");
-
-/**
  * Error from git commit operations via Git Data API.
  */
-export class GitCommitError extends GitCommitErrorBase<{
+export class GitCommitError extends Data.TaggedError("GitCommitError")<{
 	/** The operation that failed. */
 	readonly operation: "tree" | "commit" | "ref";
 

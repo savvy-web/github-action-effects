@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for ChangesetError.
- *
- * @internal
- */
-export const ChangesetErrorBase = Data.TaggedError("ChangesetError");
-
-/**
  * Error from changeset operations.
  */
-export class ChangesetError extends ChangesetErrorBase<{
+export class ChangesetError extends Data.TaggedError("ChangesetError")<{
 	/** The operation that failed. */
 	readonly operation: "parse" | "generate" | "read";
 

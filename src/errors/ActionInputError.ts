@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for ActionInputError.
- *
- * @internal
- */
-export const ActionInputErrorBase = Data.TaggedError("ActionInputError");
-
-/**
  * Error when a GitHub Action input is missing or fails schema validation.
  */
-export class ActionInputError extends ActionInputErrorBase<{
+export class ActionInputError extends Data.TaggedError("ActionInputError")<{
 	/** The input name from action.yml. */
 	readonly inputName: string;
 

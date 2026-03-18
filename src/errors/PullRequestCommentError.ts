@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for PullRequestCommentError.
- *
- * @internal
- */
-export const PullRequestCommentErrorBase = Data.TaggedError("PullRequestCommentError");
-
-/**
  * Error from PR comment operations.
  */
-export class PullRequestCommentError extends PullRequestCommentErrorBase<{
+export class PullRequestCommentError extends Data.TaggedError("PullRequestCommentError")<{
 	/** The PR number. */
 	readonly prNumber: number;
 	/** The operation that failed. */

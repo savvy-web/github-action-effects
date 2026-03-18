@@ -50,38 +50,34 @@ export interface CheckRunOutput {
 }
 
 /**
- * Service interface for GitHub check run operations.
+ * Service for GitHub check run operations.
  *
  * @public
  */
-export interface CheckRun {
-	/** Create a new check run. Returns the check run ID. */
-	readonly create: (name: string, headSha: string) => Effect.Effect<number, CheckRunError>;
+export class CheckRun extends Context.Tag("github-action-effects/CheckRun")<
+	CheckRun,
+	{
+		/** Create a new check run. Returns the check run ID. */
+		readonly create: (name: string, headSha: string) => Effect.Effect<number, CheckRunError>;
 
-	/** Update an in-progress check run with output. */
-	readonly update: (checkRunId: number, output: CheckRunOutput) => Effect.Effect<void, CheckRunError>;
+		/** Update an in-progress check run with output. */
+		readonly update: (checkRunId: number, output: CheckRunOutput) => Effect.Effect<void, CheckRunError>;
 
-	/** Complete a check run with a conclusion and optional final output. */
-	readonly complete: (
-		checkRunId: number,
-		conclusion: CheckRunConclusion,
-		output?: CheckRunOutput,
-	) => Effect.Effect<void, CheckRunError>;
+		/** Complete a check run with a conclusion and optional final output. */
+		readonly complete: (
+			checkRunId: number,
+			conclusion: CheckRunConclusion,
+			output?: CheckRunOutput,
+		) => Effect.Effect<void, CheckRunError>;
 
-	/**
-	 * Bracket pattern: create check run, run effect, then complete.
-	 * On success, completes with "success". On failure, completes with "failure".
-	 */
-	readonly withCheckRun: <A, E>(
-		name: string,
-		headSha: string,
-		effect: (checkRunId: number) => Effect.Effect<A, E>,
-	) => Effect.Effect<A, E | CheckRunError>;
-}
-
-/**
- * CheckRun tag for dependency injection.
- *
- * @public
- */
-export const CheckRun = Context.GenericTag<CheckRun>("CheckRun");
+		/**
+		 * Bracket pattern: create check run, run effect, then complete.
+		 * On success, completes with "success". On failure, completes with "failure".
+		 */
+		readonly withCheckRun: <A, E>(
+			name: string,
+			headSha: string,
+			effect: (checkRunId: number) => Effect.Effect<A, E>,
+		) => Effect.Effect<A, E | CheckRunError>;
+	}
+>() {}

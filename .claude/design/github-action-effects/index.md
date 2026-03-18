@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-09
-last-synced: 2026-03-09
+updated: 2026-03-18
+last-synced: 2026-03-18
 completeness: 95
 related:
   - ./services.md
@@ -128,16 +128,16 @@ GitHub Actions development suffers from four recurring pain points:
 - **Rationale:** GFM output is used in check run summaries, PR comments, issue
   bodies, and step summaries. Coupling it to check runs would limit reuse.
 
-#### AD-5: Context.GenericTag Over Class-Based Context.Tag
+#### AD-5: Class-Based Context.Tag and Inline Data.TaggedError
 
-- **Decision:** Services use `Context.GenericTag<T>(key)` instead of
-  class-based `Context.Tag` patterns
-- **Rationale:** `api-extractor` cannot follow class-based `Context.Tag`
-  declarations through the type system. `Context.GenericTag` produces a
-  simpler type signature that `api-extractor` can resolve, enabling proper
-  `.d.ts` rollup and public API surface generation. Error classes use
-  `Data.TaggedError` with explicit `Base` exports marked `@internal` for
-  the same reason.
+- **Decision:** Services use `class Foo extends Context.Tag("github-action-effects/Foo")<Foo, { ... }>() {}`
+  and errors use `class FooError extends Data.TaggedError("FooError")<{ ... }> {}`.
+- **Rationale:** `Context.GenericTag` is deprecated in modern Effect. The
+  class-based `Context.Tag` merges the interface and tag into a single
+  declaration. `api-extractor` warnings about internal `_base` symbols are
+  cosmetic and safe to suppress. Error types use inline `Data.TaggedError`
+  without a separate `Base` export — the `*Base` exports were removed as a
+  breaking change.
 
 #### AD-6: Schema-Based State Serialization
 

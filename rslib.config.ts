@@ -1,6 +1,9 @@
 import { NodeLibraryBuilder } from "@savvy-web/rslib-builder";
 
 export default NodeLibraryBuilder.create({
+	apiModel: {
+		suppressWarnings: [{ messageId: "ae-forgotten-export", pattern: "_base" }],
+	},
 	externals: [
 		"@actions/cache",
 		"@actions/core",

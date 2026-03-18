@@ -8,7 +8,7 @@ import { CheckRunLive } from "./CheckRunLive.js";
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
 
-const mockClient: GitHubClient = {
+const mockClient: typeof GitHubClient.Service = {
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 		Effect.tryPromise({
 			try: () =>

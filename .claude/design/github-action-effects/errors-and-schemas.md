@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-09
-last-synced: 2026-03-09
+updated: 2026-03-18
+last-synced: 2026-03-18
 completeness: 90
 related:
   - ./index.md
@@ -25,17 +25,24 @@ See [services.md](./services.md) for service interfaces that use these types.
 ## Overview
 
 This document describes the error handling and schema validation patterns used
-across all services. Errors use `Data.TaggedError` with a `Base` export pattern
-for api-extractor compatibility. Schemas use `Schema.Struct` with annotations
-for validated types, covering everything from log levels and environment contexts
-to Git tree entries and telemetry data.
+across all services. Errors use inline `Data.TaggedError` class declarations.
+Schemas use `Schema.Struct` with annotations for validated types, covering
+everything from log levels and environment contexts to Git tree entries and
+telemetry data.
 
 ---
 
 ## Error Pattern
 
-All errors use `Data.TaggedError` with explicit `Base` exports marked
-`@internal` for api-extractor compatibility.
+All errors extend `Data.TaggedError` inline:
+
+```typescript
+export class FooError extends Data.TaggedError("FooError")<{
+  readonly field: string;
+}> {}
+```
+
+No separate `Base` export is needed. The `*Base` exports were removed in v0.8.0.
 
 ### Error Types
 
@@ -247,9 +254,9 @@ service catalog. The error hierarchy with domain-specific wrapping of
 ## Rationale
 
 Tagged errors with structured fields enable pattern matching and programmatic
-error handling in Effect pipelines. The `Base` export pattern works around
-api-extractor limitations with class-based `Data.TaggedError`. Schema validation
-at service boundaries catches invalid data early with clear error messages.
+error handling in Effect pipelines. Inline `Data.TaggedError` declarations
+keep error definitions concise. Schema validation at service boundaries
+catches invalid data early with clear error messages.
 
 ## Related Documentation
 

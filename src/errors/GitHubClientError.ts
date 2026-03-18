@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for GitHubClientError.
- *
- * @internal
- */
-export const GitHubClientErrorBase = Data.TaggedError("GitHubClientError");
-
-/**
  * Error from GitHub API operations.
  */
-export class GitHubClientError extends GitHubClientErrorBase<{
+export class GitHubClientError extends Data.TaggedError("GitHubClientError")<{
 	/** The operation that failed (e.g., "rest.repos.get", "graphql"). */
 	readonly operation: string;
 

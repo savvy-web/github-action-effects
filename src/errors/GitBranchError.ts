@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for GitBranchError.
- *
- * @internal
- */
-export const GitBranchErrorBase = Data.TaggedError("GitBranchError");
-
-/**
  * Error from branch management operations.
  */
-export class GitBranchError extends GitBranchErrorBase<{
+export class GitBranchError extends Data.TaggedError("GitBranchError")<{
 	/** The branch name. */
 	readonly branch: string;
 

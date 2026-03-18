@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for GitHubGraphQLError.
- *
- * @internal
- */
-export const GitHubGraphQLErrorBase = Data.TaggedError("GitHubGraphQLError");
-
-/**
  * Error from GitHub GraphQL operations.
  */
-export class GitHubGraphQLError extends GitHubGraphQLErrorBase<{
+export class GitHubGraphQLError extends Data.TaggedError("GitHubGraphQLError")<{
 	readonly operation: string;
 	readonly reason: string;
 	readonly errors: ReadonlyArray<{

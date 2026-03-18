@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for WorkflowDispatchError.
- *
- * @internal
- */
-export const WorkflowDispatchErrorBase = Data.TaggedError("WorkflowDispatchError");
-
-/**
  * Error from workflow dispatch operations.
  */
-export class WorkflowDispatchError extends WorkflowDispatchErrorBase<{
+export class WorkflowDispatchError extends Data.TaggedError("WorkflowDispatchError")<{
 	/** The workflow file or ID. */
 	readonly workflow: string;
 

@@ -11,7 +11,7 @@ export interface DryRunTestState {
 	readonly guardedLabels: Array<string>;
 }
 
-const makeTestClient = (state: DryRunTestState): DryRun => ({
+const makeTestClient = (state: DryRunTestState): typeof DryRun.Service => ({
 	isDryRun: Effect.succeed(true),
 	guard: <A, E, R>(label: string, _effect: Effect.Effect<A, E, R>, fallback: A) => {
 		state.guardedLabels.push(label);

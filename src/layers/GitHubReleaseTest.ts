@@ -14,7 +14,7 @@ export interface GitHubReleaseTestState {
 	readonly uploadCalls: Array<{ releaseId: number; name: string }>;
 }
 
-const makeTestClient = (state: GitHubReleaseTestState): GitHubRelease => ({
+const makeTestClient = (state: GitHubReleaseTestState): typeof GitHubRelease.Service => ({
 	create: (options) => {
 		state.createCalls.push({ tag: options.tag, name: options.name });
 		const release: ReleaseData = {

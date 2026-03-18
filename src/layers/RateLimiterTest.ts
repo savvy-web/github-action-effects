@@ -14,7 +14,7 @@ export interface RateLimiterTestState {
 	graphqlStatus: RateLimitStatus;
 }
 
-const makeTestRateLimiter = (state: RateLimiterTestState): RateLimiter => ({
+const makeTestRateLimiter = (state: RateLimiterTestState): typeof RateLimiter.Service => ({
 	checkRest: () =>
 		Effect.sync(() => {
 			state.checkRestCalls.push(undefined);

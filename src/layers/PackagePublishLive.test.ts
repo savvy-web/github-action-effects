@@ -25,7 +25,7 @@ const makeMockRunner = (handlers: {
 		execCapture: handlers.execCapture ?? (() => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" })),
 		execJson: () => Effect.die("not used"),
 		execLines: () => Effect.die("not used"),
-	} as CommandRunner);
+	} as typeof CommandRunner.Service);
 
 describe("PackagePublishLive", () => {
 	it("setupAuth runs npm config set with registry token", async () => {
@@ -535,7 +535,7 @@ describe("PackagePublishLive", () => {
 			execCapture: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
 			execJson: () => Effect.die("not used"),
 			execLines: () => Effect.die("not used"),
-		} as unknown as CommandRunner);
+		} as unknown as typeof CommandRunner.Service);
 		const registry = NpmRegistryTest.empty();
 		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
 

@@ -12,7 +12,7 @@ export interface ConfigLoaderTestState {
 	readonly files: Map<string, string>;
 }
 
-const makeTestConfigLoader = (state: ConfigLoaderTestState): ConfigLoader => ({
+const makeTestConfigLoader = (state: ConfigLoaderTestState): typeof ConfigLoader.Service => ({
 	loadJson: <T>(path: string, schema: Schema.Schema<T>) => {
 		const content = state.files.get(path);
 		if (content === undefined) {

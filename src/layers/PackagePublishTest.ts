@@ -19,7 +19,7 @@ export interface PackagePublishTestState {
 
 const defaultPackResult: PackResult = { tarball: "pkg-1.0.0.tgz", digest: "sha256-abc123" };
 
-const makeTestClient = (state: PackagePublishTestState): PackagePublish => ({
+const makeTestClient = (state: PackagePublishTestState): typeof PackagePublish.Service => ({
 	setupAuth: (registry, token) =>
 		Effect.sync(() => {
 			state.setupAuthCalls.push({ registry, token });

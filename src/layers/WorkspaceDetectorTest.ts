@@ -14,7 +14,7 @@ export interface WorkspaceDetectorTestState {
 	readonly packages: Array<WorkspacePackage>;
 }
 
-const makeTestClient = (state: WorkspaceDetectorTestState): WorkspaceDetector => ({
+const makeTestClient = (state: WorkspaceDetectorTestState): typeof WorkspaceDetector.Service => ({
 	detect: () => Effect.succeed(state.info),
 	listPackages: () => Effect.succeed(state.packages),
 	getPackage: (nameOrPath: string) => {

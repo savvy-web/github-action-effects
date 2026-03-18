@@ -8,7 +8,9 @@ duplication and ensures compatibility between your action code and the library.
 ## Required Peers
 
 These must be installed for the library to function. `Action.run` depends on
-all of them.
+all of them. The `@effect/platform-node` package requires several Effect
+ecosystem packages as transitive peers -- these are declared as required peer
+dependencies even if your action does not use them directly.
 
 | Package | Range | Purpose |
 | --- | --- | --- |
@@ -16,11 +18,14 @@ all of them.
 | `@actions/core` | `^3.0.0` | Input reading, output setting, logging, annotations, state, secrets |
 | `@effect/platform` | `>=0.94.0` | `FileSystem`, `Path`, and platform abstractions used by multiple services |
 | `@effect/platform-node` | `>=0.104.0` | `NodeContext.layer` provided by `Action.run` -- gives `FileSystem`, `Path`, `Terminal`, `CommandExecutor`, `WorkerManager` |
+| `@effect/cluster` | `>=0.19.0` | Required peer of `@effect/platform-node` |
+| `@effect/rpc` | `>=0.62.0` | Required peer of `@effect/platform-node` |
+| `@effect/sql` | `>=0.46.0` | Required peer of `@effect/platform-node` |
 
 Install all required peers at once:
 
 ```bash
-npm install effect @actions/core @effect/platform @effect/platform-node
+npm install effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
 ```
 
 ## Optional Peers
@@ -174,17 +179,17 @@ Services from @effect/platform (provided by Action.run via NodeContext.layer):
 A minimal action that reads inputs and writes outputs:
 
 ```bash
-npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node
+npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
 ```
 
 An action that also creates GitHub releases and runs shell commands:
 
 ```bash
-npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @actions/github @actions/exec
+npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql @actions/github @actions/exec
 ```
 
 A full-featured action with GitHub App auth, caching, and tool installation:
 
 ```bash
-npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @actions/github @actions/exec @actions/cache @actions/tool-cache @octokit/auth-app
+npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql @actions/github @actions/exec @actions/cache @actions/tool-cache @octokit/auth-app
 ```

@@ -10,7 +10,7 @@ const mockUploadReleaseAsset = vi.fn();
 const mockGetReleaseByTag = vi.fn();
 const mockListReleases = vi.fn();
 
-const mockClient: GitHubClient = {
+const mockClient: typeof GitHubClient.Service = {
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 		Effect.tryPromise({
 			try: () =>

@@ -11,7 +11,7 @@ export interface ActionCacheTestState {
 	readonly entries: Map<string, ReadonlyArray<string>>;
 }
 
-const makeTestCache = (state: ActionCacheTestState): ActionCache => ({
+const makeTestCache = (state: ActionCacheTestState): typeof ActionCache.Service => ({
 	save: (key, paths) =>
 		Effect.sync(() => {
 			state.entries.set(key, [...paths]);

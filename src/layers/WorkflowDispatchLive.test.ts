@@ -9,7 +9,7 @@ const mockCreateWorkflowDispatch = vi.fn();
 const mockListWorkflowRuns = vi.fn();
 const mockGetWorkflowRun = vi.fn();
 
-const mockClient: GitHubClient = {
+const mockClient: typeof GitHubClient.Service = {
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 		Effect.tryPromise({
 			try: () =>

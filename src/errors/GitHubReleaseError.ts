@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for GitHubReleaseError.
- *
- * @internal
- */
-export const GitHubReleaseErrorBase = Data.TaggedError("GitHubReleaseError");
-
-/**
  * Error from GitHub Release operations.
  */
-export class GitHubReleaseError extends GitHubReleaseErrorBase<{
+export class GitHubReleaseError extends Data.TaggedError("GitHubReleaseError")<{
 	/** The operation that failed. */
 	readonly operation: "create" | "uploadAsset" | "getByTag" | "list";
 

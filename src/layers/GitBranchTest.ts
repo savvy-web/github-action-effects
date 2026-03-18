@@ -11,7 +11,7 @@ export interface GitBranchTestState {
 	readonly branches: Map<string, string>;
 }
 
-const makeTestGitBranch = (state: GitBranchTestState): GitBranch => ({
+const makeTestGitBranch = (state: GitBranchTestState): typeof GitBranch.Service => ({
 	create: (name, sha) =>
 		Effect.sync(() => {
 			state.branches.set(name, sha);

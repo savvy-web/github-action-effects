@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for CheckRunError.
- *
- * @internal
- */
-export const CheckRunErrorBase = Data.TaggedError("CheckRunError");
-
-/**
  * Error from check run operations.
  */
-export class CheckRunError extends CheckRunErrorBase<{
+export class CheckRunError extends Data.TaggedError("CheckRunError")<{
 	/** The check run name. */
 	readonly name: string;
 

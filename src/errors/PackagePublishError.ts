@@ -1,16 +1,9 @@
 import { Data } from "effect";
 
 /**
- * Base class for PackagePublishError.
- *
- * @internal
- */
-export const PackagePublishErrorBase = Data.TaggedError("PackagePublishError");
-
-/**
  * Error from package publishing operations.
  */
-export class PackagePublishError extends PackagePublishErrorBase<{
+export class PackagePublishError extends Data.TaggedError("PackagePublishError")<{
 	/** The operation that failed. */
 	readonly operation: "setupAuth" | "pack" | "publish" | "verifyIntegrity" | "publishToRegistries";
 

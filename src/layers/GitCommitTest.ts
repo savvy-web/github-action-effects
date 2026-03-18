@@ -18,7 +18,7 @@ export interface GitCommitTestState {
 	readonly refUpdates: Array<{ ref: string; sha: string; force?: boolean }>;
 }
 
-const makeTestGitCommit = (state: GitCommitTestState): GitCommit => {
+const makeTestGitCommit = (state: GitCommitTestState): typeof GitCommit.Service => {
 	let treeCounter = 0;
 	let commitCounter = 0;
 

@@ -1,18 +1,11 @@
 import { Data } from "effect";
 
 /**
- * Base class for TokenPermissionError.
- *
- * @internal
- */
-export const TokenPermissionErrorBase = Data.TaggedError("TokenPermissionError");
-
-/**
  * Error when token permissions are insufficient or over-scoped.
  *
  * @public
  */
-export class TokenPermissionError extends TokenPermissionErrorBase<{
+export class TokenPermissionError extends Data.TaggedError("TokenPermissionError")<{
 	/** Permissions that are missing or insufficient. */
 	readonly missing: Array<{ permission: string; required: string; granted?: string }>;
 

@@ -23,7 +23,7 @@ export interface GitHubGraphQLTestState {
 	}>;
 }
 
-const makeTestClient = (state: GitHubGraphQLTestState): GitHubGraphQL => ({
+const makeTestClient = (state: GitHubGraphQLTestState): typeof GitHubGraphQL.Service => ({
 	query: <T>(operation: string, queryString: string, variables?: Record<string, unknown>) => {
 		state.queryCalls.push({ operation, query: queryString, ...(variables !== undefined && { variables }) });
 		const response = state.queryResponses.get(operation);

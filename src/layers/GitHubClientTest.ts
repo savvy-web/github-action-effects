@@ -24,7 +24,7 @@ export interface GitHubClientTestState {
 	readonly repo: { owner: string; repo: string };
 }
 
-const makeTestClient = (state: GitHubClientTestState): GitHubClient => ({
+const makeTestClient = (state: GitHubClientTestState): typeof GitHubClient.Service => ({
 	rest: <T>(operation: string, _fn: (octokit: unknown) => Promise<{ data: T }>) => {
 		const response = state.restResponses.get(operation);
 		if (response === undefined) {
