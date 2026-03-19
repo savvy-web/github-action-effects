@@ -47,6 +47,16 @@ describe("CheckRun", () => {
 	});
 
 	describe("update", () => {
+		it("silently ignores update for non-existent check run id", async () => {
+			const state = CheckRunTest.empty();
+			// Should not throw — run with unknown id is a no-op
+			await run(
+				state,
+				Effect.flatMap(CheckRun, (svc) => svc.update(999, { title: "Phantom", summary: "No run" })),
+			);
+			expect(state.runs).toHaveLength(0);
+		});
+
 		it("adds output to an existing check run", async () => {
 			const state = CheckRunTest.empty();
 			await run(
@@ -80,6 +90,15 @@ describe("CheckRun", () => {
 	});
 
 	describe("complete", () => {
+		it("silently ignores complete for non-existent check run id", async () => {
+			const state = CheckRunTest.empty();
+			await run(
+				state,
+				Effect.flatMap(CheckRun, (svc) => svc.complete(999, "success")),
+			);
+			expect(state.runs).toHaveLength(0);
+		});
+
 		it("marks check run as completed with conclusion", async () => {
 			const state = CheckRunTest.empty();
 			await run(

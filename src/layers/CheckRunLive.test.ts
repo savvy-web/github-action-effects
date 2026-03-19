@@ -77,6 +77,15 @@ describe("CheckRunLive", () => {
 			);
 		});
 
+		it("includes text field when provided", async () => {
+			mockUpdate.mockResolvedValue({ data: {} });
+			await run(
+				Effect.flatMap(CheckRun, (svc) => svc.update(1, { title: "Test", summary: "Summary", text: "Detailed text" })),
+			);
+			const call = mockUpdate.mock.calls[0]?.[0];
+			expect(call.output.text).toBe("Detailed text");
+		});
+
 		it("caps annotations at 50", async () => {
 			mockUpdate.mockResolvedValue({ data: {} });
 			const annotations = Array.from({ length: 60 }, (_, i) => ({
