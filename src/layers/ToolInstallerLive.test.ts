@@ -606,6 +606,25 @@ describe("ToolInstallerLive", () => {
 			expect(error.operation).toBe("cache");
 			expect(error.tool).toBe("biome");
 		});
+
+		it("fails with ToolInstallerError on chmod failure", async () => {
+			const { chmod } = await import("node:fs/promises");
+			vi.mocked(chmod).mockRejectedValueOnce(new Error("Permission denied"));
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
+			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockResolvedValue("/tmp/download");
+			const cacheFile = vi
+				.fn<(sourceFile: string, targetFile: string, tool: string, version: string) => Promise<string>>()
+				.mockResolvedValue("/cached/biome/1.0.0");
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) => svc.installBinary("biome", "1.0.0", "https://example.com/biome")),
+				{ find, downloadTool, cacheFile },
+			);
+
+			expect(error.operation).toBe("chmod");
+			expect(error.tool).toBe("biome");
+			expect(error.reason).toContain("Permission denied");
+		});
 	});
 
 	describe("installBinaryAndAddToPath", () => {
