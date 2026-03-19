@@ -483,11 +483,10 @@ which wrappers each Live layer requires.
 Currently `Action.run()` directly calls `core.getInput()`, `core.setFailed()`,
 and `core.debug()`. These must go through `ActionsCore`.
 
-**New signature (backwards-compatible overloads):**
+**New signature:**
 
 ```typescript
 run(program: Effect.Effect<void, E, CoreServices>): Promise<void>;
-run(program: Effect.Effect<void, E, CoreServices | R>, layer: Layer.Layer<R>): Promise<void>;
 run(program: Effect.Effect<void, E, CoreServices | R>, options: {
   layer?: Layer.Layer<R>;
   platform?: Layer.Layer<ActionsPlatform>;
@@ -496,20 +495,15 @@ run(program: Effect.Effect<void, E, CoreServices | R>, options: {
 
 **Key implementation details:**
 
-1. `Action.run()` provides `ActionsPlatformLive` to **all** layers -- both
-   its own internal `CoreLive` and any user-supplied `layer` argument. This
-   means `Action.run(program, ActionStateLive)` continues to work because
-   `ActionsPlatformLive` satisfies `ActionStateLive`'s `ActionsCore`
-   requirement automatically.
-
-2. The OTel config reading (`core.getInput("otel-enabled")` etc.) and error
+1. The OTel config reading (`core.getInput("otel-enabled")` etc.) and error
    handling (`core.setFailed`, `core.debug`) move inside the Effect pipeline
    where they access `ActionsCore` via `yield*`.
 
-3. When `options.platform` is provided, it replaces `ActionsPlatformLive`.
-   This gives consumers full control over the `@actions/*` implementations.
+2. `Action.run()` provides `ActionsPlatformLive` by default. When
+   `options.platform` is provided, it replaces `ActionsPlatformLive`. This
+   gives consumers full control over the `@actions/*` implementations.
 
-4. `Action.ts` no longer imports `@actions/core` directly. It imports
+3. `Action.ts` no longer imports `@actions/core` directly. It imports
    `ActionsCore` (the service tag) and `ActionsPlatformLive` (the default).
 
 ### Part 5: `./testing` subpath
@@ -615,27 +609,19 @@ asserts it resolves without error.
 
 ## Migration
 
-This is a **breaking change** for consumers who import Live layers and compose
-them manually outside of `Action.run()`. The refactored Live layers have new
-type signatures that require wrapper service dependencies.
+This is a **breaking change**. No backwards compatibility is maintained.
 
-**Consumers using `Action.run()` (most common -- no change needed):**
+**`Action.run()` signature change:**
 
 ```typescript
-// This continues to work unchanged.
-// Action.run() auto-provides ActionsPlatformLive to all layers.
-Action.run(program);
+// Before: second argument was a bare Layer
 Action.run(program, ActionStateLive);
-Action.run(program, Layer.mergeAll(ActionStateLive, DryRunLive));
+
+// After: second argument is an options object
+Action.run(program, { layer: ActionStateLive });
 ```
 
-`Action.run()` provides `ActionsPlatformLive` as a base layer that satisfies
-all wrapper service requirements. User-supplied layers are composed on top,
-and `ActionsPlatformLive` is provided to the entire merged stack. This means
-even Live layers passed as the second argument (like `ActionStateLive` which
-now requires `ActionsCore`) are satisfied automatically.
-
-**Consumers composing layers manually (rare -- requires update):**
+**Live layer type changes:**
 
 ```typescript
 // Before: Layer types had no wrapper dependencies
@@ -643,11 +629,6 @@ const myLayer: Layer.Layer<ActionState> = ActionStateLive;
 
 // After: Layer types include wrapper dependencies
 const myLayer: Layer.Layer<ActionState, never, ActionsCore> = ActionStateLive;
-
-// Provide wrapper services explicitly
-const fullyResolved = myLayer.pipe(
-  Layer.provide(ActionsCoreLive),
-);
 ```
 
 This warrants a **minor version bump** (0.9.0) since the library is pre-1.0.
@@ -666,15 +647,12 @@ This warrants a **minor version bump** (0.9.0) since the library is pre-1.0.
    companion types
 4. The main entry point (`.`) continues to export everything including the
    wrapper Live layers and `ActionsPlatformLive`
-5. `Action.run()` works unchanged for consumers who don't override the
-   platform (backwards-compatible)
-6. `Action.run()` accepts a `platform` option for consumers who need custom
-   `@actions/*` injection
-7. `Action.run()` auto-provides `ActionsPlatformLive` to user-supplied
-   layers, so `Action.run(program, ActionStateLive)` works without explicit
-   wrapper provision
-8. The package builds successfully with both entry points
-9. An integration test verifies the `/testing` import boundary
-10. Documentation is updated with examples for both unit and integration
+5. `Action.run()` accepts an options object with `layer` and `platform`
+   fields for composing additional layers and custom `@actions/*` injection
+6. `Action.run()` provides `ActionsPlatformLive` by default when no
+   `platform` option is given
+7. The package builds successfully with both entry points
+8. An integration test verifies the `/testing` import boundary
+9. Documentation is updated with examples for both unit and integration
     testing patterns
-11. All existing tests pass (updated to use wrapper services where needed)
+10. All existing tests pass (updated to use wrapper services where needed)
