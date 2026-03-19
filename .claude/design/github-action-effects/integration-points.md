@@ -5,7 +5,7 @@ category: architecture
 created: 2026-03-06
 updated: 2026-03-19
 last-synced: 2026-03-19
-completeness: 85
+completeness: 90
 related:
   - ./index.md
   - ./services.md
@@ -39,23 +39,27 @@ Several services (ConfigLoader, ChangesetAnalyzer, WorkspaceDetector,
 PackagePublish) depend on `FileSystem` from `@effect/platform`.
 
 **@actions/core** -- Primary integration for input reading, output setting,
-logging, annotations, state, and secrets. All interactions wrapped in Effect
-services.
+logging, annotations, state, and secrets. All interactions go through the
+`ActionsCore` wrapper service. Only `ActionsCoreLive` imports this package
+directly.
 
 ### Optional Peers
 
-| Package | Used By | Purpose |
-| --- | --- | --- |
-| `@actions/github` | GitHubClient | Authenticated Octokit provider |
-| `@actions/exec` | CommandRunner | Shell command execution |
-| `@actions/cache` | ActionCache | Cache save/restore |
-| `@actions/tool-cache` | ToolInstaller | Tool download, extract, cache |
-| `@octokit/auth-app` | GitHubApp | GitHub App JWT authentication |
-| `semver` | SemverResolver | Semver comparison and resolution |
-| `jsonc-parser` | ConfigLoader.loadJsonc | JSONC config file support |
-| `yaml` | ConfigLoader.loadYaml | YAML config file support |
+| Package | Wrapper Service | Live Layer | Purpose |
+| --- | --- | --- | --- |
+| `@actions/github` | `ActionsGitHub` | `ActionsGitHubLive` | Authenticated Octokit provider |
+| `@actions/exec` | `ActionsExec` | `ActionsExecLive` | Shell command execution |
+| `@actions/cache` | `ActionsCache` | `ActionsCacheLive` | Cache save/restore |
+| `@actions/tool-cache` | `ActionsToolCache` | `ActionsToolCacheLive` | Tool download, extract, cache |
+| `@octokit/auth-app` | `OctokitAuthApp` | `OctokitAuthAppLive` | GitHub App JWT authentication |
+| `semver` | (none) | SemverResolver | Semver comparison and resolution |
+| `jsonc-parser` | (none) | ConfigLoader.loadJsonc | JSONC config file support |
+| `yaml` | (none) | ConfigLoader.loadYaml | YAML config file support |
 
 All optional peers are marked `optional: true` in `peerDependenciesMeta`.
+The `@actions/*` and `@octokit/auth-app` packages are exclusively imported by
+their corresponding wrapper Live layers. All domain Live layers consume these
+packages through the wrapper services via `Layer.effect` and `yield*`.
 
 ### Regular Dependencies (Bundled)
 
@@ -74,31 +78,45 @@ All optional peers are marked `optional: true` in `peerDependenciesMeta`.
 | `@opentelemetry/sdk-trace-node` | OtelExporterLive | OTel tracing SDK |
 
 OTel packages are regular `dependencies` (not optional peers) to avoid
-version management burden on consumers. All Live layers -- including those
-for optional peers like `@actions/tool-cache`, `@octokit/auth-app`,
-`@actions/github`, `@actions/exec`, and `@actions/cache` -- use static
-imports exclusively. `@vercel/ncc` cannot follow dynamic `import()` calls,
-so static imports are required for reliable ncc bundling. Consumers do not
-need bare `import` hints in their entry points.
+version management burden on consumers. All Live layers use static imports
+exclusively. `@vercel/ncc` cannot follow dynamic `import()` calls, so static
+imports are required for reliable ncc bundling. The `@actions/*` packages are
+statically imported only by the 6 platform wrapper Live layers; domain Live
+layers use `yield*` DI instead. Consumers do not need bare `import` hints in
+their entry points.
 
 ---
 
 ## Service Dependency Graph
 
 ```text
-Tier 0 — No service dependencies (standalone):
-  ActionInputs, ActionLogger, ActionOutputs, ActionState,
-  ActionEnvironment, ActionCache, CommandRunner, DryRun,
-  ActionTelemetry, GitHubApp
+Tier 0 — Platform wrappers (import @actions/* directly, no service dependencies):
+  ActionsCore, ActionsGitHub, ActionsCache, ActionsExec,
+  ActionsToolCache, OctokitAuthApp
 
-Tier 1 — Single service dependency:
+Tier 1 — Depend on platform wrappers:
+  ActionInputs              -> ActionsCore
+  ActionLogger              -> ActionsCore
+  ActionOutputs             -> ActionsCore
+  ActionState               -> ActionsCore
+  ActionCache               -> ActionsCache
+  CommandRunner             -> ActionsExec
+  GitHubClient(token)       -> ActionsGitHub
+  GitHubApp                 -> OctokitAuthApp
+  ToolInstaller             -> ActionsCore + ActionsToolCache
+
+Tier 1 — Independent (no service dependencies):
+  ActionEnvironment, DryRun, ActionTelemetry
+  GithubMarkdown, SemverResolver, ErrorAccumulator,
+  GitHubOtelAttributes, ReportBuilder, TelemetryReport
+
+Tier 2 — Single service dependency:
   NpmRegistry               -> CommandRunner
   ChangesetAnalyzer         -> FileSystem
   ConfigLoader              -> FileSystem
-  GitHubClient(token)       -> @actions/github (peer dep, not a service)
-  ToolInstaller             -> @actions/tool-cache (peer dep, not a service)
+  TokenPermissionChecker    -> GitHubApp
 
-Tier 2 — GitHubClient dependents:
+Tier 3 — GitHubClient dependents:
   GitHubGraphQL             -> GitHubClient
   GitBranch                 -> GitHubClient
   GitCommit                 -> GitHubClient
@@ -112,20 +130,33 @@ Tier 2 — GitHubClient dependents:
   PackageManagerAdapter     -> CommandRunner + FileSystem
   WorkspaceDetector         -> FileSystem + CommandRunner
 
-Tier 3 — Multi-service dependencies:
+Tier 4 — Multi-service dependencies:
   PackagePublish            -> CommandRunner + NpmRegistry + FileSystem
-  TokenPermissionChecker    -> GitHubApp
   AutoMerge (utility)       -> GitHubGraphQL
-
-Utilities (no service dependencies):
-  GithubMarkdown, SemverResolver, ErrorAccumulator,
-  GitHubOtelAttributes, ReportBuilder, TelemetryReport
 ```
 
-### Layer Provision for Tier 2+
+### ActionsPlatformLive as the Integration Point
+
+`ActionsPlatformLive` is `Layer.mergeAll` of all 6 platform wrapper Live
+layers. It is the single integration point for wiring the real `@actions/*`
+packages into the domain Live layer stack:
 
 ```text
-GitHubClientLive(token)
+ActionsPlatformLive
+  ├── ActionsCoreLive    -> ActionInputsLive, ActionLoggerLive,
+  │                         ActionOutputsLive, ActionStateLive,
+  │                         ToolInstallerLive (partial)
+  ├── ActionsGitHubLive  -> GitHubClientLive(token)
+  ├── ActionsCacheLive   -> ActionCacheLive
+  ├── ActionsExecLive    -> CommandRunnerLive
+  ├── ActionsToolCacheLive -> ToolInstallerLive (partial)
+  └── OctokitAuthAppLive -> GitHubAppLive
+```
+
+### Layer Provision for Tier 3+
+
+```text
+GitHubClientLive(token)   (requires ActionsGitHub)
   -> CheckRunLive              (requires GitHubClient in context)
   -> PullRequestCommentLive    (requires GitHubClient in context)
   -> GitHubGraphQLLive         (requires GitHubClient in context)
@@ -137,7 +168,7 @@ GitHubClientLive(token)
   -> RateLimiterLive           (requires GitHubClient in context)
   -> WorkflowDispatchLive      (requires GitHubClient in context)
 
-Test layers for all Tier 2 services do NOT depend on GitHubClient --
+Test layers for all Tier 3 services do NOT depend on GitHubClient --
 they operate entirely in-memory.
 ```
 
@@ -162,7 +193,12 @@ ensure reliable ncc bundling. See
 
 ## Current State
 
-All peer dependencies and service tiers are documented with a complete dependency graph. Optional integrations for OpenTelemetry and the action builder are specified with their activation conditions.
+All peer dependencies and service tiers are documented with a complete dependency
+graph. The platform wrapper services isolate all `@actions/*` imports behind
+Effect service interfaces. `ActionsPlatformLive` is the single integration point
+for wiring real platform packages into the layer stack. Optional integrations for
+OpenTelemetry and the action builder are specified with their activation
+conditions.
 
 ## Rationale
 

@@ -34,7 +34,11 @@ schema-validated GitHub Actions with Node.js 24.
 
 ## Current State
 
-The library is actively developed and provides 20 Effect services spanning core action I/O, GitHub API integration, git operations, build tooling, and observability, along with utility namespaces for markdown generation, report building, and telemetry output.
+The library provides 36 Effect services (30 domain services + 6 platform
+wrapper services) spanning core action I/O, GitHub API integration, git
+operations, build tooling, observability, and platform abstraction, along with
+utility namespaces for markdown generation, report building, and telemetry
+output.
 
 ## Overview
 
@@ -46,8 +50,8 @@ building blocks.
 
 ### Scope
 
-The library provides 27 service interfaces, 6 utility namespaces, 28 error
-types, and 13 schema modules. Services cover five domains:
+The library provides 36 service interfaces, 6 utility namespaces, 28 error
+types, and 13 schema modules. Services cover six domains:
 
 - **Core action I/O** -- inputs, outputs, state, logging, environment, cache
 - **Git operations** -- branches, commits, tags via Git Data API
@@ -58,6 +62,8 @@ types, and 13 schema modules. Services cover five domains:
   analysis, config loading
 - **Observability** -- telemetry recording, OTel bridge, in-memory tracing,
   OTLP export, report building
+- **Platform abstraction** -- wrapper services for `@actions/*` and
+  `@octokit/auth-app` packages, enabling DI for all external platform calls
 
 ### Problem Statement
 
@@ -80,6 +86,11 @@ GitHub Actions development suffers from four recurring pain points:
   bring their own versions (action-builder bundles with ncc anyway). OTel
   packages are regular dependencies (bundled by ncc). All Live layers use
   static imports exclusively -- ncc cannot follow dynamic `import()` calls.
+- **Platform abstraction** -- All `@actions/*` and `@octokit/auth-app` calls
+  go through wrapper services (`ActionsCore`, `ActionsGitHub`, `ActionsCache`,
+  `ActionsExec`, `ActionsToolCache`, `OctokitAuthApp`). Live layers yield from
+  these services via `Layer.effect` instead of importing the packages directly.
+  Only the 6 wrapper Live layers import `@actions/*` packages.
 - **Single entry point** -- One barrel export at `@savvy-web/github-action-effects`
 - **Incrementally adoptable** -- Use one service or all of them; no all-or-nothing
 
@@ -107,15 +118,23 @@ GitHub Actions development suffers from four recurring pain points:
   this library targets Effect-using action authors. OTel packages add to
   bundle size but are necessary for correct ncc compilation.
 
-#### AD-2: Single Entry Point with Direct Imports
+#### AD-2: Two Entry Points — Main and Testing Subpath
 
-- **Decision:** One barrel export at `index.ts` using direct imports from each
-  source file (no subfolder barrel re-exports)
-- **Rationale:** Since ncc bundles everything and tree-shaking doesn't apply in
-  the action runtime, subpath exports add complexity without benefit. A single
-  import keeps DX simple. Direct imports (rather than re-exporting from
-  subfolder index files) avoid circular dependency issues and make the
-  dependency graph explicit.
+- **Decision:** Two barrel exports: `index.ts` (main) and `testing.ts`
+  (`./testing` subpath export in `package.json`). The `./testing` subpath
+  excludes the 6 platform wrapper Live layers (`ActionsCoreLive`,
+  `ActionsGitHubLive`, `ActionsCacheLive`, `ActionsExecLive`,
+  `ActionsToolCacheLive`, `OctokitAuthAppLive`) and `ActionsPlatformLive`, as
+  well as the `Action` namespace (which statically imports `ActionsCoreLive`).
+  The `./testing` subpath exports all services, test layers, schemas, errors,
+  and utility namespaces.
+- **Rationale:** The platform wrapper Live layers import optional peer
+  dependencies (`@actions/cache`, `@actions/exec`, etc.) directly. Importing
+  them in a test environment without those peers installed causes module
+  resolution errors. The `./testing` subpath lets test files import everything
+  they need without triggering those peer imports. Direct imports (rather than
+  re-exporting from subfolder index files) avoid circular dependency issues and
+  make the dependency graph explicit.
 
 #### AD-3: Services Over Frameworks
 

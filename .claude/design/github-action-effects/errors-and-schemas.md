@@ -3,9 +3,9 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-18
-last-synced: 2026-03-18
-completeness: 90
+updated: 2026-03-19
+last-synced: 2026-03-19
+completeness: 95
 related:
   - ./index.md
   - ./services.md
@@ -101,6 +101,32 @@ and 5xx status codes, enabling consumers to implement retry logic.
 
 Schemas use `Schema.Struct` with annotations for validated types. Types are
 inferred via `typeof X.Type`.
+
+### Platform Service Interfaces
+
+These are TypeScript interfaces (not Effect Schemas) defined alongside the
+platform wrapper services. They are exported from the main barrel and the
+`./testing` subpath.
+
+| Interface | Location | Purpose |
+| --- | --- | --- |
+| `AnnotationProperties` | `services/ActionsCore.ts` | File/line annotation properties for GitHub UI |
+| `ActionsExecOptions` | `services/ActionsExec.ts` | Subset of `@actions/exec` ExecOptions |
+| `GitHubOctokit` | `services/ActionsGitHub.ts` | Octokit instance shape (`graphql`, `rest`, `request`) |
+| `AppAuth` | `services/OctokitAuthApp.ts` | Callable auth function for app/installation tokens |
+
+### Action Run Interfaces
+
+| Interface | Location | Purpose |
+| --- | --- | --- |
+| `ActionRunOptions` | `Action.ts` | Options for `Action.run()` (`layer?`, `platform?`) |
+| `CoreServices` | `Action.ts` | Union type of services provided automatically by `Action.run()` |
+
+### Type Aliases
+
+| Alias | Location | Purpose |
+| --- | --- | --- |
+| `ActionsPlatform` | `layers/ActionsPlatformLive.ts` | Union of all 6 platform wrapper service types |
 
 ### Core Schemas
 
@@ -249,7 +275,10 @@ TokenPermissionChecker.assertSufficient(requirements)
 
 All 27 error types and 30+ schemas are fully defined and in use across the
 service catalog. The error hierarchy with domain-specific wrapping of
-`GitHubClientError` is stable.
+`GitHubClientError` is stable. The platform service interfaces (`AnnotationProperties`,
+`ActionsExecOptions`, `GitHubOctokit`, `AppAuth`) and action run types
+(`ActionRunOptions`, `ActionsPlatform`, `CoreServices`) are exported from both
+the main barrel and the `./testing` subpath.
 
 ## Rationale
 

@@ -3,9 +3,9 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-18
-last-synced: 2026-03-18
-completeness: 90
+updated: 2026-03-19
+last-synced: 2026-03-19
+completeness: 95
 related:
   - ./index.md
   - ./layers.md
@@ -26,7 +26,7 @@ See [layers.md](./layers.md) for live and test layer implementations.
 
 ## Overview
 
-Twenty-seven service modules plus six namespace/utility objects, each
+Thirty-six service modules plus six namespace/utility objects, each
 independently usable. `Action.run()` automatically provides
 `NodeContext.layer` from `@effect/platform-node`, so programs also have
 access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
@@ -34,6 +34,14 @@ access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
 
 ```text
 @savvy-web/github-action-effects
+├── Platform Wrapper Services  (new — abstract @actions/* and @octokit/*)
+│   ├── ActionsCore         — Wrapper for @actions/core
+│   ├── ActionsGitHub       — Wrapper for @actions/github
+│   ├── ActionsCache        — Wrapper for @actions/cache
+│   ├── ActionsExec         — Wrapper for @actions/exec
+│   ├── ActionsToolCache    — Wrapper for @actions/tool-cache
+│   └── OctokitAuthApp      — Wrapper for @octokit/auth-app
+│
 ├── Core Action I/O
 │   ├── ActionInputs        — Schema-validated input reading
 │   ├── ActionLogger        — Structured logging with buffering
@@ -94,8 +102,13 @@ single export, reducing barrel clutter and improving discoverability.
 
 **`Action`** (from `src/Action.ts`) groups top-level action helpers:
 
-- `Action.run(program)` / `Action.run(program, layer)` -- Run a GitHub Action
-  program with standard boilerplate (provides core layers, catches errors).
+- `Action.run(program)` / `Action.run(program, options?)` -- Run a GitHub
+  Action program with standard boilerplate (provides core layers, catches
+  errors). `options` is an `ActionRunOptions` object with two optional fields:
+  - `layer` -- additional layer to merge with core services
+  - `platform` -- platform layer providing `ActionsCore` (defaults to
+    `ActionsCoreLive`; pass `ActionsPlatformLive` to include all wrapper
+    services). Uses `ActionsCore` via DI for `getInput`/`setFailed`/`debug`.
   Automatically parses OTel inputs and wires up exporter when enabled.
 - `Action.parseInputs(config, crossValidate?)` -- Read and validate all inputs
   at once from a config record
@@ -115,6 +128,70 @@ single export, reducing barrel clutter and improving discoverability.
 All functions are defined directly as properties of their namespace objects.
 They are not exported individually from the barrel -- only the namespace
 objects are exported.
+
+---
+
+## Platform Wrapper Services
+
+Six services that wrap the `@actions/*` and `@octokit/auth-app` packages as
+Effect services. These are the **only** files in the library that import those
+packages directly. All other Live layers depend on these wrapper services via
+`Layer.effect` and `yield*`, never importing the packages themselves.
+
+This design enables full DI for platform calls, making it possible to mock
+`@actions/core`, `@actions/exec`, etc. in tests without rewriting Live layer
+logic.
+
+| Service | Wraps | Context Tag |
+| --- | --- | --- |
+| `ActionsCore` | `@actions/core` | `github-action-effects/ActionsCore` |
+| `ActionsGitHub` | `@actions/github` | `github-action-effects/ActionsGitHub` |
+| `ActionsCache` | `@actions/cache` | `github-action-effects/ActionsCache` |
+| `ActionsExec` | `@actions/exec` | `github-action-effects/ActionsExec` |
+| `ActionsToolCache` | `@actions/tool-cache` | `github-action-effects/ActionsToolCache` |
+| `OctokitAuthApp` | `@octokit/auth-app` | `github-action-effects/OctokitAuthApp` |
+
+### ActionsCore Service
+
+Mirrors the `@actions/core` API as an Effect service. Provides:
+`getInput`, `getMultilineInput`, `getBooleanInput`, `setOutput`, `setFailed`,
+`exportVariable`, `addPath`, `setSecret`, `info`, `debug`, `warning`, `error`,
+`notice`, `startGroup`, `endGroup`, `getState`, `saveState`, `summary`.
+
+Also defines `AnnotationProperties` (previously local to `ActionLogger.ts`).
+
+### ActionsGitHub Service
+
+Wraps `@actions/github.getOctokit()`. Returns a `GitHubOctokit` instance.
+Defines the `GitHubOctokit` interface with `graphql`, `rest`, and `request`
+members.
+
+### ActionsCache Service
+
+Wraps `@actions/cache`. Provides `saveCache` and `restoreCache`.
+
+### ActionsExec Service
+
+Wraps `@actions/exec`. Provides a single `exec` method. Defines the
+`ActionsExecOptions` interface (subset of `@actions/exec` `ExecOptions`).
+
+### ActionsToolCache Service
+
+Wraps `@actions/tool-cache`. Provides `find`, `downloadTool`, `extractTar`,
+`extractZip`, and `cacheDir`.
+
+### OctokitAuthApp Service
+
+Wraps `@octokit/auth-app`. Provides `createAppAuth`. Defines the `AppAuth`
+callable interface for app and installation authentication.
+
+### ActionsPlatformLive
+
+A convenience bundle: `Layer.mergeAll` of all 6 wrapper Live layers. Type
+alias `ActionsPlatform` is a union of the 6 service types. Pass
+`ActionsPlatformLive` as the `platform` option to `Action.run()` when
+downstream Live layers need `ActionsGitHub`, `ActionsCache`, `ActionsExec`,
+`ActionsToolCache`, or `OctokitAuthApp` in addition to `ActionsCore`.
 
 ---
 
@@ -679,39 +756,56 @@ programs into GitHub Action entry points.
 **Signatures:**
 
 ```typescript
-Action.run(program): void          // uses all standard Live layers
-Action.run(program, layer): void   // merge additional layers with standard layers
+Action.run(program): Promise<void>
+Action.run(program, options: ActionRunOptions): Promise<void>
 ```
+
+**`ActionRunOptions` interface:**
+
+```typescript
+interface ActionRunOptions<R = never> {
+  layer?: Layer.Layer<R, never, never>    // additional services to merge
+  platform?: Layer.Layer<ActionsCore, never, never>  // defaults to ActionsCoreLive
+}
+```
+
+Pass `ActionsPlatformLive` as `platform` to provide all 6 wrapper services.
 
 **Behavior:**
 
-1. Provides core Live layers (ActionInputsLive, ActionLoggerLive,
+1. Resolves `ActionsCore` from the platform layer (defaults to
+   `ActionsCoreLive`). All OTel input reading, `setFailed` calls, and
+   `debug` calls go through this injected `core` reference — `Action.run()`
+   does not import `@actions/core` directly.
+2. Provides core Live layers (ActionInputsLive, ActionLoggerLive,
    ActionOutputsLive, NodeContext.layer) plus ActionLoggerLayer (the
-   Effect Logger integration). NodeContext.layer provides Node.js platform
-   services from `@effect/platform-node`.
-2. Parses OTel inputs (`otel-enabled`, `otel-endpoint`, `otel-protocol`,
+   Effect Logger integration). All core layers depend on `ActionsCore` from
+   the platform layer. NodeContext.layer provides Node.js platform services
+   from `@effect/platform-node`.
+3. Parses OTel inputs (`otel-enabled`, `otel-endpoint`, `otel-protocol`,
    `otel-headers`) and conditionally wires up OtelExporterLive or
    InMemoryTracer based on resolved config.
-3. Catches all errors (via `Effect.catchAllCause`) and routes them to
-   `core.setFailed()` with `Cause.pretty` formatting. (Planned: upgrade to
-   use `Action.formatCause` for structured `[Tag] message` output, plus JS
-   stack trace and Effect span trace via `core.debug()`.)
-4. Runs the program with `Effect.runPromise()`
-5. Merges any user-supplied `layer` with the core layers
-6. Last-resort catch on the promise sets `process.exitCode = 1` if even
+4. Catches all errors (via `Effect.catchAllCause`) and routes them to
+   `core.setFailed()` using `Action.formatCause` for structured
+   `[Tag] message` output, plus JS stack trace and Effect span trace via
+   `core.debug()`.
+5. Runs the program with `Effect.runPromise()`
+6. Merges any user-supplied `layer` with the core layers
+7. Last-resort catch on the promise sets `process.exitCode = 1` if even
    `setFailed` fails
 
 **Note:** `ActionStateLive` is not included in the core layers because not
-all actions need multi-phase state; users who need it pass it as the second
-`layer` argument.
+all actions need multi-phase state; users who need it pass it as the `layer`
+option.
 
 ---
 
 ## Current State
 
-All 27 service modules and 6 namespace/utility objects are fully defined with
-interfaces, error types, and both live and test layer implementations. The
-service catalog is stable and actively used by downstream actions.
+All 36 service modules (30 domain + 6 platform wrapper) and 6 namespace/utility
+objects are fully defined with interfaces, error types, and live layer
+implementations. The 30 domain services also have test layer implementations.
+The service catalog is stable and actively used by downstream actions.
 
 ## Rationale
 
