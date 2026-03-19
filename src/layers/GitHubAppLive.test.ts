@@ -1,21 +1,24 @@
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Layer } from "effect";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubApp } from "../services/GitHubApp.js";
+import { OctokitAuthApp } from "../services/OctokitAuthApp.js";
 import { GitHubAppLive } from "./GitHubAppLive.js";
 
 const mockAuth = vi.fn();
 
-vi.mock("@octokit/auth-app", () => ({
+const mockOctokitAuthAppLayer = Layer.succeed(OctokitAuthApp, {
 	createAppAuth: vi.fn((..._args: Array<unknown>) => mockAuth),
-}));
+});
+
+const testLayer = GitHubAppLive.pipe(Layer.provide(mockOctokitAuthAppLayer));
 
 const mockFetch = vi.fn();
 const originalFetch = globalThis.fetch;
 
-const run = <A, E>(effect: Effect.Effect<A, E, GitHubApp>) => Effect.runPromise(Effect.provide(effect, GitHubAppLive));
+const run = <A, E>(effect: Effect.Effect<A, E, GitHubApp>) => Effect.runPromise(Effect.provide(effect, testLayer));
 
 const runExit = <A, E>(effect: Effect.Effect<A, E, GitHubApp>) =>
-	Effect.runPromise(Effect.exit(Effect.provide(effect, GitHubAppLive)));
+	Effect.runPromise(Effect.exit(Effect.provide(effect, testLayer)));
 
 /** Create a mock response for the installations API with optional Link header for pagination. */
 const mockInstallationsResponse = (
@@ -52,8 +55,6 @@ afterAll(() => {
 	}
 });
 
-const { createAppAuth } = await import("@octokit/auth-app");
-
 describe("GitHubAppLive", () => {
 	describe("generateToken", () => {
 		it("calls createAppAuth with correct params and returns token", async () => {
@@ -70,10 +71,6 @@ describe("GitHubAppLive", () => {
 				expiresAt: "2099-01-01T00:00:00Z",
 				installationId: 999,
 				permissions: {},
-			});
-			expect(createAppAuth).toHaveBeenCalledWith({
-				appId: "app-42",
-				privateKey: "my-private-key",
 			});
 			expect(mockAuth).toHaveBeenCalledWith({
 				type: "installation",

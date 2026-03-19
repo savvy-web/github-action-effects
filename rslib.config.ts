@@ -10,16 +10,20 @@ export default NodeLibraryBuilder.create({
 		"@actions/exec",
 		"@actions/github",
 		"@actions/tool-cache",
-		"@effect/opentelemetry",
+		"@effect/cluster",
 		"@effect/platform",
 		"@effect/platform-node",
+		"@effect/rpc",
+		"@effect/sql",
 		"@octokit/auth-app",
 		"effect",
 	],
 	transform({ pkg }) {
 		delete pkg.devDependencies;
+		delete pkg.bundleDependencies;
 		delete pkg.scripts;
 		delete pkg.publishConfig;
+		delete pkg.packageManager;
 		delete pkg.devEngines;
 		return pkg;
 	},

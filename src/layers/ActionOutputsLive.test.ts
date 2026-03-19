@@ -1,49 +1,73 @@
-import { addPath, exportVariable, setFailed, setOutput, setSecret, summary } from "@actions/core";
-import { Effect, Schema } from "effect";
+import type { Context } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { ActionOutputs } from "../services/ActionOutputs.js";
+import { ActionsCore } from "../services/ActionsCore.js";
 import { ActionOutputsLive } from "./ActionOutputsLive.js";
 
-vi.mock("@actions/core", () => ({
-	setOutput: vi.fn(),
-	setFailed: vi.fn(),
-	setSecret: vi.fn(),
-	exportVariable: vi.fn(),
-	addPath: vi.fn(),
-	summary: {
-		addRaw: vi.fn().mockReturnValue({ write: vi.fn().mockResolvedValue(undefined) }),
-	},
-}));
+const mockCore = (overrides: Partial<Context.Tag.Service<typeof ActionsCore>> = {}) =>
+	Layer.succeed(ActionsCore, {
+		getInput: () => "",
+		getMultilineInput: () => [],
+		getBooleanInput: () => false,
+		setOutput: () => {},
+		setFailed: () => {},
+		exportVariable: () => {},
+		addPath: () => {},
+		setSecret: () => {},
+		info: () => {},
+		debug: () => {},
+		warning: () => {},
+		error: () => {},
+		notice: () => {},
+		startGroup: () => {},
+		endGroup: () => {},
+		getState: () => "",
+		saveState: () => {},
+		summary: { write: () => Promise.resolve(), addRaw: () => ({ write: () => Promise.resolve() }) },
+		...overrides,
+	});
 
-const run = <A, E>(effect: Effect.Effect<A, E, ActionOutputs>) =>
-	Effect.runPromise(Effect.provide(effect, ActionOutputsLive));
+const run = <A, E>(
+	effect: Effect.Effect<A, E, ActionOutputs>,
+	coreOverrides: Partial<Context.Tag.Service<typeof ActionsCore>> = {},
+) => Effect.runPromise(Effect.provide(effect, ActionOutputsLive.pipe(Layer.provide(mockCore(coreOverrides)))));
+
+const runExit = <A, E>(
+	effect: Effect.Effect<A, E, ActionOutputs>,
+	coreOverrides: Partial<Context.Tag.Service<typeof ActionsCore>> = {},
+) =>
+	Effect.runPromise(
+		Effect.exit(Effect.provide(effect, ActionOutputsLive.pipe(Layer.provide(mockCore(coreOverrides))))),
+	);
 
 describe("ActionOutputsLive", () => {
 	describe("set", () => {
 		it("calls core.setOutput", async () => {
-			await run(Effect.flatMap(ActionOutputs, (svc) => svc.set("result", "success")));
+			const setOutput = vi.fn();
+			await run(
+				Effect.flatMap(ActionOutputs, (svc) => svc.set("result", "success")),
+				{ setOutput },
+			);
 			expect(setOutput).toHaveBeenCalledWith("result", "success");
 		});
 	});
 
 	describe("setJson", () => {
 		it("serializes and sets JSON output", async () => {
+			const setOutput = vi.fn();
 			const MySchema = Schema.Struct({ count: Schema.Number });
-			await run(Effect.flatMap(ActionOutputs, (svc) => svc.setJson("data", { count: 42 }, MySchema)));
+			await run(
+				Effect.flatMap(ActionOutputs, (svc) => svc.setJson("data", { count: 42 }, MySchema)),
+				{ setOutput },
+			);
 			expect(setOutput).toHaveBeenCalled();
 		});
 
 		it("fails on schema validation error", async () => {
 			const MySchema = Schema.Struct({ count: Schema.Number });
-			const exit = await Effect.runPromise(
-				Effect.exit(
-					Effect.provide(
-						Effect.flatMap(ActionOutputs, (svc) =>
-							svc.setJson("data", { count: "bad" as unknown as number }, MySchema),
-						),
-						ActionOutputsLive,
-					),
-				),
+			const exit = await runExit(
+				Effect.flatMap(ActionOutputs, (svc) => svc.setJson("data", { count: "bad" as unknown as number }, MySchema)),
 			);
 			expect(exit._tag).toBe("Failure");
 		});
@@ -51,35 +75,57 @@ describe("ActionOutputsLive", () => {
 
 	describe("summary", () => {
 		it("writes to step summary", async () => {
-			await run(Effect.flatMap(ActionOutputs, (svc) => svc.summary("## Report")));
-			expect(summary.addRaw).toHaveBeenCalledWith("## Report");
+			const addRaw = vi.fn().mockReturnValue({ write: vi.fn().mockResolvedValue(undefined) });
+			await run(
+				Effect.flatMap(ActionOutputs, (svc) => svc.summary("## Report")),
+				{
+					summary: { addRaw, write: () => Promise.resolve() },
+				},
+			);
+			expect(addRaw).toHaveBeenCalledWith("## Report");
 		});
 	});
 
 	describe("exportVariable", () => {
 		it("calls core.exportVariable", async () => {
-			await run(Effect.flatMap(ActionOutputs, (svc) => svc.exportVariable("MY_VAR", "val")));
+			const exportVariable = vi.fn();
+			await run(
+				Effect.flatMap(ActionOutputs, (svc) => svc.exportVariable("MY_VAR", "val")),
+				{ exportVariable },
+			);
 			expect(exportVariable).toHaveBeenCalledWith("MY_VAR", "val");
 		});
 	});
 
 	describe("addPath", () => {
 		it("calls core.addPath", async () => {
-			await run(Effect.flatMap(ActionOutputs, (svc) => svc.addPath("/usr/local/bin")));
+			const addPath = vi.fn();
+			await run(
+				Effect.flatMap(ActionOutputs, (svc) => svc.addPath("/usr/local/bin")),
+				{ addPath },
+			);
 			expect(addPath).toHaveBeenCalledWith("/usr/local/bin");
 		});
 	});
 
 	describe("setFailed", () => {
 		it("calls core.setFailed", async () => {
-			await run(Effect.flatMap(ActionOutputs, (svc) => svc.setFailed("Build failed")));
+			const setFailed = vi.fn();
+			await run(
+				Effect.flatMap(ActionOutputs, (svc) => svc.setFailed("Build failed")),
+				{ setFailed },
+			);
 			expect(setFailed).toHaveBeenCalledWith("Build failed");
 		});
 	});
 
 	describe("setSecret", () => {
 		it("calls core.setSecret", async () => {
-			await run(Effect.flatMap(ActionOutputs, (svc) => svc.setSecret("ghs_token123")));
+			const setSecret = vi.fn();
+			await run(
+				Effect.flatMap(ActionOutputs, (svc) => svc.setSecret("ghs_token123")),
+				{ setSecret },
+			);
 			expect(setSecret).toHaveBeenCalledWith("ghs_token123");
 		});
 	});

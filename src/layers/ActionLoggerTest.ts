@@ -1,7 +1,7 @@
-import type { AnnotationProperties } from "@actions/core";
 import { Effect, FiberRef, Layer } from "effect";
 import type { Scope } from "effect/Scope";
 import { ActionLogger } from "../services/ActionLogger.js";
+import type { AnnotationProperties } from "../services/ActionsCore.js";
 import { CurrentLogLevel } from "./ActionLoggerLive.js";
 
 /**

@@ -1,15 +1,14 @@
 /**
- * \@savvy-web/github-action-effects
+ * \@savvy-web/github-action-effects/testing
  *
- * Effect-based utility library for building robust, well-logged,
- * and schema-validated GitHub Actions.
+ * Re-exports everything from the main entry point except the platform wrapper
+ * Live layers that depend on \@actions/* and \@octokit/* packages. Use this
+ * entry point in tests to avoid importing those optional peer dependencies.
  *
  * @packageDocumentation
  */
 
 export type { ActionRunOptions, CoreServices, InputConfig, ParsedInputs } from "./Action.js";
-// -- Namespaces --
-export { Action } from "./Action.js";
 // -- Errors --
 export { ActionCacheError } from "./errors/ActionCacheError.js";
 export { ActionEnvironmentError } from "./errors/ActionEnvironmentError.js";
@@ -56,14 +55,7 @@ export { ActionOutputsTest } from "./layers/ActionOutputsTest.js";
 export { ActionStateLive } from "./layers/ActionStateLive.js";
 export type { ActionStateTestState } from "./layers/ActionStateTest.js";
 export { ActionStateTest } from "./layers/ActionStateTest.js";
-export { ActionsCacheLive } from "./layers/ActionsCacheLive.js";
-// -- Platform Layers --
-export { ActionsCoreLive } from "./layers/ActionsCoreLive.js";
-export { ActionsExecLive } from "./layers/ActionsExecLive.js";
-export { ActionsGitHubLive } from "./layers/ActionsGitHubLive.js";
 export type { ActionsPlatform } from "./layers/ActionsPlatformLive.js";
-export { ActionsPlatformLive } from "./layers/ActionsPlatformLive.js";
-export { ActionsToolCacheLive } from "./layers/ActionsToolCacheLive.js";
 export { ActionTelemetryLive } from "./layers/ActionTelemetryLive.js";
 export type { ActionTelemetryTestState } from "./layers/ActionTelemetryTest.js";
 export { ActionTelemetryTest } from "./layers/ActionTelemetryTest.js";
@@ -111,7 +103,6 @@ export { InMemoryTracer } from "./layers/InMemoryTracer.js";
 export { NpmRegistryLive } from "./layers/NpmRegistryLive.js";
 export type { NpmRegistryTestState } from "./layers/NpmRegistryTest.js";
 export { NpmRegistryTest } from "./layers/NpmRegistryTest.js";
-export { OctokitAuthAppLive } from "./layers/OctokitAuthAppLive.js";
 export { OtelExporterLive } from "./layers/OtelExporterLive.js";
 export type { OtelConfig } from "./layers/OtelTelemetryLive.js";
 export { OtelTelemetryLive } from "./layers/OtelTelemetryLive.js";

@@ -3,9 +3,9 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-09
-last-synced: 2026-03-09
-completeness: 85
+updated: 2026-03-19
+last-synced: 2026-03-19
+completeness: 90
 related:
   - ./index.md
   - ./services.md
@@ -28,7 +28,71 @@ See [layers.md](./layers.md) for test layer implementations.
 This document describes the testing strategy for the library, covering unit
 test organization, coverage requirements, and what each service tests. All
 tests use Effect test layers with in-memory backing to avoid real platform
-dependencies.
+dependencies. The `./testing` subpath export makes importing test infrastructure
+straightforward without pulling in optional peer dependencies.
+
+---
+
+## Testing Subpath Export
+
+**Import path:** `@savvy-web/github-action-effects/testing`
+
+The `./testing` subpath export in `package.json` re-exports everything from
+the main entry point **except**:
+
+- The 6 platform wrapper Live layers: `ActionsCoreLive`, `ActionsGitHubLive`,
+  `ActionsCacheLive`, `ActionsExecLive`, `ActionsToolCacheLive`,
+  `OctokitAuthAppLive`
+- `ActionsPlatformLive`
+- The `Action` namespace (which statically imports `ActionsCoreLive`)
+
+This prevents test environments from importing optional peer dependencies
+(`@actions/cache`, `@actions/exec`, etc.) that may not be installed. All
+services, Test layers, schemas, errors, and utility namespaces are available
+via `./testing`.
+
+**Included in `./testing`:**
+
+- `ActionRunOptions`, `CoreServices`, `InputConfig`, `ParsedInputs` type exports
+- All error classes
+- All Test layers (`ActionLoggerTest`, `ActionInputsTest`, etc.)
+- All Live layers that depend on services rather than @actions/* directly
+- All schemas, services, and utility namespaces
+- `ActionsCore`, `ActionsGitHub`, `ActionsCache`, `ActionsExec`,
+  `ActionsToolCache`, `OctokitAuthApp` service interfaces (but NOT their Live
+  layers)
+- `ActionsPlatform` type alias
+- `AppAuth`, `GitHubOctokit`, `AnnotationProperties`, `ActionsExecOptions`
+  interfaces
+
+---
+
+## Testing Tiers
+
+### Tier 1: Unit Tests with Test Layers
+
+In-memory test layers replace real platform calls. No `@actions/core` imported.
+
+```typescript
+import { ActionLoggerTest, ActionInputsTest }
+  from "@savvy-web/github-action-effects/testing"
+```
+
+### Tier 2: Integration Tests with Mock Wrapper Services
+
+Live layers are used but with mock wrapper services substituted for the
+`@actions/*` Live layers:
+
+```typescript
+import { ActionLoggerLive, ActionInputsLive, ActionsCore }
+  from "@savvy-web/github-action-effects/testing"
+
+// Provide a mock ActionsCore instead of ActionsCoreLive
+const mockCore = Layer.succeed(ActionsCore, { getInput: () => "test", ... })
+```
+
+This approach tests the Live layer logic (schema validation, error mapping,
+DI wiring) without requiring the real `@actions/core` package to be present.
 
 ---
 
@@ -222,7 +286,9 @@ action-builder's `persistLocal` feature to run actions in Docker containers.
 
 ## Current State
 
-Unit tests cover all 27 services, 6 namespace/utility objects, and key schemas.
+Unit tests cover all 30 domain services, 6 namespace/utility objects, and key
+schemas. The 6 platform wrapper services are tested indirectly through the Live
+layers that depend on them (e.g., `ActionInputsLive.test.ts` mocks `ActionsCore`).
 Coverage meets the 80% threshold. Integration tests are deferred pending service
 stabilization.
 

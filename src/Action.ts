@@ -1,4 +1,3 @@
-import * as core from "@actions/core";
 import * as PlatformNode from "@effect/platform-node";
 import type { Schema } from "effect";
 import { Cause, Effect, Layer } from "effect";
@@ -6,6 +5,7 @@ import type { ActionInputError } from "./errors/ActionInputError.js";
 import { ActionInputsLive } from "./layers/ActionInputsLive.js";
 import { ActionLoggerLayer, ActionLoggerLive, makeActionLogger, setLogLevel } from "./layers/ActionLoggerLive.js";
 import { ActionOutputsLive } from "./layers/ActionOutputsLive.js";
+import { ActionsCoreLive } from "./layers/ActionsCoreLive.js";
 import { InMemoryTracer } from "./layers/InMemoryTracer.js";
 import { OtelExporterLive } from "./layers/OtelExporterLive.js";
 import type { LogLevelInput } from "./schemas/LogLevel.js";
@@ -17,6 +17,7 @@ import { ActionInputs as ActionInputsTag } from "./services/ActionInputs.js";
 import type { ActionLogger as ActionLoggerType } from "./services/ActionLogger.js";
 import { ActionLogger } from "./services/ActionLogger.js";
 import type { ActionOutputs } from "./services/ActionOutputs.js";
+import { ActionsCore } from "./services/ActionsCore.js";
 import { TelemetryReport } from "./utils/TelemetryReport.js";
 
 /**
@@ -54,8 +55,26 @@ export type ParsedInputs<T extends Record<string, InputConfig>> = {
 	readonly [K in keyof T]: T[K] extends InputConfig<infer S> ? Schema.Schema.Type<S> : never;
 };
 
-/** Standard live layer combining all core services. */
-const CoreLive = Layer.mergeAll(ActionInputsLive, ActionLoggerLive, ActionOutputsLive, PlatformNode.NodeContext.layer);
+/**
+ * Options for {@link Action.run}.
+ *
+ * @public
+ */
+export interface ActionRunOptions<R = never> {
+	/** Additional layer to merge with the core services. */
+	readonly layer?: Layer.Layer<R, never, never>;
+	/**
+	 * Platform layer providing {@link ActionsCore} used internally by Action.run
+	 * for reading OTel inputs, error handling, and the Effect logger.
+	 * Defaults to {@link ActionsCoreLive}. Override in tests to inject a mock
+	 * {@link ActionsCore} without loading `@actions/core`.
+	 *
+	 * Note: platform wrapper services required by your own layers (e.g.,
+	 * {@link ActionsGitHub} for {@link GitHubClientLive}) must be included
+	 * in `options.layer`, not here.
+	 */
+	readonly platform?: Layer.Layer<ActionsCore, never, never>;
+}
 
 /**
  * Namespace for top-level GitHub Action helpers.
@@ -90,99 +109,115 @@ export const Action = {
 	 * the return value can be ignored (fire-and-forget). In tests, await it
 	 * to avoid timing issues.
 	 */
-	run: ((
-		program: Effect.Effect<void, unknown, CoreServices>,
-		layer?: Layer.Layer<never, never, never>,
-	): Promise<void> => {
-		// Read OTel inputs (optional, safe defaults)
-		const otelEnabled = (core.getInput("otel-enabled") || "auto") as OtelEnabled;
-		const otelEndpoint = core.getInput("otel-endpoint") || "";
-		const otelProtocol = core.getInput("otel-protocol") || "";
-		const otelHeaders = core.getInput("otel-headers") || "";
+	run: ((program: Effect.Effect<void, unknown, CoreServices>, options?: ActionRunOptions): Promise<void> => {
+		const platformLayer = options?.platform ?? ActionsCoreLive;
 
-		let otelLayer: Layer.Layer<never>;
-		try {
-			const otelConfig = resolveOtelConfig({
-				enabled: otelEnabled,
-				endpoint: otelEndpoint,
-				protocol: otelProtocol,
-				headers: otelHeaders,
-			});
-			otelLayer = OtelExporterLive(otelConfig);
-		} catch {
-			// If resolution fails (e.g., enabled but no endpoint), fall back to in-memory
-			otelLayer = InMemoryTracer.layer;
-		}
+		// Wrap everything in an outer Effect that resolves ActionsCore first,
+		// so the error handler can close over the `core` reference.
+		const outer = Effect.gen(function* () {
+			const core = yield* ActionsCore;
 
-		// biome-ignore lint/suspicious/noExplicitAny: Layer type erasure at the run boundary
-		const fullLayer: Layer.Layer<any, never, never> = layer
-			? Layer.mergeAll(CoreLive, otelLayer, layer)
-			: Layer.mergeAll(CoreLive, otelLayer);
+			// Read OTel inputs (optional, safe defaults)
+			const otelEnabled = (core.getInput("otel-enabled") || "auto") as OtelEnabled;
+			const otelEndpoint = core.getInput("otel-endpoint") || "";
+			const otelProtocol = core.getInput("otel-protocol") || "";
+			const otelHeaders = core.getInput("otel-headers") || "";
 
-		// Only write telemetry to step summary when log level is debug
-		const logLevelInput = (core.getInput("log-level") || "auto") as LogLevelInput;
-		const effectiveLogLevel = resolveLogLevel(logLevelInput);
-
-		const writeTelemetrySummary = Effect.gen(function* () {
-			if (effectiveLogLevel !== "debug") return;
-			const spans = yield* InMemoryTracer.getSpans();
-			if (spans.length > 0) {
-				const summaries = spans.map((s) => {
-					const base = { name: s.name, duration: s.duration, status: s.status, attributes: s.attributes };
-					return s.parentName !== undefined ? { ...base, parentName: s.parentName } : base;
+			let otelLayer: Layer.Layer<never>;
+			try {
+				const otelConfig = resolveOtelConfig({
+					enabled: otelEnabled,
+					endpoint: otelEndpoint,
+					protocol: otelProtocol,
+					headers: otelHeaders,
 				});
-				yield* TelemetryReport.toSummary(summaries);
+				otelLayer = OtelExporterLive(otelConfig);
+			} catch {
+				// If resolution fails (e.g., enabled but no endpoint), fall back to in-memory
+				otelLayer = InMemoryTracer.layer;
 			}
-		}).pipe(Effect.catchAll(() => Effect.void));
 
-		const bufferedProgram = Effect.gen(function* () {
-			const logger = yield* ActionLogger;
-			yield* logger.withBuffer("action", program);
-		});
+			/** Standard live layer combining all core services. */
+			const CoreLive = Layer.mergeAll(
+				ActionInputsLive,
+				ActionLoggerLive,
+				ActionOutputsLive,
+				PlatformNode.NodeContext.layer,
+			).pipe(Layer.provide(platformLayer));
 
-		const runnable = bufferedProgram.pipe(
-			Effect.onExit(() => writeTelemetrySummary),
-			Effect.provide(fullLayer),
-			Effect.provide(ActionLoggerLayer),
-			Effect.catchAllCause((cause) => {
-				const message = Action.formatCause(cause);
+			// biome-ignore lint/suspicious/noExplicitAny: Layer type erasure at the run boundary
+			const fullLayer: Layer.Layer<any, never, never> = options?.layer
+				? Layer.mergeAll(CoreLive, otelLayer, options.layer)
+				: Layer.mergeAll(CoreLive, otelLayer);
 
-				// Extract JS stack trace if available
-				let stack = "";
-				try {
-					const squashed = Cause.squash(cause);
-					if (squashed instanceof Error && squashed.stack) {
-						// Remove first line (error message already in `message`)
-						const lines = squashed.stack.split("\n");
-						stack = lines.slice(1).join("\n");
-					}
-				} catch {
-					// squash failed — no stack available
+			// Only write telemetry to step summary when log level is debug
+			const logLevelInput = (core.getInput("log-level") || "auto") as LogLevelInput;
+			const effectiveLogLevel = resolveLogLevel(logLevelInput);
+
+			const writeTelemetrySummary = Effect.gen(function* () {
+				if (effectiveLogLevel !== "debug") return;
+				const spans = yield* InMemoryTracer.getSpans();
+				if (spans.length > 0) {
+					const summaries = spans.map((s) => {
+						const base = { name: s.name, duration: s.duration, status: s.status, attributes: s.attributes };
+						return s.parentName !== undefined ? { ...base, parentName: s.parentName } : base;
+					});
+					yield* TelemetryReport.toSummary(summaries);
 				}
+			}).pipe(Effect.catchAll(() => Effect.void));
 
-				// Emit Effect span trace via debug (visible with RUNNER_DEBUG=1)
-				try {
-					const spanTrace = Cause.pretty(cause);
-					if (spanTrace.trim() !== "") {
-						core.debug(`Effect span trace:\n${spanTrace}`);
+			const bufferedProgram = Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.withBuffer("action", program);
+			});
+
+			const runnable = bufferedProgram.pipe(
+				Effect.onExit(() => writeTelemetrySummary),
+				Effect.provide(fullLayer),
+				Effect.provide(Layer.provide(ActionLoggerLayer, platformLayer)),
+				Effect.catchAllCause((cause) => {
+					const message = Action.formatCause(cause);
+
+					// Extract JS stack trace if available
+					let stack = "";
+					try {
+						const squashed = Cause.squash(cause);
+						if (squashed instanceof Error && squashed.stack) {
+							// Remove first line (error message already in `message`)
+							const lines = squashed.stack.split("\n");
+							stack = lines.slice(1).join("\n");
+						}
+					} catch {
+						// squash failed — no stack available
 					}
-				} catch {
-					// pretty failed — no span trace available
-				}
 
-				const fullMessage = stack ? `Action failed: ${message}\n${stack}` : `Action failed: ${message}`;
+					// Emit Effect span trace via debug (visible with RUNNER_DEBUG=1)
+					try {
+						const spanTrace = Cause.pretty(cause);
+						if (spanTrace.trim() !== "") {
+							core.debug(`Effect span trace:\n${spanTrace}`);
+						}
+					} catch {
+						// pretty failed — no span trace available
+					}
 
-				return Effect.sync(() => core.setFailed(fullMessage));
-			}),
-		);
+					const fullMessage = stack ? `Action failed: ${message}\n${stack}` : `Action failed: ${message}`;
 
-		return Effect.runPromise(runnable).catch(() => {
+					return Effect.sync(() => core.setFailed(fullMessage));
+				}),
+			);
+
+			yield* runnable;
+		}).pipe(Effect.provide(platformLayer));
+
+		return Effect.runPromise(outer).catch(() => {
 			// Last resort — if even setFailed fails, the process should still exit
 			process.exitCode = 1;
 		});
 	}) as {
 		<E>(program: Effect.Effect<void, E, CoreServices>): Promise<void>;
-		<E, R>(program: Effect.Effect<void, E, CoreServices | R>, layer: Layer.Layer<R, never, never>): Promise<void>;
+		<E>(program: Effect.Effect<void, E, CoreServices>, options: ActionRunOptions): Promise<void>;
+		<E, R>(program: Effect.Effect<void, E, CoreServices | R>, options: ActionRunOptions<R>): Promise<void>;
 	},
 
 	/**

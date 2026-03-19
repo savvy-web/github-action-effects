@@ -5,6 +5,36 @@
 copy of each package from your action's `package.json`. This avoids version
 duplication and ensures compatibility between your action code and the library.
 
+## How @actions/* Packages Are Consumed
+
+`@actions/core`, `@actions/github`, `@actions/exec`, `@actions/cache`, and
+`@actions/tool-cache` are consumed through platform wrapper services rather
+than being imported directly by service Live layers.
+
+Each `@actions/*` package is wrapped by a dedicated service and Live layer:
+
+- `ActionsCore` / `ActionsCoreLive` wraps `@actions/core`
+- `ActionsGitHub` / `ActionsGitHubLive` wraps `@actions/github`
+- `ActionsExec` / `ActionsExecLive` wraps `@actions/exec`
+- `ActionsCache` / `ActionsCacheLive` wraps `@actions/cache`
+- `ActionsToolCache` / `ActionsToolCacheLive` wraps `@actions/tool-cache`
+- `OctokitAuthApp` / `OctokitAuthAppLive` wraps `@octokit/auth-app`
+
+The static `import` statements for these packages exist **only** in the six
+wrapper Live layers above. All other Live layers (`ActionInputsLive`,
+`CommandRunnerLive`, etc.) depend on the wrapper service interface, not the
+package directly.
+
+This means:
+
+- The `/testing` subpath can export all 32 Live layers without triggering any
+  `@actions/*` imports -- wrapper Live layers are excluded from `/testing`
+- Tests that use in-memory test layers never load `@actions/core` or any
+  other `@actions/*` package
+- `@vercel/ncc` still bundles everything correctly because production entry
+  points import `Action` from the main package, which includes the wrapper
+  Live layers
+
 ## Required Peers
 
 These must be installed for the library to function. `Action.run` depends on

@@ -25,11 +25,13 @@ See [services.md](./services.md) for service interface descriptions.
 
 ## Overview
 
-This document describes the layer architecture for all services. Each service
-has a `Live` layer backed by real platform calls (e.g., `@actions/core`,
-`@actions/github`) and a `Test` layer backed by in-memory state for unit
-testing. The document also covers the service dependency graph and layer
-composition patterns.
+This document describes the layer architecture for all services. Each domain
+service has a `Live` layer backed by real platform calls via the wrapper
+services and a `Test` layer backed by in-memory state for unit testing.
+The 6 platform wrapper services have `Live` layers that directly import
+`@actions/*` packages and no `Test` layers (consumers mock them directly).
+The document also covers the service dependency graph and layer composition
+patterns.
 
 ---
 
@@ -39,24 +41,37 @@ Each service has a `Live` layer backed by real platform calls and a `Test`
 layer backed by in-memory state for unit testing.
 
 ```text
+Platform Wrapper Layers (new — the ONLY files that import @actions/* directly):
+  ActionsCoreLive        — Layer.succeed; wraps @actions/core module object
+  ActionsGitHubLive      — Layer.succeed; wraps @actions/github.getOctokit()
+  ActionsCacheLive       — Layer.succeed; wraps @actions/cache functions
+  ActionsExecLive        — Layer.succeed; wraps @actions/exec.exec()
+  ActionsToolCacheLive   — Layer.succeed; wraps @actions/tool-cache functions
+  OctokitAuthAppLive     — Layer.succeed; wraps @octokit/auth-app createAppAuth()
+  ActionsPlatformLive    — Layer.mergeAll of all 6 above; type alias ActionsPlatform
+
 Core Action I/O:
-  ActionInputsLive       — reads from @actions/core.getInput (deferred via Effect.sync)
+  ActionInputsLive       — Layer.effect depending on ActionsCore (getInput via DI)
   ActionInputsTest       — reads from provided Record<string, string>
     (both share decodeInput/decodeJsonInput from layers/internal/decodeInput.ts)
 
-  ActionLoggerLive       — routes to @actions/core log functions
+  ActionLoggerLive       — Layer.effect depending on ActionsCore; closure captures core
+                           at construction time, routes to core.info/debug/warning/error
   ActionLoggerTest       — captures log entries in memory (annotations include type field)
 
-  ActionOutputsLive      — writes to @actions/core outputs
+  ActionLoggerLayer      — Layer.unwrapEffect depending on ActionsCore; installs logger
+                           as the Effect default logger. Requires ActionsCore in context.
+
+  ActionOutputsLive      — Layer.effect depending on ActionsCore
   ActionOutputsTest      — captures outputs in memory
 
-  ActionStateLive        — wraps core.saveState()/core.getState() with Schema encode/decode
+  ActionStateLive        — Layer.effect depending on ActionsCore; Schema encode/decode
   ActionStateTest        — in-memory Map<string, string>, pre-populatable for phase simulation
 
-  ActionEnvironmentLive  — reads from process.env, lazy GitHub/Runner context construction
+  ActionEnvironmentLive  — Layer.succeed; reads from process.env, lazy context construction
   ActionEnvironmentTest  — reads from provided Record<string, string>
 
-  ActionCacheLive        — wraps @actions/cache.saveCache()/restoreCache() (deferred via Effect.tryPromise)
+  ActionCacheLive        — Layer.effect depending on ActionsCache (via DI, not direct import)
   ActionCacheTest        — in-memory Map for cache simulation (always-miss when empty)
 
 Git Operations:
@@ -70,8 +85,9 @@ Git Operations:
   GitTagTest             — in-memory tag state Map<tag, sha>
 
 GitHub API:
-  GitHubClientLive(token)  — function returning Layer; wraps @actions/github.getOctokit(token)
-  GitHubClientTest         — Map-based recorded REST/GraphQL responses; default test repo
+  GitHubClientLive(token) — function returning Layer; Layer.effect depending on ActionsGitHub
+                            (calls gh.getOctokit(token) via DI, not @actions/github directly)
+  GitHubClientTest        — Map-based recorded REST/GraphQL responses; default test repo
 
   GitHubGraphQLLive      — Layer.effect depending on GitHubClient
   GitHubGraphQLTest      — recorded query/mutation responses
@@ -82,7 +98,7 @@ GitHub API:
   GitHubIssueLive        — Layer.effect depending on GitHubClient (+ GitHubGraphQL for linked issues)
   GitHubIssueTest        — in-memory issue state
 
-  GitHubAppLive          — wraps @octokit/auth-app for token generation
+  GitHubAppLive          — Layer.effect depending on OctokitAuthApp (via DI)
   GitHubAppTest          — in-memory token state
 
   CheckRunLive           — Layer.effect depending on GitHubClient; caps annotations at 50
@@ -98,7 +114,7 @@ GitHub API:
   WorkflowDispatchTest   — in-memory dispatch records
 
 Build Tooling:
-  CommandRunnerLive      — wraps @actions/exec.exec() with stdout/stderr listeners
+  CommandRunnerLive      — Layer.effect depending on ActionsExec (via DI); stdout/stderr listeners
   CommandRunnerTest      — Map<string, { exitCode, stdout, stderr }> keyed by command string
 
   NpmRegistryLive        — depends on CommandRunner; runs npm view --json
@@ -113,7 +129,7 @@ Build Tooling:
   WorkspaceDetectorLive  — depends on FileSystem + CommandRunner
   WorkspaceDetectorTest  — in-memory workspace state
 
-  ToolInstallerLive      — wraps @actions/tool-cache
+  ToolInstallerLive      — Layer.effect depending on ActionsCore + ActionsToolCache (via DI)
   ToolInstallerTest      — in-memory tool cache state
 
   ChangesetAnalyzerLive  — depends on FileSystem
@@ -149,39 +165,113 @@ Action Helpers:
 All Live layers use static imports for their dependencies, including optional
 peer dependencies. No Live layer uses dynamic `import()`. This is required
 because `@vercel/ncc` (used by `@savvy-web/github-action-builder`) cannot
-follow dynamic imports at bundle time. The static import pattern is consistent
-across all layers:
+follow dynamic imports at bundle time.
 
-- `ActionCacheLive` -- `import * as cache from "@actions/cache"`
-- `CommandRunnerLive` -- `import * as exec from "@actions/exec"`
-- `GitHubClientLive` -- `import * as github from "@actions/github"`
-- `ToolInstallerLive` -- `import * as tc from "@actions/tool-cache"` and
-  `import * as core from "@actions/core"`
-- `GitHubAppLive` -- `import { createAppAuth } from "@octokit/auth-app"`
+### Platform Wrapper Live Layers (direct @actions/* imports)
+
+Only the 6 platform wrapper Live layers import `@actions/*` packages directly:
+
+- `ActionsCoreLive` -- `import * as core from "@actions/core"`
+- `ActionsGitHubLive` -- `import * as github from "@actions/github"`
+- `ActionsCacheLive` -- `import * as cache from "@actions/cache"`
+- `ActionsExecLive` -- `import * as actionsExec from "@actions/exec"`
+- `ActionsToolCacheLive` -- `import * as tc from "@actions/tool-cache"`
+- `OctokitAuthAppLive` -- `import { createAppAuth } from "@octokit/auth-app"`
+
+### Domain Live Layers (DI via wrapper services)
+
+All other Live layers that previously imported `@actions/*` directly now use
+DI via `Layer.effect` and `yield*`:
+
+- `ActionInputsLive` -- `yield* ActionsCore` (no direct @actions/core import)
+- `ActionLoggerLive` -- `yield* ActionsCore` (closure captures `core`)
+- `ActionOutputsLive` -- `yield* ActionsCore`
+- `ActionStateLive` -- `yield* ActionsCore`
+- `ActionCacheLive` -- `yield* ActionsCache`
+- `CommandRunnerLive` -- `yield* ActionsExec`
+- `GitHubClientLive` -- `yield* ActionsGitHub`
+- `GitHubAppLive` -- `yield* OctokitAuthApp`
+- `ToolInstallerLive` -- `yield* ActionsCore` + `yield* ActionsToolCache`
+
+### OTel Layers
+
 - `OtelExporterLive` / `OtelTelemetryLive` -- static `@effect/opentelemetry`
-  and `@opentelemetry/*` imports
+  and `@opentelemetry/*` imports (these are regular dependencies, not optional
+  peers)
 
 Consumers do not need bare `import` hints (e.g., `import "@actions/tool-cache"`)
 in their entry points. ncc resolves all imports statically from the library's
-Live layer files.
+wrapper Live layer files.
 
 ---
 
 ## Live Layer Details
 
+### Platform Wrapper Live Layers
+
+Six thin `Layer.succeed` layers that wrap the `@actions/*` packages. Each one
+imports the package at the module level (static import) and wraps the relevant
+functions as a service value. They have no service dependencies.
+
+- `ActionsCoreLive` -- `Layer.succeed(ActionsCore, core)` where `core` is the
+  entire `@actions/core` module import
+- `ActionsGitHubLive` -- `Layer.succeed(ActionsGitHub, { getOctokit })`
+- `ActionsCacheLive` -- `Layer.succeed(ActionsCache, { saveCache, restoreCache })`
+- `ActionsExecLive` -- `Layer.succeed(ActionsExec, { exec })`
+- `ActionsToolCacheLive` -- `Layer.succeed(ActionsToolCache, { find, downloadTool,
+  extractTar, extractZip, cacheDir })`
+- `OctokitAuthAppLive` -- `Layer.succeed(OctokitAuthApp, { createAppAuth })`
+
+### ActionLoggerLive
+
+`Layer.Layer<ActionLogger, never, ActionsCore>`. Uses `Layer.effect` and
+yields `ActionsCore`. The `core` reference is closed over during layer
+construction; all log routing (`core.info`, `core.debug`, `core.warning`,
+`core.error`) uses this closed-over reference. Buffer management is also
+closed over `core`.
+
+### ActionLoggerLayer
+
+`Layer.Layer<never, never, ActionsCore>`. Uses `Layer.unwrapEffect` to read
+`ActionsCore` from context, then wraps `Logger.replace(Logger.defaultLogger,
+makeActionLogger(core))`. This is the Effect Logger integration (not the
+ActionLogger service). Requires `ActionsCore` in context.
+
 ### GitHubClientLive
 
 `GitHubClientLive(token: string)` -- a function (not a constant) returning
-`Layer.Layer<GitHubClient>`. Creates an Octokit instance via
-`@actions/github.getOctokit(token)`. REST calls use `Effect.tryPromise`,
-GraphQL calls use `octokit.graphql()`. Pagination handles page incrementing
-and empty-page termination. Error mapping extracts HTTP status and sets the
-`retryable` flag accordingly.
+`Layer.Layer<GitHubClient, GitHubClientError, ActionsGitHub>`. Uses
+`Layer.effect` to yield `ActionsGitHub`, then calls `gh.getOctokit(token)`.
+REST calls use `Effect.tryPromise`, GraphQL calls use `octokit.graphql()`.
+Pagination handles page incrementing and empty-page termination. Error mapping
+extracts HTTP status and sets the `retryable` flag accordingly.
+
+### GitHubAppLive
+
+`Layer.Layer<GitHubApp, never, OctokitAuthApp>`. Uses `Layer.effect` to yield
+`OctokitAuthApp`, then uses `authApp.createAppAuth(...)` for JWT-based
+installation token generation/revocation.
+
+### CommandRunnerLive
+
+`Layer.Layer<CommandRunner, never, ActionsExec>`. Uses `Layer.effect` to
+yield `ActionsExec`. Adds stdout/stderr buffer listeners to capture output.
+
+### ToolInstallerLive
+
+`Layer.Layer<ToolInstaller, never, ActionsCore | ActionsToolCache>`. Uses
+`Layer.effect` to yield both `ActionsCore` (for `addPath`) and
+`ActionsToolCache` (for `find`, `downloadTool`, `extractTar`, etc.).
+
+### ActionCacheLive
+
+`Layer.Layer<ActionCache, never, ActionsCache>`. Uses `Layer.effect` to yield
+`ActionsCache`. Wraps `saveCache`/`restoreCache` in `Effect.tryPromise`.
 
 ### CheckRunLive
 
-`Layer.Layer<CheckRun, never, GitHubClient>`. Created via `Layer.effect`
-depending on `GitHubClient`. Annotations capped at 50 per API call.
+`Layer.Layer<CheckRun, never, GitHubClient>`. Annotations capped at 50 per
+API call.
 
 ### PullRequestCommentLive
 
@@ -217,11 +307,6 @@ management.
 
 `Layer.Layer<GitCommit, never, GitHubClient>`. Uses Git Data API for tree/
 commit creation and ref updates.
-
-### GitHubAppLive
-
-`Layer.Layer<GitHubApp>`. Wraps `@octokit/auth-app` for JWT-based
-installation token generation/revocation.
 
 ### RateLimiterLive
 
@@ -326,20 +411,33 @@ do NOT depend on GitHubClient -- they operate entirely in-memory.
 ## Service Dependency Graph
 
 ```text
-Tier 0 — Independent (no service dependencies):
-  ActionInputs, ActionLogger, ActionOutputs, ActionState,
-  ActionEnvironment, ActionCache, CommandRunner, DryRun, ActionTelemetry,
+Tier 0 — Platform wrappers (no service dependencies, import @actions/* directly):
+  ActionsCore, ActionsGitHub, ActionsCache, ActionsExec,
+  ActionsToolCache, OctokitAuthApp
+
+Tier 1 — Depends on platform wrappers:
+  ActionInputs              <- depends on ActionsCore
+  ActionLogger              <- depends on ActionsCore
+  ActionOutputs             <- depends on ActionsCore
+  ActionState               <- depends on ActionsCore
+  ActionCache               <- depends on ActionsCache
+  CommandRunner             <- depends on ActionsExec
+  GitHubClient(token)       <- depends on ActionsGitHub
+  GitHubApp                 <- depends on OctokitAuthApp
+  ToolInstaller             <- depends on ActionsCore + ActionsToolCache
+
+Tier 1 — Independent (no service or platform dependencies):
+  ActionEnvironment, DryRun, ActionTelemetry,
   GithubMarkdown, SemverResolver, ErrorAccumulator, GitHubOtelAttributes,
   ReportBuilder, TelemetryReport
 
-Tier 1 — Single dependency:
-  GitHubClient(token)       <- standalone, wraps @actions/github
+Tier 2 — Single service dependency:
   NpmRegistry               <- depends on CommandRunner
-  GitHubApp                 <- standalone, wraps @octokit/auth-app
   ChangesetAnalyzer         <- depends on FileSystem
   ConfigLoader              <- depends on FileSystem
+  TokenPermissionChecker    <- depends on GitHubApp
 
-Tier 2 — GitHubClient dependents:
+Tier 3 — GitHubClient dependents:
   GitHubGraphQL             <- depends on GitHubClient
   GitBranch                 <- depends on GitHubClient
   GitCommit                 <- depends on GitHubClient
@@ -350,42 +448,68 @@ Tier 2 — GitHubClient dependents:
   RateLimiter               <- depends on GitHubClient
   WorkflowDispatch          <- depends on GitHubClient
   GitHubIssue               <- depends on GitHubClient + GitHubGraphQL
-
-Tier 2 — Multi-dependency:
   PackageManagerAdapter     <- depends on CommandRunner + FileSystem
   WorkspaceDetector         <- depends on FileSystem + CommandRunner
-  ToolInstaller             <- depends on @actions/tool-cache
 
-Tier 3 — Composed dependencies:
+Tier 4 — Composed dependencies:
   PackagePublish            <- depends on CommandRunner + NpmRegistry + FileSystem
-  TokenPermissionChecker    <- depends on GitHubApp
-  AutoMerge                 <- depends on GitHubGraphQL
+  AutoMerge (utility)       <- depends on GitHubGraphQL
 ```
 
 ---
 
 ## Layer Composition Example
 
-Users compose layers as needed:
+Users compose layers as needed. `Action.run()` handles providing the core
+layers (ActionInputsLive, ActionLoggerLive, ActionOutputsLive,
+NodeContext.layer) backed by the platform layer. Extra layers are passed via
+the `layer` option:
 
 ```typescript
-import { ActionInputsLive, ActionLoggerLive, GitHubClientLive, CheckRunLive }
+import {
+  Action,
+  ActionsPlatformLive,
+  GitHubClientLive,
+  CheckRunLive,
+} from "@savvy-web/github-action-effects"
+
+// Action.run() provides ActionsCoreLive by default.
+// Pass ActionsPlatformLive to also provide ActionsGitHub (needed by GitHubClientLive).
+Action.run(program, {
+  platform: ActionsPlatformLive,
+  layer: Layer.mergeAll(
+    CheckRunLive,
+    GitHubClientLive(token),
+  ),
+})
+```
+
+For manual layer composition outside `Action.run()`:
+
+```typescript
+import { ActionInputsLive, ActionLoggerLive, GitHubClientLive, CheckRunLive,
+  ActionsCoreLive, ActionsGitHubLive }
   from "@savvy-web/github-action-effects"
+
+const PlatformLayer = Layer.mergeAll(ActionsCoreLive, ActionsGitHubLive)
 
 const MyActionLayer = Layer.mergeAll(
   ActionInputsLive,
   ActionLoggerLive,
   CheckRunLive,
-).pipe(Layer.provide(GitHubClientLive(token)))
+  GitHubClientLive(token),
+).pipe(Layer.provide(PlatformLayer))
 ```
 
 ---
 
 ## Current State
 
-All services have both live and test layer implementations. The three-tier
-dependency graph is stable, and layer composition patterns are well-established
-with `Action.run()` providing the core layers automatically.
+All 30 domain services have both live and test layer implementations. The 6
+platform wrapper services have only live layers. The four-tier dependency graph
+is stable, and layer composition patterns are well-established with `Action.run()`
+providing the core layers automatically. All `@actions/*` package imports are
+isolated in the 6 platform wrapper Live layers.
 
 ## Rationale
 
