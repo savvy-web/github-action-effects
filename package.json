@@ -59,7 +59,7 @@
 	"dependencies": {
 		"jsonc-effect": "^0.2.0",
 		"semver-effect": "^0.2.0",
-		"yaml-effect": "^0.1.5"
+		"yaml-effect": "^0.2.0"
 	},
 	"devDependencies": {
 		"@actions/cache": "^6.0.0",

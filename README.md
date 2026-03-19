@@ -89,7 +89,7 @@ Action.run(program, { platform: myCustomPlatformLayer });
 | TokenPermissionChecker | Check, assert, or warn about GitHub token permission gaps |
 | RateLimiter | Rate limit awareness with guard and exponential backoff retry |
 | WorkflowDispatch | Trigger workflows, poll until completion, get run status |
-| ToolInstaller | Download, extract, cache, and add tool binaries to PATH |
+| ToolInstaller | Download, extract, cache, and add tool binaries to PATH (archives and standalone binaries) |
 
 ### Platform Wrapper Services (6)
 

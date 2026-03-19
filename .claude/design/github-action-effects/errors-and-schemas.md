@@ -28,7 +28,7 @@ This document describes the error handling and schema validation patterns used
 across all services. Errors use inline `Data.TaggedError` class declarations.
 Schemas use `Schema.Struct` with annotations for validated types, covering
 everything from log levels and environment contexts to Git tree entries and
-telemetry data.
+package metadata.
 
 ---
 
@@ -72,7 +72,8 @@ No separate `Base` export is needed. The `*Base` exports were removed in v0.8.0.
 | `PackagePublishError` | PackagePublish | operation, pkg, registry, reason |
 | `PackageManagerError` | PackageManagerAdapter | operation, reason |
 | `WorkspaceDetectorError` | WorkspaceDetector | operation, reason |
-| `ToolInstallerError` | ToolInstaller | operation, name, reason |
+| `ToolInstallerError` | ToolInstaller | operation (download/extract/cache/path/chmod), tool, version, reason |
+| `PullRequestError` | PullRequest | operation, prNumber (optional), reason |
 | `TokenPermissionError` | TokenPermissionChecker | missing permissions array |
 | `SemverResolverError` | SemverResolver | operation, version, reason |
 
@@ -90,6 +91,7 @@ to their own domain-specific error type:
 - `GitTagError` wraps with tag-specific context
 - `WorkflowDispatchError` wraps with dispatch-specific context
 - `RateLimitError` wraps with rate-limit context
+- `PullRequestError` wraps with PR-specific context
 
 The `retryable` flag on `GitHubClientError` is `true` for 429 (rate limit)
 and 5xx status codes, enabling consumers to implement retry logic.
@@ -113,6 +115,9 @@ platform wrapper services. They are exported from the main barrel and the
 | `ActionsExecOptions` | `services/ActionsExec.ts` | Subset of `@actions/exec` ExecOptions |
 | `GitHubOctokit` | `services/ActionsGitHub.ts` | Octokit instance shape (`graphql`, `rest`, `request`) |
 | `AppAuth` | `services/OctokitAuthApp.ts` | Callable auth function for app/installation tokens |
+| `BinaryInstallOptions` | `services/ToolInstaller.ts` | Options for single binary installation (`binaryName?`, `executable?`) |
+| `PullRequestInfo` | `services/PullRequest.ts` | PR data (number, url, nodeId, title, state, head, base, draft, merged) |
+| `PullRequestListOptions` | `services/PullRequest.ts` | PR list filter options (head, base, state, perPage, paginate) |
 
 ### Action Run Interfaces
 
@@ -248,7 +253,7 @@ TokenPermissionChecker.assertSufficient(requirements)
 
 ## Current State
 
-All 26 error types and 25+ schemas are fully defined and in use across the
+All 28 error types and 25+ schemas are fully defined and in use across the
 service catalog. The error hierarchy with domain-specific wrapping of
 `GitHubClientError` is stable. The platform service interfaces (`AnnotationProperties`,
 `ActionsExecOptions`, `GitHubOctokit`, `AppAuth`) and action run types

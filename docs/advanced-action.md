@@ -151,7 +151,7 @@ const program = Effect.gen(function* () {
   }))
 
   yield* Effect.log("Pre phase complete")
-}).pipe(Effect.withSpan("pre-phase"))
+})
 
 Action.run(
   program,
@@ -298,7 +298,7 @@ const program = Effect.gen(function* () {
       `${result.failures.length} package(s) failed to publish`
     )
   }
-}).pipe(Effect.withSpan("main-phase"))
+})
 
 Action.run(
   program,
@@ -393,7 +393,7 @@ const program = Effect.gen(function* () {
   ].join("\n\n"))
 
   yield* Effect.log("Post phase complete")
-}).pipe(Effect.withSpan("post-phase"))
+})
 
 Action.run(
   program,
@@ -544,40 +544,6 @@ describe("post phase", () => {
 
     // Verify duration-ms output was set
     expect(outputState.outputs.some((o) => o.name === "duration-ms")).toBe(true)
-  })
-})
-```
-
-### Asserting spans with InMemoryTracer
-
-Verify that your phase programs emit the expected telemetry spans using
-`InMemoryTracer`:
-
-```typescript
-import { Effect, Layer } from "effect"
-import { describe, expect, it } from "vitest"
-import {
-  ActionInputsTest,
-  ActionLoggerTest,
-  InMemoryTracer,
-} from "@savvy-web/github-action-effects/testing"
-
-describe("span assertions", () => {
-  it("emits pre-phase span", async () => {
-    const tracer = InMemoryTracer.make()
-
-    const layer = Layer.mergeAll(
-      ActionInputsTest({ "log-level": "info" }),
-      ActionLoggerTest.layer(ActionLoggerTest.empty()),
-      // Provide InMemoryTracer as the tracer
-      tracer.layer,
-    )
-
-    // Run your program wrapped with Effect.withSpan("pre-phase")
-    // await preProgram.pipe(Effect.provide(layer), Effect.runPromise)
-
-    const spans = tracer.spans()
-    expect(spans.some((s) => s.name === "pre-phase")).toBe(true)
   })
 })
 ```

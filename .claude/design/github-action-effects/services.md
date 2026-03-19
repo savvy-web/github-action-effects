@@ -26,7 +26,7 @@ See [layers.md](./layers.md) for live and test layer implementations.
 
 ## Overview
 
-Thirty-three service modules plus five namespace/utility objects, each
+Thirty-five service modules plus five namespace/utility objects, each
 independently usable. `Action.run()` automatically provides
 `NodeContext.layer` from `@effect/platform-node`, so programs also have
 access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
@@ -62,6 +62,7 @@ access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
 │   ├── GitHubIssue         — Issue management + linked issues
 │   ├── GitHubApp           — GitHub App authentication lifecycle
 │   ├── CheckRun            — Check runs with bracket pattern
+│   ├── PullRequest         — PR lifecycle (CRUD, merge, labels, reviewers)
 │   ├── PullRequestComment  — Sticky (upsert) PR comments
 │   ├── RateLimiter         — Rate limit awareness and retry
 │   └── WorkflowDispatch    — Trigger and monitor workflow runs
@@ -172,7 +173,7 @@ Wraps `@actions/exec`. Provides a single `exec` method. Defines the
 ### ActionsToolCache Service
 
 Wraps `@actions/tool-cache`. Provides `find`, `downloadTool`, `extractTar`,
-`extractZip`, and `cacheDir`.
+`extractZip`, `cacheDir`, and `cacheFile`.
 
 ### OctokitAuthApp Service
 
@@ -446,6 +447,36 @@ Create, update, and complete GitHub check runs with bracket pattern.
 
 **Error type:** `CheckRunError`
 
+### PullRequest Service
+
+Full pull request lifecycle management: CRUD, merge, labels, reviewers, and
+auto-merge via GraphQL.
+
+**Interface:**
+
+- `get(number)` -- Get a single PR by number. Returns `PullRequestInfo`
+- `list(options?)` -- List PRs matching filters. Options: `{ head?, base?,
+  state?, perPage?, paginate? }`. Returns `ReadonlyArray<PullRequestInfo>`
+- `create(options)` -- Create a new PR. Options: `{ title, body, head, base,
+  draft?, autoMerge? }`. Returns `PullRequestInfo`
+- `update(number, options)` -- Update an existing PR. Options: `{ title?,
+  body?, state?, autoMerge? }`. Returns `PullRequestInfo`
+- `getOrCreate(options)` -- Find existing PR for head->base or create one;
+  updates title/body if found. Returns `PullRequestInfo & { created: boolean }`
+- `merge(number, options?)` -- Immediately merge a PR. Options: `{ method?,
+  commitTitle?, commitMessage? }`
+- `addLabels(number, labels)` -- Add labels to a PR
+- `requestReviewers(number, options)` -- Request reviewers. Options:
+  `{ reviewers?, teamReviewers? }`
+
+**Types:**
+
+- `PullRequestInfo` -- `{ number, url, nodeId, title, state, head, base,
+  draft, merged }`
+- `PullRequestListOptions` -- `{ head?, base?, state?, perPage?, paginate? }`
+
+**Error type:** `PullRequestError`
+
 ### PullRequestComment Service
 
 Sticky (upsert) PR comments with marker-based idempotency.
@@ -570,17 +601,27 @@ Monorepo workspace detection.
 
 ### ToolInstaller Service
 
-Download, extract, cache, and add tool binaries to PATH.
+Download, extract, cache, and add tool binaries to PATH. Supports both
+archive-based installation (download, extract, cache directory) and single
+binary installation (download, cache file, optional chmod).
 
 **Interface:**
 
-- `install(name, version, downloadUrl, options?)` -- Download and cache.
-  Returns cached tool path
-- `isCached(name, version)` -- Check if tool is cached
-- `installAndAddToPath(name, version, downloadUrl, options?)` -- Install and
-  add to PATH
+- `install(name, version, downloadUrl, options?)` -- Download archive, extract,
+  and cache a tool. Returns cached tool path
+- `isCached(name, version)` -- Check if tool is already cached
+- `installAndAddToPath(name, version, downloadUrl, options?)` -- Install
+  archive-based tool and add to PATH
+- `installBinary(name, version, downloadUrl, options?)` -- Download, cache, and
+  optionally chmod a single binary file. Returns the cached directory path
+- `installBinaryAndAddToPath(name, version, downloadUrl, options?)` -- Install
+  a single binary and add it to the system PATH. Returns the cached directory
+  path
 
-**Types:** `ToolInstallOptions` -- `{ archiveType?, binSubPath?, platform?, arch? }`
+**Types:**
+
+- `ToolInstallOptions` -- `{ archiveType?, binSubPath?, platform?, arch? }`
+- `BinaryInstallOptions` -- `{ binaryName?, executable? }`
 
 **Error type:** `ToolInstallerError`
 
@@ -701,7 +742,6 @@ Composable markdown report builder with multiple output targets.
 - `report.stat(label, value)` -- Add a key-value summary row
 - `report.section(title, content)` -- Add a titled section
 - `report.details(summary, content)` -- Add a collapsible block
-- `report.timings(spans)` -- Add a timing table from span summaries
 - `report.toMarkdown()` -- Render to markdown string
 - `report.toSummary()` -- Write to step summary via `ActionOutputs`
 - `report.toComment(prNumber, markerKey)` -- Upsert as PR comment
@@ -762,9 +802,9 @@ option.
 
 ## Current State
 
-All 33 service modules (27 domain + 6 platform wrapper) and 5 namespace/utility
+All 35 service modules (29 domain + 6 platform wrapper) and 5 namespace/utility
 objects are fully defined with interfaces, error types, and live layer
-implementations. The 27 domain services also have test layer implementations.
+implementations. The 29 domain services also have test layer implementations.
 The service catalog is stable and actively used by downstream actions.
 
 ## Rationale

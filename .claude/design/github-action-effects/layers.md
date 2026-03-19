@@ -104,6 +104,9 @@ GitHub API:
   CheckRunLive           — Layer.effect depending on GitHubClient; caps annotations at 50
   CheckRunTest           — in-memory CheckRunRecord array; resets ID counter on .empty()
 
+  PullRequestLive        — Layer.effect depending on GitHubClient + GitHubGraphQL
+  PullRequestTest        — in-memory PR state with CRUD, merge, labels, reviewers
+
   PullRequestCommentLive — Layer.effect depending on GitHubClient; uses Issues API
   PullRequestCommentTest — in-memory Map<prNumber, comments[]>; instance-scoped nextId
 
@@ -205,7 +208,7 @@ functions as a service value. They have no service dependencies.
 - `ActionsCacheLive` -- `Layer.succeed(ActionsCache, { saveCache, restoreCache })`
 - `ActionsExecLive` -- `Layer.succeed(ActionsExec, { exec })`
 - `ActionsToolCacheLive` -- `Layer.succeed(ActionsToolCache, { find, downloadTool,
-  extractTar, extractZip, cacheDir })`
+  extractTar, extractZip, cacheDir, cacheFile })`
 - `OctokitAuthAppLive` -- `Layer.succeed(OctokitAuthApp, { createAppAuth })`
 
 ### ActionLoggerLive
@@ -258,6 +261,13 @@ yield `ActionsExec`. Adds stdout/stderr buffer listeners to capture output.
 
 `Layer.Layer<CheckRun, never, GitHubClient>`. Annotations capped at 50 per
 API call.
+
+### PullRequestLive
+
+`Layer.Layer<PullRequest, never, GitHubClient | GitHubGraphQL>`. Uses REST
+API for PR CRUD, merge, labels, and reviewer operations. Delegates auto-merge
+enable/disable to `GitHubGraphQL` using the `AutoMerge` utility's GraphQL
+mutations.
 
 ### PullRequestCommentLive
 
@@ -346,6 +356,7 @@ Test layers use the namespace object pattern for ergonomic test setup:
 - `GitHubIssueTest.empty()` / `GitHubIssueTest.layer(state)`
 - `GitHubAppTest.empty()` / `GitHubAppTest.layer(state)`
 - `CheckRunTest.empty()` / `CheckRunTest.layer(state)` -- resets ID counter
+- `PullRequestTest.empty()` / `PullRequestTest.layer(state)`
 - `PullRequestCommentTest.empty()` / `PullRequestCommentTest.layer(state)`
 - `RateLimiterTest.empty()` / `RateLimiterTest.layer(state)`
 - `WorkflowDispatchTest.empty()` / `WorkflowDispatchTest.layer(state)`
@@ -407,6 +418,7 @@ Tier 3 — GitHubClient dependents:
   RateLimiter               <- depends on GitHubClient
   WorkflowDispatch          <- depends on GitHubClient
   GitHubIssue               <- depends on GitHubClient + GitHubGraphQL
+  PullRequest               <- depends on GitHubClient + GitHubGraphQL
   PackageManagerAdapter     <- depends on CommandRunner + FileSystem
   WorkspaceDetector         <- depends on FileSystem + CommandRunner
 
@@ -464,7 +476,7 @@ const MyActionLayer = Layer.mergeAll(
 
 ## Current State
 
-All 27 domain services have both live and test layer implementations. The 6
+All 29 domain services have both live and test layer implementations. The 6
 platform wrapper services have only live layers. The four-tier dependency graph
 is stable, and layer composition patterns are well-established with `Action.run()`
 providing the core layers automatically. All `@actions/*` package imports are

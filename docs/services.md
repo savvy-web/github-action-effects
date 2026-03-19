@@ -755,7 +755,8 @@ const program = Effect.gen(function* () {
 
 ### ToolInstaller
 
-Download, cache, and install tool binaries.
+Download, cache, and install tool binaries. Supports both archived tools
+(tar.gz, tar.xz, zip) and standalone binary files.
 
 ```typescript
 import { Effect } from "effect";
@@ -766,12 +767,20 @@ const program = Effect.gen(function* () {
 
   const isCached = yield* tools.isCached("my-tool", "1.0.0");
 
-  // Download, extract, cache, and add to PATH
+  // Download, extract an archive, cache, and add to PATH
   yield* tools.installAndAddToPath(
     "my-tool",
     "1.0.0",
     "https://github.com/org/my-tool/releases/download/v1.0.0/my-tool-linux-x64.tar.gz",
     { archiveType: "tar.gz", binSubPath: "bin" },
+  );
+
+  // Download a standalone binary, cache, chmod, and add to PATH
+  yield* tools.installBinaryAndAddToPath(
+    "biome",
+    "1.9.0",
+    "https://github.com/biomejs/biome/releases/download/cli%2Fv1.9.0/biome-linux-x64",
+    { binaryName: "biome" },
   );
 });
 ```

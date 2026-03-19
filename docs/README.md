@@ -95,7 +95,7 @@ which services require which packages.
 | TokenPermissionChecker | Check/assert GitHub token permissions |
 | RateLimiter | Rate limit guard with exponential backoff |
 | WorkflowDispatch | Trigger workflows and poll until completion |
-| ToolInstaller | Download, extract, cache tool binaries |
+| ToolInstaller | Download, extract, cache tool binaries (archives and standalone binaries) |
 
 ## Namespace Objects
 

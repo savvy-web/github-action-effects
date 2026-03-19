@@ -32,7 +32,7 @@ schema-validated GitHub Actions with Node.js 24.
 
 ## Current State
 
-The library provides 33 Effect services (27 domain services + 6 platform
+The library provides 35 Effect services (29 domain services + 6 platform
 wrapper services) spanning core action I/O, GitHub API integration, git
 operations, build tooling, and platform abstraction, along with utility
 namespaces for markdown generation and report building.
@@ -47,13 +47,13 @@ building blocks.
 
 ### Scope
 
-The library provides 33 service interfaces, 5 utility namespaces, 26 error
+The library provides 35 service interfaces, 5 utility namespaces, 28 error
 types, and 11 schema modules. Services cover five domains:
 
 - **Core action I/O** -- inputs, outputs, state, logging, environment, cache
 - **Git operations** -- branches, commits, tags via Git Data API
-- **GitHub API** -- REST client, GraphQL, releases, issues, PR comments, check
-  runs, workflow dispatch, app auth, rate limiting
+- **GitHub API** -- REST client, GraphQL, releases, issues, PR lifecycle, PR
+  comments, check runs, workflow dispatch, app auth, rate limiting
 - **Build tooling** -- command execution, npm registry, package publishing,
   workspace detection, package manager adaptation, tool installation, changeset
   analysis, config loading

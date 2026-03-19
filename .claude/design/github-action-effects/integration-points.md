@@ -29,8 +29,8 @@ See [layers.md](./layers.md) for layer dependency graph.
 
 ### Required Peers
 
-**effect** -- Core dependency. Services use `Context.GenericTag`, `Layer`,
-`Schema`, `Data.TaggedError`, `FiberRef`, `Logger`, and `Tracer`.
+**effect** -- Core dependency. Services use `Context.Tag`, `Layer`,
+`Schema`, `Data.TaggedError`, `FiberRef`, and `Logger`.
 
 **@effect/platform and @effect/platform-node** -- `Action.run()` provides
 `NodeContext.layer` from `@effect/platform-node`, giving programs access to
@@ -105,6 +105,7 @@ Tier 3 — GitHubClient dependents:
   GitTag                    -> GitHubClient
   GitHubRelease             -> GitHubClient
   GitHubIssue               -> GitHubClient + GitHubGraphQL
+  PullRequest               -> GitHubClient + GitHubGraphQL
   CheckRun                  -> GitHubClient
   PullRequestComment        -> GitHubClient
   RateLimiter               -> GitHubClient
@@ -140,6 +141,7 @@ ActionsPlatformLive
 ```text
 GitHubClientLive(token)   (requires ActionsGitHub)
   -> CheckRunLive              (requires GitHubClient in context)
+  -> PullRequestLive            (requires GitHubClient + GitHubGraphQL)
   -> PullRequestCommentLive    (requires GitHubClient in context)
   -> GitHubGraphQLLive         (requires GitHubClient in context)
   -> GitBranchLive             (requires GitHubClient in context)
@@ -168,8 +170,7 @@ required. Any Node.js 24 action can use these services.
 All peer dependencies and service tiers are documented with a complete dependency
 graph. The platform wrapper services isolate all `@actions/*` imports behind
 Effect service interfaces. `ActionsPlatformLive` is the single integration point
-for wiring real platform packages into the layer stack. Optional integrations for
-OpenTelemetry and the action builder are specified with their activation
+for wiring real platform packages into the layer stack. Optional integrations for the action builder are specified with their activation
 conditions.
 
 ## Rationale

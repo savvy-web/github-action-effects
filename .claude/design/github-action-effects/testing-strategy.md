@@ -193,6 +193,9 @@ auth, test layer in-memory token state.
 completes with "failure" and re-raises cause, annotations capped at 50,
 test layer CheckRunRecord array.
 
+**PullRequest** -- get/list/create/update/getOrCreate/merge/addLabels/
+requestReviewers, auto-merge via GraphQL, test layer in-memory PR state.
+
 **PullRequestComment** -- create/upsert/find/delete, marker pattern
 `<!-- savvy-web:KEY -->`, test layer per-PR comment storage with
 instance-scoped ID counter.
@@ -221,8 +224,9 @@ PM detection logic, frozen lockfile, test layer in-memory state.
 **WorkspaceDetector** -- detect/listPackages/getPackage, pnpm-workspace.yaml
 and package.json workspaces parsing, test layer in-memory state.
 
-**ToolInstaller** -- install/isCached/installAndAddToPath, download/extract/
-cache lifecycle, test layer in-memory tool cache.
+**ToolInstaller** -- install/isCached/installAndAddToPath/installBinary/
+installBinaryAndAddToPath, download/extract/cache lifecycle, single binary
+installation with chmod, test layer in-memory tool cache.
 
 **ChangesetAnalyzer** -- parseAll/hasChangesets/generate, changeset YAML
 frontmatter parsing, test layer in-memory state.
@@ -263,7 +267,7 @@ action-builder's `persistLocal` feature to run actions in Docker containers.
 
 ## Current State
 
-Unit tests cover all 27 domain services, 4 namespace/utility objects, and key
+Unit tests cover all 29 domain services, 4 namespace/utility objects, and key
 schemas. The 6 platform wrapper services are tested indirectly through the Live
 layers that depend on them (e.g., `ActionInputsLive.test.ts` mocks `ActionsCore`).
 Coverage meets the 80% threshold. Integration tests are deferred pending service

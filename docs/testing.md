@@ -37,7 +37,7 @@ import {
 * Does **not** import `@actions/core`, `@actions/github`, or any other
   `@actions/*` package — those are only loaded by the platform wrapper Live
   layers
-* All 32 Live layers (`ActionInputsLive`, `ActionOutputsLive`, etc.) are also
+* All Live layers (`ActionInputsLive`, `ActionOutputsLive`, etc.) are also
   exported from `/testing` — they no longer import `@actions/*` directly
 * The platform wrapper service tags (`ActionsCore`, `ActionsGitHub`,
   `ActionsExec`, `ActionsCache`, `ActionsToolCache`, `OctokitAuthApp`) are
