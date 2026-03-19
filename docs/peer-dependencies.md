@@ -27,7 +27,7 @@ package directly.
 
 This means:
 
-- The `/testing` subpath can export all 32 Live layers without triggering any
+- The `/testing` subpath can export all Live layers without triggering any
   `@actions/*` imports -- wrapper Live layers are excluded from `/testing`
 - Tests that use in-memory test layers never load `@actions/core` or any
   other `@actions/*` package
@@ -148,32 +148,12 @@ npm install @octokit/auth-app
 
 ## Regular Dependencies (Not Peers)
 
-OpenTelemetry packages are included as regular `dependencies` of this library.
-You do not need to install them separately.
-
-| Package | Purpose |
-| --- | --- |
-| `@effect/opentelemetry` | Effect tracer to OTel bridge |
-| `@opentelemetry/api` | OTel API types |
-| `@opentelemetry/sdk-trace-node` | OTel tracing SDK |
-| `@opentelemetry/sdk-metrics` | OTel metrics SDK |
-| `@opentelemetry/resources` | OTel resource definitions |
-| `@opentelemetry/exporter-trace-otlp-grpc` | gRPC trace export |
-| `@opentelemetry/exporter-trace-otlp-http` | HTTP/JSON trace export |
-| `@opentelemetry/exporter-trace-otlp-proto` | HTTP/protobuf trace export |
-| `@opentelemetry/exporter-metrics-otlp-grpc` | gRPC metric export |
-| `@opentelemetry/exporter-metrics-otlp-http` | HTTP/JSON metric export |
-| `@opentelemetry/exporter-metrics-otlp-proto` | HTTP/protobuf metric export |
-
-These are regular dependencies (not optional peers) so that `@vercel/ncc` can
-resolve them without the consumer needing to install them separately.
-
 All imports throughout the library (including Live layers for optional peers
 like `@actions/tool-cache` and `@octokit/auth-app`) are static. This means
 `@vercel/ncc` can follow every import chain and bundle the correct packages
 automatically -- no manual bundling hints are required.
 
-Additional regular dependencies for config file parsing:
+Regular dependencies for config file parsing:
 
 | Package | Purpose |
 | --- | --- |
@@ -189,7 +169,7 @@ you understand which peer dependencies to install for a given set of services.
 ```text
 Tier 0 -- No optional peer deps (only effect + @actions/core):
   ActionInputs, ActionLogger, ActionOutputs, ActionState,
-  ActionEnvironment, DryRun, ActionTelemetry, NpmRegistry
+  ActionEnvironment, DryRun, NpmRegistry
 
 Tier 1 -- Single optional peer:
   CommandRunner             -> @actions/exec

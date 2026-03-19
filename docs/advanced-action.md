@@ -1,10 +1,9 @@
 # Advanced Action: Three-Stage App
 
 This tutorial builds a complete three-stage GitHub Action with `pre`, `main`,
-and `post` phases. It demonstrates four key library features:
+and `post` phases. It demonstrates three key library features:
 
 - **Log level helper** -- configure and resolve log levels from action inputs
-- **OpenTelemetry** -- auto-configured tracing across all three phases
 - **GitHub App authentication** -- generate and revoke installation tokens
 - **ActionState** -- transfer typed data between phases
 
@@ -36,21 +35,6 @@ inputs:
     description: 'Skip actual publishing'
     required: false
     default: 'false'
-  otel-enabled:
-    description: 'Enable OpenTelemetry (enabled, disabled, auto)'
-    required: false
-    default: 'auto'
-  otel-endpoint:
-    description: 'OTLP endpoint URL'
-    required: false
-  otel-protocol:
-    description: 'OTLP protocol (grpc, http/protobuf, http/json)'
-    required: false
-    default: 'grpc'
-  otel-headers:
-    description: 'OTLP headers (comma-separated key=value)'
-    required: false
-
 outputs:
   published-count:
     description: 'Number of packages published'
@@ -362,8 +346,6 @@ import {
   ActionOutputs,
   ActionState,
   ActionStateLive,
-  ActionTelemetry,
-  ActionTelemetryLive,
   GithubMarkdown,
   LogLevelInput,
   ActionInputs,
@@ -376,7 +358,6 @@ const program = Effect.gen(function* () {
   const logger = yield* ActionLogger
   const state = yield* ActionState
   const outputs = yield* ActionOutputs
-  const telemetry = yield* ActionTelemetry
 
   // -- 1. Restore log level --
   const logLevelInput = yield* inputs.get("log-level", LogLevelInput)
@@ -387,18 +368,12 @@ const program = Effect.gen(function* () {
   const elapsed = Date.now() - timing.startedAt
   yield* outputs.set("duration-ms", String(elapsed))
 
-  // -- 3. Record telemetry metrics --
-  yield* telemetry.metric("action.duration", elapsed, "ms")
-  yield* telemetry.attribute("action.phase", "post")
-
-  // -- 4. Read publish results (may not exist if main failed early) --
+  // -- 3. Read publish results (may not exist if main failed early) --
   const publishResult = yield* state.getOptional("publish", PublishState)
 
   yield* logger.group("Summary", Effect.gen(function* () {
     if (Option.isSome(publishResult)) {
       const pub = publishResult.value
-      yield* telemetry.metric("packages.published", pub.publishedCount)
-      yield* telemetry.metric("packages.failed", pub.failedCount)
       yield* Effect.log(`Published: ${pub.publishedCount}, Failed: ${pub.failedCount}`)
     } else {
       yield* Effect.log("No publish results (main phase may have failed)")
@@ -406,7 +381,7 @@ const program = Effect.gen(function* () {
     yield* Effect.log(`Total duration: ${elapsed}ms`)
   }))
 
-  // -- 5. Append timing to step summary --
+  // -- 4. Append timing to step summary --
   yield* outputs.summary([
     "",
     GithubMarkdown.rule(),
@@ -422,10 +397,7 @@ const program = Effect.gen(function* () {
 
 Action.run(
   program,
-  Layer.mergeAll(
-    ActionStateLive,
-    ActionTelemetryLive,
-  ),
+  ActionStateLive,
 )
 ```
 
@@ -435,32 +407,8 @@ Action.run(
    `getOptional` returns `Option.none()` when the key does not exist. This
    handles the case where `main` failed before saving publish results.
 
-2. **ActionTelemetry** -- Records numeric metrics and string attributes.
-   These are captured by the in-memory tracer and included in the step
-   summary timing table. With OTel enabled, they are also exported to your
-   OTLP endpoint.
-
-3. **Timing summary** -- `outputs.summary` appends markdown to the existing
+2. **Timing summary** -- `outputs.summary` appends markdown to the existing
    step summary written by `main`. Each call appends rather than replacing.
-
-## OpenTelemetry Across Phases
-
-Each phase runs `Action.run` independently, which means each phase gets its
-own OTel configuration. The four `otel-*` inputs are read by `Action.run`
-at startup in every phase.
-
-When an OTLP endpoint is configured:
-
-- All three phases export traces to the same endpoint
-- Spans from `Effect.withSpan` calls (like `"pre-phase"`, `"main-phase"`,
-  `"post-phase"`) appear in your tracing backend
-- Each phase is a separate trace (they run in separate processes)
-
-When no endpoint is configured:
-
-- The in-memory tracer captures spans per phase
-- A timing summary table is appended to the step summary automatically
-- You still get basic observability without any external tooling
 
 ## Workflow Usage
 
@@ -484,8 +432,6 @@ jobs:
             @scope/cli
           log-level: verbose
           dry-run: false
-          otel-endpoint: ${{ secrets.OTEL_ENDPOINT }}
-          otel-headers: api-key=${{ secrets.OTEL_API_KEY }}
 ```
 
 ## Key Takeaways
@@ -501,9 +447,6 @@ input and re-apply in every phase.
 **Use `getOptional` in post.** The `post` phase always runs, but earlier
 phases may have failed before saving their state. Use `state.getOptional`
 to handle missing state gracefully.
-
-**OTel is automatic.** `Action.run` reads the `otel-*` inputs and
-configures tracing in every phase. No additional setup is needed.
 
 **Bracket patterns clean up automatically.** `GitHubApp.withToken` revokes
 the installation token even if the callback fails, preventing token leaks.
@@ -645,7 +588,6 @@ patterns.
 ## Next Steps
 
 - [Services Guide](./services.md) -- detailed usage for each service
-- [OpenTelemetry](./otel.md) -- OTel configuration and tracing details
 - [Testing](./testing.md) -- test multi-phase actions with in-memory layers
 - [Patterns](./patterns.md) -- dry-run, error accumulation, and more
 - [Peer Dependencies](./peer-dependencies.md) -- which packages to install

@@ -2,7 +2,7 @@
 
 Effect-based utility library for building GitHub Actions with schema-validated
 inputs, structured logging, typed outputs, GitHub API operations, package
-publishing, OpenTelemetry tracing, and composable test layers.
+publishing, and composable test layers.
 
 ## Installation
 
@@ -43,7 +43,7 @@ which services require which packages.
 - [Example Action](./example-action.md) -- End-to-end walkthrough building a
   GitHub Action
 - [Advanced Action](./advanced-action.md) -- Three-stage app (pre/main/post)
-  with GitHub App auth, OTel, state, and log levels
+  with GitHub App auth, state, and log levels
 - [Services Guide](./services.md) -- Detailed guide for each service with usage
   examples
 - [Architecture](./architecture.md) -- API reference, layer composition, and
@@ -51,7 +51,6 @@ which services require which packages.
 - [Peer Dependencies](./peer-dependencies.md) -- Required and optional peer
   dependencies with service mapping
 - [Testing Guide](./testing.md) -- Testing with in-memory test layers
-- [OpenTelemetry](./otel.md) -- OTel configuration, tracing, and metrics
 - [Patterns](./patterns.md) -- Common patterns: dry-run, error accumulation,
   permission checking, workspace detection
 - [Error Handling](./error-handling.md) -- `Action.formatCause`, `Action.run`
@@ -74,7 +73,6 @@ which services require which packages.
 | ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
 | ActionEnvironment | Typed access to GITHUB_*and RUNNER_* env vars |
 | ActionCache | Save/restore with withCache bracket pattern |
-| ActionTelemetry | Record metrics, annotate spans |
 | GitHubClient | Octokit REST/GraphQL with pagination |
 | GitHubGraphQL | Typed GraphQL queries and mutations |
 | GitHubRelease | Create releases, upload assets, list/get by tag |
@@ -108,9 +106,7 @@ which services require which packages.
 | `AutoMerge` | Enable/disable PR auto-merge via GraphQL |
 | `SemverResolver` | Semver comparison, range satisfaction, increment, parse |
 | `ErrorAccumulator` | Process items collecting all successes and failures |
-| `GitHubOtelAttributes` | Map GitHub env vars to OTel resource attributes |
 | `ReportBuilder` | Fluent builder for markdown reports |
-| `TelemetryReport` | Render span timings and metrics as GFM |
 
 ## See Also
 
