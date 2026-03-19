@@ -40,7 +40,7 @@ const runCapture = (
 	};
 
 	return Effect.tryPromise({
-		try: () => actionsExec.exec(command, [...args], execOpts),
+		try: (): Promise<number> => actionsExec.exec(command, [...args], execOpts),
 		catch: (error) =>
 			new CommandRunnerError({
 				command,
