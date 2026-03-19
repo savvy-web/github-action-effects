@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Layer, TestClock, TestContext } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
 import { GitBranch } from "../services/GitBranch.js";
@@ -80,6 +80,18 @@ const run = <A, E>(effect: Effect.Effect<A, E, GitBranch>) => Effect.runPromise(
 
 const runExit = <A, E>(effect: Effect.Effect<A, E, GitBranch>) =>
 	Effect.runPromise(Effect.exit(Effect.provide(effect, testLayer)));
+
+/** Run an effect that uses retries with TestClock so delays are instant. */
+const runWithTestClock = <A, E>(
+	effect: Effect.Effect<A, E, GitBranch>,
+	retryLayer: Layer.Layer<GitBranch, never, never>,
+): Promise<Exit.Exit<A, E>> =>
+	Effect.gen(function* () {
+		const fiber = yield* Effect.fork(Effect.provide(effect, retryLayer));
+		// Advance clock enough to cover all retry delays (1s + 2s + 4s = 7s)
+		yield* TestClock.adjust(Duration.seconds(10));
+		return yield* Fiber.join(fiber);
+	}).pipe(Effect.exit, Effect.provide(TestContext.TestContext), Effect.runPromise);
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -217,14 +229,13 @@ describe("GitBranchLive", () => {
 			const retryClient = makeMockClient();
 			const retryLayer = Layer.provide(GitBranchLive, Layer.succeed(GitHubClient, retryClient));
 
-			await Effect.runPromise(
-				Effect.provide(
-					Effect.flatMap(GitBranch, (svc) => svc.delete("feature/old")),
-					retryLayer,
-				),
+			const exit = await runWithTestClock(
+				Effect.flatMap(GitBranch, (svc) => svc.delete("feature/old")),
+				retryLayer,
 			);
+			expect(exit._tag).toBe("Success");
 			expect(mockDeleteRef).toHaveBeenCalledTimes(2);
-		}, 15000);
+		});
 
 		it("gives up after max retries on persistent 500", async () => {
 			mockDeleteRef.mockRejectedValue(Object.assign(new Error("Server Error"), { status: 500 }));
@@ -232,18 +243,14 @@ describe("GitBranchLive", () => {
 			const retryClient = makeMockClient();
 			const retryLayer = Layer.provide(GitBranchLive, Layer.succeed(GitHubClient, retryClient));
 
-			const exit = await Effect.runPromise(
-				Effect.exit(
-					Effect.provide(
-						Effect.flatMap(GitBranch, (svc) => svc.delete("feature/old")),
-						retryLayer,
-					),
-				),
+			const exit = await runWithTestClock(
+				Effect.flatMap(GitBranch, (svc) => svc.delete("feature/old")),
+				retryLayer,
 			);
 			expect(exit._tag).toBe("Failure");
 			// 1 initial + 3 retries = 4 total calls
 			expect(mockDeleteRef).toHaveBeenCalledTimes(4);
-		}, 30000);
+		});
 
 		it("does not retry on non-retryable errors (e.g., 404)", async () => {
 			mockDeleteRef.mockRejectedValue(Object.assign(new Error("Not Found"), { status: 404 }));
@@ -251,13 +258,9 @@ describe("GitBranchLive", () => {
 			const retryClient = makeMockClient();
 			const retryLayer = Layer.provide(GitBranchLive, Layer.succeed(GitHubClient, retryClient));
 
-			const exit = await Effect.runPromise(
-				Effect.exit(
-					Effect.provide(
-						Effect.flatMap(GitBranch, (svc) => svc.delete("branch")),
-						retryLayer,
-					),
-				),
+			const exit = await runWithTestClock(
+				Effect.flatMap(GitBranch, (svc) => svc.delete("branch")),
+				retryLayer,
 			);
 			expect(exit._tag).toBe("Failure");
 			expect(mockDeleteRef).toHaveBeenCalledTimes(1);
@@ -271,14 +274,13 @@ describe("GitBranchLive", () => {
 			const retryClient = makeMockClient();
 			const retryLayer = Layer.provide(GitBranchLive, Layer.succeed(GitHubClient, retryClient));
 
-			await Effect.runPromise(
-				Effect.provide(
-					Effect.flatMap(GitBranch, (svc) => svc.create("new-branch", "sha123")),
-					retryLayer,
-				),
+			const exit = await runWithTestClock(
+				Effect.flatMap(GitBranch, (svc) => svc.create("new-branch", "sha123")),
+				retryLayer,
 			);
+			expect(exit._tag).toBe("Success");
 			expect(mockCreateRef).toHaveBeenCalledTimes(2);
-		}, 15000);
+		});
 	});
 
 	describe("HTML error handling", () => {
@@ -289,13 +291,9 @@ describe("GitBranchLive", () => {
 			const htmlClient = makeMockClient();
 			const htmlLayer = Layer.provide(GitBranchLive, Layer.succeed(GitHubClient, htmlClient));
 
-			const exit = await Effect.runPromise(
-				Effect.exit(
-					Effect.provide(
-						Effect.flatMap(GitBranch, (svc) => svc.delete("branch")),
-						htmlLayer,
-					),
-				),
+			const exit = await runWithTestClock(
+				Effect.flatMap(GitBranch, (svc) => svc.delete("branch")),
+				htmlLayer,
 			);
 			expect(exit._tag).toBe("Failure");
 			if (Exit.isFailure(exit)) {
@@ -303,6 +301,6 @@ describe("GitBranchLive", () => {
 				expect((error as { reason: string }).reason).toBe("GitHub API returned 500 (server error)");
 				expect((error as { reason: string }).reason).not.toContain("<!DOCTYPE");
 			}
-		}, 30000);
+		});
 	});
 });
