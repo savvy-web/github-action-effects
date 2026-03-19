@@ -1,19 +1,43 @@
-import { getState, saveState } from "@actions/core";
-import { Effect, Option, Schema } from "effect";
+import type { Context } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { ActionState } from "../services/ActionState.js";
+import { ActionsCore } from "../services/ActionsCore.js";
 import { ActionStateLive } from "./ActionStateLive.js";
 
-vi.mock("@actions/core", () => ({
-	saveState: vi.fn(),
-	getState: vi.fn(),
-}));
+const mockCore = (overrides: Partial<Context.Tag.Service<typeof ActionsCore>> = {}) =>
+	Layer.succeed(ActionsCore, {
+		getInput: () => "",
+		getMultilineInput: () => [],
+		getBooleanInput: () => false,
+		setOutput: () => {},
+		setFailed: () => {},
+		exportVariable: () => {},
+		addPath: () => {},
+		setSecret: () => {},
+		info: () => {},
+		debug: () => {},
+		warning: () => {},
+		error: () => {},
+		notice: () => {},
+		startGroup: () => {},
+		endGroup: () => {},
+		getState: () => "",
+		saveState: () => {},
+		summary: { write: () => Promise.resolve(), addRaw: () => ({}) },
+		...overrides,
+	});
 
-const run = <A, E>(effect: Effect.Effect<A, E, ActionState>) =>
-	Effect.runPromise(Effect.provide(effect, ActionStateLive));
+const run = <A, E>(
+	effect: Effect.Effect<A, E, ActionState>,
+	coreOverrides: Partial<Context.Tag.Service<typeof ActionsCore>> = {},
+) => Effect.runPromise(Effect.provide(effect, ActionStateLive.pipe(Layer.provide(mockCore(coreOverrides)))));
 
-const runExit = <A, E>(effect: Effect.Effect<A, E, ActionState>) =>
-	Effect.runPromise(Effect.exit(Effect.provide(effect, ActionStateLive)));
+const runExit = <A, E>(
+	effect: Effect.Effect<A, E, ActionState>,
+	coreOverrides: Partial<Context.Tag.Service<typeof ActionsCore>> = {},
+) =>
+	Effect.runPromise(Effect.exit(Effect.provide(effect, ActionStateLive.pipe(Layer.provide(mockCore(coreOverrides))))));
 
 const TestSchema = Schema.Struct({
 	token: Schema.String,
@@ -23,55 +47,91 @@ const TestSchema = Schema.Struct({
 describe("ActionStateLive", () => {
 	describe("save", () => {
 		it("encodes and calls core.saveState", async () => {
-			await run(Effect.flatMap(ActionState, (svc) => svc.save("auth", { token: "abc", count: 1 }, TestSchema)));
+			const saveState = vi.fn();
+			await run(
+				Effect.flatMap(ActionState, (svc) => svc.save("auth", { token: "abc", count: 1 }, TestSchema)),
+				{
+					saveState,
+				},
+			);
 			expect(saveState).toHaveBeenCalledWith("auth", JSON.stringify({ token: "abc", count: 1 }));
 		});
 
 		it("encodes Date via Schema.DateFromString", async () => {
+			const saveState = vi.fn();
 			const date = new Date("2026-01-15T00:00:00.000Z");
-			await run(Effect.flatMap(ActionState, (svc) => svc.save("started", date, Schema.DateFromString)));
+			await run(
+				Effect.flatMap(ActionState, (svc) => svc.save("started", date, Schema.DateFromString)),
+				{
+					saveState,
+				},
+			);
 			expect(saveState).toHaveBeenCalledWith("started", JSON.stringify("2026-01-15T00:00:00.000Z"));
 		});
 	});
 
 	describe("get", () => {
 		it("reads and decodes state", async () => {
-			vi.mocked(getState).mockReturnValue(JSON.stringify({ token: "xyz", count: 42 }));
-			const result = await run(Effect.flatMap(ActionState, (svc) => svc.get("auth", TestSchema)));
+			const getState = vi.fn().mockReturnValue(JSON.stringify({ token: "xyz", count: 42 }));
+			const result = await run(
+				Effect.flatMap(ActionState, (svc) => svc.get("auth", TestSchema)),
+				{ getState },
+			);
 			expect(result).toEqual({ token: "xyz", count: 42 });
 			expect(getState).toHaveBeenCalledWith("auth");
 		});
 
 		it("decodes DateFromString", async () => {
-			vi.mocked(getState).mockReturnValue(JSON.stringify("2026-01-15T00:00:00.000Z"));
-			const result = await run(Effect.flatMap(ActionState, (svc) => svc.get("started", Schema.DateFromString)));
+			const getState = vi.fn().mockReturnValue(JSON.stringify("2026-01-15T00:00:00.000Z"));
+			const result = await run(
+				Effect.flatMap(ActionState, (svc) => svc.get("started", Schema.DateFromString)),
+				{
+					getState,
+				},
+			);
 			expect(result).toBeInstanceOf(Date);
 			expect(result.toISOString()).toBe("2026-01-15T00:00:00.000Z");
 		});
 
 		it("fails on empty state (not set)", async () => {
-			vi.mocked(getState).mockReturnValue("");
-			const exit = await runExit(Effect.flatMap(ActionState, (svc) => svc.get("missing", TestSchema)));
+			const getState = vi.fn().mockReturnValue("");
+			const exit = await runExit(
+				Effect.flatMap(ActionState, (svc) => svc.get("missing", TestSchema)),
+				{
+					getState,
+				},
+			);
 			expect(exit._tag).toBe("Failure");
 		});
 
 		it("fails on invalid JSON", async () => {
-			vi.mocked(getState).mockReturnValue("not-json");
-			const exit = await runExit(Effect.flatMap(ActionState, (svc) => svc.get("bad", TestSchema)));
+			const getState = vi.fn().mockReturnValue("not-json");
+			const exit = await runExit(
+				Effect.flatMap(ActionState, (svc) => svc.get("bad", TestSchema)),
+				{ getState },
+			);
 			expect(exit._tag).toBe("Failure");
 		});
 
 		it("fails on schema mismatch", async () => {
-			vi.mocked(getState).mockReturnValue(JSON.stringify({ wrong: "shape" }));
-			const exit = await runExit(Effect.flatMap(ActionState, (svc) => svc.get("auth", TestSchema)));
+			const getState = vi.fn().mockReturnValue(JSON.stringify({ wrong: "shape" }));
+			const exit = await runExit(
+				Effect.flatMap(ActionState, (svc) => svc.get("auth", TestSchema)),
+				{ getState },
+			);
 			expect(exit._tag).toBe("Failure");
 		});
 	});
 
 	describe("getOptional", () => {
 		it("returns Some for present state", async () => {
-			vi.mocked(getState).mockReturnValue(JSON.stringify({ token: "abc", count: 1 }));
-			const result = await run(Effect.flatMap(ActionState, (svc) => svc.getOptional("auth", TestSchema)));
+			const getState = vi.fn().mockReturnValue(JSON.stringify({ token: "abc", count: 1 }));
+			const result = await run(
+				Effect.flatMap(ActionState, (svc) => svc.getOptional("auth", TestSchema)),
+				{
+					getState,
+				},
+			);
 			expect(Option.isSome(result)).toBe(true);
 			if (Option.isSome(result)) {
 				expect(result.value).toEqual({ token: "abc", count: 1 });
@@ -79,14 +139,24 @@ describe("ActionStateLive", () => {
 		});
 
 		it("returns None for empty state", async () => {
-			vi.mocked(getState).mockReturnValue("");
-			const result = await run(Effect.flatMap(ActionState, (svc) => svc.getOptional("missing", TestSchema)));
+			const getState = vi.fn().mockReturnValue("");
+			const result = await run(
+				Effect.flatMap(ActionState, (svc) => svc.getOptional("missing", TestSchema)),
+				{
+					getState,
+				},
+			);
 			expect(Option.isNone(result)).toBe(true);
 		});
 
 		it("fails on invalid JSON", async () => {
-			vi.mocked(getState).mockReturnValue("bad-json");
-			const exit = await runExit(Effect.flatMap(ActionState, (svc) => svc.getOptional("bad", TestSchema)));
+			const getState = vi.fn().mockReturnValue("bad-json");
+			const exit = await runExit(
+				Effect.flatMap(ActionState, (svc) => svc.getOptional("bad", TestSchema)),
+				{
+					getState,
+				},
+			);
 			expect(exit._tag).toBe("Failure");
 		});
 	});
