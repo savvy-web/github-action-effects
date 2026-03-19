@@ -10,6 +10,7 @@ export interface ActionsExecOptions {
 	readonly env?: Record<string, string>;
 	readonly silent?: boolean;
 	readonly ignoreReturnCode?: boolean;
+	readonly delay?: number;
 	readonly input?: Buffer;
 	readonly listeners?: {
 		stdout?: (data: Buffer) => void;
