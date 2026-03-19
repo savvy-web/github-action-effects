@@ -1,8 +1,9 @@
-import { createAppAuth } from "@octokit/auth-app";
 import { Effect, Layer } from "effect";
 import { GitHubAppError } from "../errors/GitHubAppError.js";
 import type { InstallationToken } from "../services/GitHubApp.js";
 import { GitHubApp } from "../services/GitHubApp.js";
+import type { AppAuth } from "../services/OctokitAuthApp.js";
+import { OctokitAuthApp } from "../services/OctokitAuthApp.js";
 
 interface Installation {
 	readonly id: number;
@@ -36,7 +37,7 @@ const fetchAllInstallations = async (jwt: string): Promise<Array<Installation>> 
 	return installations;
 };
 
-const resolveInstallationId = async (auth: (opts: { type: "app" }) => Promise<{ token: string }>): Promise<number> => {
+const resolveInstallationId = async (auth: AppAuth): Promise<number> => {
 	const { token: jwt } = await auth({ type: "app" });
 	const installations = await fetchAllInstallations(jwt);
 
@@ -59,13 +60,14 @@ const resolveInstallationId = async (auth: (opts: { type: "app" }) => Promise<{ 
 };
 
 const generateToken = (
+	authApp: OctokitAuthApp["Type"],
 	appId: string,
 	privateKey: string,
 	installationId?: number,
 ): Effect.Effect<InstallationToken, GitHubAppError> =>
 	Effect.tryPromise({
 		try: async () => {
-			const auth = createAppAuth({ appId, privateKey });
+			const auth = authApp.createAppAuth({ appId, privateKey });
 
 			const resolvedId = installationId ?? (await resolveInstallationId(auth));
 
@@ -105,22 +107,30 @@ const revokeToken = (token: string): Effect.Effect<void, GitHubAppError> =>
  *
  * @public
  */
-export const GitHubAppLive: Layer.Layer<GitHubApp> = Layer.succeed(GitHubApp, {
-	generateToken,
-	revokeToken,
+export const GitHubAppLive: Layer.Layer<GitHubApp, never, OctokitAuthApp> = Layer.effect(
+	GitHubApp,
+	Effect.gen(function* () {
+		const authApp = yield* OctokitAuthApp;
 
-	botIdentity: (appSlug) => {
-		const name = appSlug ? `${appSlug}[bot]` : "github-actions[bot]";
-		const email = appSlug
-			? `${name}@users.noreply.github.com`
-			: "41898282+github-actions[bot]@users.noreply.github.com";
-		return { name, email };
-	},
+		return {
+			generateToken: (appId, privateKey, installationId) => generateToken(authApp, appId, privateKey, installationId),
 
-	withToken: (appId, privateKey, effect) =>
-		Effect.acquireUseRelease(
-			generateToken(appId, privateKey),
-			(tokenInfo) => effect(tokenInfo.token),
-			(tokenInfo) => revokeToken(tokenInfo.token).pipe(Effect.catchAll(() => Effect.void)),
-		).pipe(Effect.withSpan("GitHubApp.withToken")),
-});
+			revokeToken,
+
+			botIdentity: (appSlug) => {
+				const name = appSlug ? `${appSlug}[bot]` : "github-actions[bot]";
+				const email = appSlug
+					? `${name}@users.noreply.github.com`
+					: "41898282+github-actions[bot]@users.noreply.github.com";
+				return { name, email };
+			},
+
+			withToken: (appId, privateKey, effect) =>
+				Effect.acquireUseRelease(
+					generateToken(authApp, appId, privateKey),
+					(tokenInfo) => effect(tokenInfo.token),
+					(tokenInfo) => revokeToken(tokenInfo.token).pipe(Effect.catchAll(() => Effect.void)),
+				).pipe(Effect.withSpan("GitHubApp.withToken")),
+		};
+	}),
+);
