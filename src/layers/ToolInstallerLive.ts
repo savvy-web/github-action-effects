@@ -1,9 +1,10 @@
+import { chmod } from "node:fs/promises";
 import type { Context } from "effect";
 import { Effect, Layer } from "effect";
 import { ToolInstallerError } from "../errors/ToolInstallerError.js";
 import { ActionsCore } from "../services/ActionsCore.js";
 import { ActionsToolCache } from "../services/ActionsToolCache.js";
-import type { ToolInstallOptions } from "../services/ToolInstaller.js";
+import type { BinaryInstallOptions, ToolInstallOptions } from "../services/ToolInstaller.js";
 import { ToolInstaller } from "../services/ToolInstaller.js";
 
 const extractArchive = (
@@ -148,6 +149,123 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller, never, ActionsCore | 
 							try: () => {
 								core.addPath(toolPath);
 								return toolPath;
+							},
+							catch: (error) =>
+								new ToolInstallerError({
+									tool: name,
+									version,
+									operation: "path",
+									reason: `Failed to add to PATH: ${error instanceof Error ? error.message : String(error)}`,
+								}),
+						}),
+					),
+				),
+
+			installBinary: (name: string, version: string, downloadUrl: string, options?: BinaryInstallOptions) =>
+				Effect.sync(() => tc.find(name, version)).pipe(
+					Effect.flatMap((cached) => {
+						if (cached) {
+							return Effect.succeed(cached);
+						}
+
+						const binaryName = options?.binaryName ?? name;
+
+						return Effect.tryPromise({
+							try: () => tc.downloadTool(downloadUrl),
+							catch: (error) =>
+								new ToolInstallerError({
+									tool: name,
+									version,
+									operation: "download",
+									reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
+								}),
+						}).pipe(
+							Effect.flatMap((downloadedPath) =>
+								Effect.tryPromise({
+									try: () => tc.cacheFile(downloadedPath, binaryName, name, version),
+									catch: (error) =>
+										new ToolInstallerError({
+											tool: name,
+											version,
+											operation: "cache",
+											reason: `Failed to cache tool: ${error instanceof Error ? error.message : String(error)}`,
+										}),
+								}),
+							),
+							Effect.flatMap((cachedPath) => {
+								if (options?.executable === false) {
+									return Effect.succeed(cachedPath);
+								}
+								const binaryPath = `${cachedPath}/${binaryName}`;
+								return Effect.tryPromise({
+									try: () => chmod(binaryPath, 0o755),
+									catch: (error) =>
+										new ToolInstallerError({
+											tool: name,
+											version,
+											operation: "chmod",
+											reason: `Failed to chmod binary: ${error instanceof Error ? error.message : String(error)}`,
+										}),
+								}).pipe(Effect.as(cachedPath));
+							}),
+						);
+					}),
+				),
+
+			installBinaryAndAddToPath: (name: string, version: string, downloadUrl: string, options?: BinaryInstallOptions) =>
+				Effect.sync(() => tc.find(name, version)).pipe(
+					Effect.flatMap((cached) => {
+						if (cached) {
+							return Effect.succeed(cached);
+						}
+
+						const binaryName = options?.binaryName ?? name;
+
+						return Effect.tryPromise({
+							try: () => tc.downloadTool(downloadUrl),
+							catch: (error) =>
+								new ToolInstallerError({
+									tool: name,
+									version,
+									operation: "download",
+									reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
+								}),
+						}).pipe(
+							Effect.flatMap((downloadedPath) =>
+								Effect.tryPromise({
+									try: () => tc.cacheFile(downloadedPath, binaryName, name, version),
+									catch: (error) =>
+										new ToolInstallerError({
+											tool: name,
+											version,
+											operation: "cache",
+											reason: `Failed to cache tool: ${error instanceof Error ? error.message : String(error)}`,
+										}),
+								}),
+							),
+							Effect.flatMap((cachedPath) => {
+								if (options?.executable === false) {
+									return Effect.succeed(cachedPath);
+								}
+								const binaryPath = `${cachedPath}/${binaryName}`;
+								return Effect.tryPromise({
+									try: () => chmod(binaryPath, 0o755),
+									catch: (error) =>
+										new ToolInstallerError({
+											tool: name,
+											version,
+											operation: "chmod",
+											reason: `Failed to chmod binary: ${error instanceof Error ? error.message : String(error)}`,
+										}),
+								}).pipe(Effect.as(cachedPath));
+							}),
+						);
+					}),
+					Effect.flatMap((cachedPath) =>
+						Effect.try({
+							try: () => {
+								core.addPath(cachedPath);
+								return cachedPath;
 							},
 							catch: (error) =>
 								new ToolInstallerError({

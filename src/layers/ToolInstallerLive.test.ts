@@ -1,6 +1,11 @@
 import type { Context } from "effect";
 import { Effect, Layer } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:fs/promises", () => ({
+	chmod: vi.fn().mockResolvedValue(undefined),
+}));
+
 import type { ToolInstallerError } from "../errors/ToolInstallerError.js";
 import { ActionsCore } from "../services/ActionsCore.js";
 import { ActionsToolCache } from "../services/ActionsToolCache.js";
@@ -16,6 +21,7 @@ const mockToolCache = (overrides: Partial<Context.Tag.Service<typeof ActionsTool
 		extractTar: () => Promise.resolve(""),
 		extractZip: () => Promise.resolve(""),
 		cacheDir: () => Promise.resolve(""),
+		cacheFile: () => Promise.resolve(""),
 		...overrides,
 	});
 
@@ -501,6 +507,166 @@ describe("ToolInstallerLive", () => {
 
 			expect(error.operation).toBe("path");
 			expect(error.tool).toBe("node");
+		});
+	});
+
+	describe("installBinary", () => {
+		it("returns cached path when already cached", async () => {
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("/cached/biome/1.0.0");
+
+			const result = await run(
+				Effect.flatMap(ToolInstaller, (svc) => svc.installBinary("biome", "1.0.0", "https://example.com/biome")),
+				{ find },
+			);
+
+			expect(result).toBe("/cached/biome/1.0.0");
+			expect(find).toHaveBeenCalledWith("biome", "1.0.0");
+		});
+
+		it("downloads, caches file, and chmods on cache miss", async () => {
+			const { chmod } = await import("node:fs/promises");
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
+			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockResolvedValue("/tmp/download");
+			const cacheFile = vi
+				.fn<(sourceFile: string, targetFile: string, tool: string, version: string) => Promise<string>>()
+				.mockResolvedValue("/cached/biome/1.0.0");
+
+			const result = await run(
+				Effect.flatMap(ToolInstaller, (svc) => svc.installBinary("biome", "1.0.0", "https://example.com/biome")),
+				{ find, downloadTool, cacheFile },
+			);
+
+			expect(result).toBe("/cached/biome/1.0.0");
+			expect(downloadTool).toHaveBeenCalledWith("https://example.com/biome");
+			expect(cacheFile).toHaveBeenCalledWith("/tmp/download", "biome", "biome", "1.0.0");
+			expect(chmod).toHaveBeenCalledWith("/cached/biome/1.0.0/biome", 0o755);
+		});
+
+		it("uses custom binaryName when provided", async () => {
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
+			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockResolvedValue("/tmp/download");
+			const cacheFile = vi
+				.fn<(sourceFile: string, targetFile: string, tool: string, version: string) => Promise<string>>()
+				.mockResolvedValue("/cached/biome/1.0.0");
+
+			await run(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinary("biome", "1.0.0", "https://example.com/biome-linux", { binaryName: "biome" }),
+				),
+				{ find, downloadTool, cacheFile },
+			);
+
+			expect(cacheFile).toHaveBeenCalledWith("/tmp/download", "biome", "biome", "1.0.0");
+		});
+
+		it("skips chmod when executable is false", async () => {
+			const { chmod } = await import("node:fs/promises");
+			vi.mocked(chmod).mockClear();
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
+			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockResolvedValue("/tmp/download");
+			const cacheFile = vi
+				.fn<(sourceFile: string, targetFile: string, tool: string, version: string) => Promise<string>>()
+				.mockResolvedValue("/cached/biome/1.0.0");
+
+			await run(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinary("biome", "1.0.0", "https://example.com/biome", { executable: false }),
+				),
+				{ find, downloadTool, cacheFile },
+			);
+
+			expect(chmod).not.toHaveBeenCalled();
+		});
+
+		it("fails with ToolInstallerError on download failure", async () => {
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
+			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockRejectedValue(new Error("Network error"));
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) => svc.installBinary("biome", "1.0.0", "https://example.com/biome")),
+				{ find, downloadTool },
+			);
+
+			expect(error.operation).toBe("download");
+			expect(error.tool).toBe("biome");
+		});
+
+		it("fails with ToolInstallerError on cache failure", async () => {
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
+			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockResolvedValue("/tmp/download");
+			const cacheFile = vi
+				.fn<(sourceFile: string, targetFile: string, tool: string, version: string) => Promise<string>>()
+				.mockRejectedValue(new Error("Disk full"));
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) => svc.installBinary("biome", "1.0.0", "https://example.com/biome")),
+				{ find, downloadTool, cacheFile },
+			);
+
+			expect(error.operation).toBe("cache");
+			expect(error.tool).toBe("biome");
+		});
+	});
+
+	describe("installBinaryAndAddToPath", () => {
+		it("downloads, caches, chmods, and adds to PATH on miss", async () => {
+			const { chmod } = await import("node:fs/promises");
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
+			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockResolvedValue("/tmp/download");
+			const cacheFile = vi
+				.fn<(sourceFile: string, targetFile: string, tool: string, version: string) => Promise<string>>()
+				.mockResolvedValue("/cached/biome/1.0.0");
+			const addPath = vi.fn<(path: string) => void>();
+
+			const result = await run(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinaryAndAddToPath("biome", "1.0.0", "https://example.com/biome"),
+				),
+				{ find, downloadTool, cacheFile },
+				{ addPath },
+			);
+
+			expect(result).toBe("/cached/biome/1.0.0");
+			expect(addPath).toHaveBeenCalledWith("/cached/biome/1.0.0");
+			expect(chmod).toHaveBeenCalledWith("/cached/biome/1.0.0/biome", 0o755);
+		});
+
+		it("returns cached path and adds to PATH when cached", async () => {
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("/cached/biome/1.0.0");
+			const addPath = vi.fn<(path: string) => void>();
+
+			const result = await run(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinaryAndAddToPath("biome", "1.0.0", "https://example.com/biome"),
+				),
+				{ find },
+				{ addPath },
+			);
+
+			expect(result).toBe("/cached/biome/1.0.0");
+			expect(addPath).toHaveBeenCalledWith("/cached/biome/1.0.0");
+		});
+
+		it("fails with ToolInstallerError on addPath failure", async () => {
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
+			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockResolvedValue("/tmp/download");
+			const cacheFile = vi
+				.fn<(sourceFile: string, targetFile: string, tool: string, version: string) => Promise<string>>()
+				.mockResolvedValue("/cached/biome/1.0.0");
+			const addPath = vi.fn<(path: string) => void>().mockImplementation(() => {
+				throw new Error("Cannot modify PATH");
+			});
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinaryAndAddToPath("biome", "1.0.0", "https://example.com/biome"),
+				),
+				{ find, downloadTool, cacheFile },
+				{ addPath },
+			);
+
+			expect(error.operation).toBe("path");
+			expect(error.tool).toBe("biome");
 		});
 	});
 });

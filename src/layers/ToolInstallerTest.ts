@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import type { ToolInstallOptions } from "../services/ToolInstaller.js";
+import type { BinaryInstallOptions, ToolInstallOptions } from "../services/ToolInstaller.js";
 import { ToolInstaller } from "../services/ToolInstaller.js";
 
 /**
@@ -38,6 +38,25 @@ const makeTestToolInstaller = (state: ToolInstallerTestState): typeof ToolInstal
 		state.cached.add(cacheKey(name, version));
 		state.addedToPaths.push(toolPath);
 		return Effect.succeed(toolPath);
+	},
+
+	installBinary: (name: string, version: string, _downloadUrl: string, options?: BinaryInstallOptions) => {
+		const basePath = `/tools/${name}/${version}`;
+		const binaryName = options?.binaryName ?? name;
+		const _toolPath = `${basePath}/${binaryName}`;
+		state.installed.push({ name, version, path: basePath });
+		state.cached.add(cacheKey(name, version));
+		return Effect.succeed(basePath);
+	},
+
+	installBinaryAndAddToPath: (name: string, version: string, _downloadUrl: string, options?: BinaryInstallOptions) => {
+		const basePath = `/tools/${name}/${version}`;
+		const binaryName = options?.binaryName ?? name;
+		const _toolPath = `${basePath}/${binaryName}`;
+		state.installed.push({ name, version, path: basePath });
+		state.cached.add(cacheKey(name, version));
+		state.addedToPaths.push(basePath);
+		return Effect.succeed(basePath);
 	},
 });
 

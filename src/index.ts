@@ -225,7 +225,7 @@ export type { CommentRecord } from "./services/PullRequestComment.js";
 export { PullRequestComment } from "./services/PullRequestComment.js";
 export { RateLimiter } from "./services/RateLimiter.js";
 export { TokenPermissionChecker } from "./services/TokenPermissionChecker.js";
-export type { ToolInstallOptions } from "./services/ToolInstaller.js";
+export type { BinaryInstallOptions, ToolInstallOptions } from "./services/ToolInstaller.js";
 export { ToolInstaller } from "./services/ToolInstaller.js";
 export type { PollOptions, WorkflowRunStatus } from "./services/WorkflowDispatch.js";
 export { WorkflowDispatch } from "./services/WorkflowDispatch.js";

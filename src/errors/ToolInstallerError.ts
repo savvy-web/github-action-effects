@@ -11,7 +11,7 @@ export class ToolInstallerError extends Data.TaggedError("ToolInstallerError")<{
 	readonly version: string;
 
 	/** The operation that failed. */
-	readonly operation: "download" | "extract" | "cache" | "path";
+	readonly operation: "download" | "extract" | "cache" | "path" | "chmod";
 
 	/** Human-readable description. */
 	readonly reason: string;

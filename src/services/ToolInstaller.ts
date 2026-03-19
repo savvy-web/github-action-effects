@@ -3,6 +3,19 @@ import { Context } from "effect";
 import type { ToolInstallerError } from "../errors/ToolInstallerError.js";
 
 /**
+ * Options for binary tool installation.
+ *
+ * @public
+ */
+export interface BinaryInstallOptions {
+	/** Name for the cached binary file. Defaults to the tool name. */
+	readonly binaryName?: string;
+
+	/** Set executable permission (chmod 0o755) on unix. Defaults to true. */
+	readonly executable?: boolean;
+}
+
+/**
  * Options for tool installation.
  *
  * @public
@@ -48,6 +61,22 @@ export class ToolInstaller extends Context.Tag("github-action-effects/ToolInstal
 			version: string,
 			downloadUrl: string,
 			options?: ToolInstallOptions,
+		) => Effect.Effect<string, ToolInstallerError>;
+
+		/** Download, cache, and optionally chmod a single binary file. Returns the cached directory path. */
+		readonly installBinary: (
+			name: string,
+			version: string,
+			downloadUrl: string,
+			options?: BinaryInstallOptions,
+		) => Effect.Effect<string, ToolInstallerError>;
+
+		/** Install a single binary and add it to the system PATH. Returns the cached directory path. */
+		readonly installBinaryAndAddToPath: (
+			name: string,
+			version: string,
+			downloadUrl: string,
+			options?: BinaryInstallOptions,
 		) => Effect.Effect<string, ToolInstallerError>;
 	}
 >() {}
