@@ -1,5 +1,28 @@
 # @savvy-web/pnpm-module-template
 
+## 0.10.0
+
+### Breaking Changes
+
+* [`ff327e0`](https://github.com/savvy-web/github-action-effects/commit/ff327e02c9e3eeff205c54b4c8912ece843457b7) Remove `OtelExporterLive`, `OtelTelemetryLive`, `InMemoryTracer`,
+  `ActionTelemetry`, `ActionTelemetryLive`, `ActionTelemetryTest`,
+  `TelemetryReport`, `GitHubOtelAttributes`, and all OTel schemas
+* Remove `Effect.withSpan` instrumentation from all service layers
+* Remove `timings()` method from `ReportBuilder`
+* Remove 12 `@opentelemetry/*` dependencies
+* `Action.run()` no longer reads `otel-*` inputs
+
+### Features
+
+* [`ff327e0`](https://github.com/savvy-web/github-action-effects/commit/ff327e02c9e3eeff205c54b4c8912ece843457b7) Add `cacheFile` to `ActionsToolCache` service (closes #46)
+* Add `installBinary` and `installBinaryAndAddToPath` to `ToolInstaller`
+  for single-binary tools like Biome CLI (closes #40)
+* Add `BinaryInstallOptions` type export
+
+### Other
+
+* [`ff327e0`](https://github.com/savvy-web/github-action-effects/commit/ff327e02c9e3eeff205c54b4c8912ece843457b7) Fixes #47.
+
 ## 0.9.0
 
 ### Breaking Changes
