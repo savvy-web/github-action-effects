@@ -9,8 +9,6 @@
  */
 
 export type { ActionRunOptions, CoreServices, InputConfig, ParsedInputs } from "./Action.js";
-// -- Namespaces --
-export { Action } from "./Action.js";
 // -- Errors --
 export { ActionCacheError } from "./errors/ActionCacheError.js";
 export { ActionEnvironmentError } from "./errors/ActionEnvironmentError.js";
