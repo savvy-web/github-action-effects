@@ -1,5 +1,27 @@
 # @savvy-web/pnpm-module-template
 
+## 0.9.0
+
+### Breaking Changes
+
+* [`64b6a04`](https://github.com/savvy-web/github-action-effects/commit/64b6a049057d9a6384a83d576efff4025915ee28) `Action.run()` signature changed from `run(program, layer?)` to `run(program, options?)` where options is `{ layer?, platform? }`. Live layer types now include wrapper service requirements (e.g., `Layer.Layer<ActionInputs, never, ActionsCore>`).
+
+### Features
+
+* [`64b6a04`](https://github.com/savvy-web/github-action-effects/commit/64b6a049057d9a6384a83d576efff4025915ee28) Add `./testing` subpath export and platform abstraction for @actions/\* packages.
+
+### Bug Fixes
+
+* [`6dcae85`](https://github.com/savvy-web/github-action-effects/commit/6dcae852802f778490b600bbb9f8fa57b29f7e27) Replace dynamic `import()` with static imports in Live layers for ncc bundling compatibility.
+
+ToolInstallerLive and GitHubAppLive previously used dynamic `import()` for `@actions/tool-cache`, `@actions/core`, and `@octokit/auth-app`. This broke `@vercel/ncc` bundling because ncc cannot follow dynamic imports, requiring consumers to add bare import hints in their entry points. All Live layers now use static imports consistently, so ncc resolves every dependency chain automatically without manual workarounds.
+
+### Other
+
+* [`64b6a04`](https://github.com/savvy-web/github-action-effects/commit/64b6a049057d9a6384a83d576efff4025915ee28) **Platform abstraction:** Six new wrapper services (ActionsCore, ActionsGitHub, ActionsCache, ActionsExec, ActionsToolCache, OctokitAuthApp) abstract @actions/\* packages behind Effect DI. All Live layers now consume these wrappers instead of importing @actions/\* directly. ActionsPlatformLive bundles all six for convenience.
+
+**Testing subpath:** `@savvy-web/github-action-effects/testing` provides all service tags, Live layers, test layers, errors, schemas, and utils without triggering any @actions/\* module resolution. Eliminates \~20 lines of vi.mock boilerplate per consumer test file.
+
 ## 0.8.0
 
 ### Breaking Changes
