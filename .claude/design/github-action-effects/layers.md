@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-09
-last-synced: 2026-03-09
+updated: 2026-03-19
+last-synced: 2026-03-19
 completeness: 90
 related:
   - ./index.md
@@ -141,6 +141,29 @@ Action Helpers:
   Action.parseInputs     — inlined in Action.ts, reads all inputs from a config record
                            (depends on ActionInputs service, not bundled into Action.run)
 ```
+
+---
+
+## Import Pattern
+
+All Live layers use static imports for their dependencies, including optional
+peer dependencies. No Live layer uses dynamic `import()`. This is required
+because `@vercel/ncc` (used by `@savvy-web/github-action-builder`) cannot
+follow dynamic imports at bundle time. The static import pattern is consistent
+across all layers:
+
+- `ActionCacheLive` -- `import * as cache from "@actions/cache"`
+- `CommandRunnerLive` -- `import * as exec from "@actions/exec"`
+- `GitHubClientLive` -- `import * as github from "@actions/github"`
+- `ToolInstallerLive` -- `import * as tc from "@actions/tool-cache"` and
+  `import * as core from "@actions/core"`
+- `GitHubAppLive` -- `import { createAppAuth } from "@octokit/auth-app"`
+- `OtelExporterLive` / `OtelTelemetryLive` -- static `@effect/opentelemetry`
+  and `@opentelemetry/*` imports
+
+Consumers do not need bare `import` hints (e.g., `import "@actions/tool-cache"`)
+in their entry points. ncc resolves all imports statically from the library's
+Live layer files.
 
 ---
 

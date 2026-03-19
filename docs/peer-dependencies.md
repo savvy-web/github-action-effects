@@ -135,9 +135,13 @@ You do not need to install them separately.
 | `@opentelemetry/exporter-metrics-otlp-http` | HTTP/JSON metric export |
 | `@opentelemetry/exporter-metrics-otlp-proto` | HTTP/protobuf metric export |
 
-These are regular dependencies (not optional peers) because `@vercel/ncc`
-cannot resolve dynamic `import()` calls. Static imports with bundled
-dependencies ensure reliable ncc compilation.
+These are regular dependencies (not optional peers) so that `@vercel/ncc` can
+resolve them without the consumer needing to install them separately.
+
+All imports throughout the library (including Live layers for optional peers
+like `@actions/tool-cache` and `@octokit/auth-app`) are static. This means
+`@vercel/ncc` can follow every import chain and bundle the correct packages
+automatically -- no manual bundling hints are required.
 
 Additional regular dependencies for config file parsing:
 

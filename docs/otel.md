@@ -191,5 +191,5 @@ regular `dependencies` of this library. You do not need to install them
 separately.
 
 This design ensures that `@vercel/ncc` (used by `@savvy-web/github-action-builder`)
-can resolve all OTel imports statically. Previous versions used optional peer
-dependencies with dynamic `import()`, which caused failures in ncc bundles.
+can resolve all OTel imports statically. All imports throughout the library are
+static, so ncc can follow every dependency chain without manual bundling hints.

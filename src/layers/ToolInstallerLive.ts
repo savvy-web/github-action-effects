@@ -1,34 +1,11 @@
+import * as core from "@actions/core";
+import * as tc from "@actions/tool-cache";
 import { Effect, Layer } from "effect";
 import { ToolInstallerError } from "../errors/ToolInstallerError.js";
 import type { ToolInstallOptions } from "../services/ToolInstaller.js";
 import { ToolInstaller } from "../services/ToolInstaller.js";
 
-const importToolCache = (tool: string, version: string) =>
-	Effect.tryPromise({
-		try: () => import("@actions/tool-cache"),
-		catch: () =>
-			new ToolInstallerError({
-				tool,
-				version,
-				operation: "download",
-				reason: "@actions/tool-cache is not installed. Add it as a dependency to use ToolInstaller.",
-			}),
-	});
-
-const importCore = (tool: string, version: string) =>
-	Effect.tryPromise({
-		try: () => import("@actions/core"),
-		catch: () =>
-			new ToolInstallerError({
-				tool,
-				version,
-				operation: "path",
-				reason: "@actions/core is not installed. Add it as a dependency to use ToolInstaller.",
-			}),
-	});
-
 const extractArchive = (
-	tc: typeof import("@actions/tool-cache"),
 	downloadedPath: string,
 	archiveType: "tar.gz" | "tar.xz" | "zip",
 	tool: string,
@@ -78,9 +55,8 @@ const extractArchive = (
  */
 export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolInstaller, {
 	install: (name: string, version: string, downloadUrl: string, options?: ToolInstallOptions) =>
-		importToolCache(name, version).pipe(
-			Effect.flatMap((tc) => {
-				const cached = tc.find(name, version);
+		Effect.sync(() => tc.find(name, version)).pipe(
+			Effect.flatMap((cached) => {
 				if (cached) {
 					const toolPath = options?.binSubPath ? `${cached}/${options.binSubPath}` : cached;
 					return Effect.succeed(toolPath);
@@ -98,7 +74,7 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 							reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
 						}),
 				}).pipe(
-					Effect.flatMap((downloadedPath) => extractArchive(tc, downloadedPath, archiveType, name, version)),
+					Effect.flatMap((downloadedPath) => extractArchive(downloadedPath, archiveType, name, version)),
 					Effect.flatMap((extractedPath) =>
 						Effect.tryPromise({
 							try: () => tc.cacheDir(extractedPath, name, version),
@@ -118,17 +94,16 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 		),
 
 	isCached: (name: string, version: string) =>
-		importToolCache(name, version).pipe(
-			Effect.map((tc) => tc.find(name, version) !== ""),
+		Effect.sync(() => tc.find(name, version)).pipe(
+			Effect.map((cached) => cached !== ""),
 			Effect.catchAll(() => Effect.succeed(false)),
 			Effect.catchAllDefect(() => Effect.succeed(false)),
 			Effect.withSpan("ToolInstaller.isCached", { attributes: { tool: name, version } }),
 		),
 
 	installAndAddToPath: (name: string, version: string, downloadUrl: string, options?: ToolInstallOptions) =>
-		importToolCache(name, version).pipe(
-			Effect.flatMap((tc) => {
-				const cached = tc.find(name, version);
+		Effect.sync(() => tc.find(name, version)).pipe(
+			Effect.flatMap((cached) => {
 				if (cached) {
 					const toolPath = options?.binSubPath ? `${cached}/${options.binSubPath}` : cached;
 					return Effect.succeed(toolPath);
@@ -146,7 +121,7 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 							reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
 						}),
 				}).pipe(
-					Effect.flatMap((downloadedPath) => extractArchive(tc, downloadedPath, archiveType, name, version)),
+					Effect.flatMap((downloadedPath) => extractArchive(downloadedPath, archiveType, name, version)),
 					Effect.flatMap((extractedPath) =>
 						Effect.tryPromise({
 							try: () => tc.cacheDir(extractedPath, name, version),
@@ -163,23 +138,19 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 				);
 			}),
 			Effect.flatMap((toolPath) =>
-				importCore(name, version).pipe(
-					Effect.flatMap((core) =>
-						Effect.try({
-							try: () => {
-								core.addPath(toolPath);
-								return toolPath;
-							},
-							catch: (error) =>
-								new ToolInstallerError({
-									tool: name,
-									version,
-									operation: "path",
-									reason: `Failed to add to PATH: ${error instanceof Error ? error.message : String(error)}`,
-								}),
+				Effect.try({
+					try: () => {
+						core.addPath(toolPath);
+						return toolPath;
+					},
+					catch: (error) =>
+						new ToolInstallerError({
+							tool: name,
+							version,
+							operation: "path",
+							reason: `Failed to add to PATH: ${error instanceof Error ? error.message : String(error)}`,
 						}),
-					),
-				),
+				}),
 			),
 			Effect.withSpan("ToolInstaller.installAndAddToPath", { attributes: { tool: name, version, downloadUrl } }),
 		),

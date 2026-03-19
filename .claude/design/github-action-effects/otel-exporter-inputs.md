@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-09
-last-synced: 2026-03-09
+updated: 2026-03-19
+last-synced: 2026-03-19
 completeness: 85
 related:
   - ./index.md
@@ -127,7 +127,7 @@ authors get OTel support with zero configuration.
 
 ## Current State
 
-The OTel exporter input design is fully specified with schema validation, dynamic protocol-based package imports, and integration into `Action.run()`. Implementation covers all three OTLP protocols with automatic env var fallback resolution.
+The OTel exporter input design is fully specified with schema validation, static protocol-based package imports, and integration into `Action.run()`. Implementation covers all three OTLP protocols with automatic env var fallback resolution. All OTel packages are regular dependencies with static imports, consistent with the library-wide pattern of no dynamic `import()` calls in Live layers.
 
 ## Rationale
 
