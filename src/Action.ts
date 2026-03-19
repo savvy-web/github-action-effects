@@ -149,7 +149,7 @@ export const Action = {
 		const runnable = bufferedProgram.pipe(
 			Effect.onExit(() => writeTelemetrySummary),
 			Effect.provide(fullLayer),
-			Effect.provide(ActionLoggerLayer),
+			Effect.provide(Layer.provide(ActionLoggerLayer, ActionsCoreLive)),
 			Effect.catchAllCause((cause) => {
 				const message = Action.formatCause(cause);
 

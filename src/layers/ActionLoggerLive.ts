@@ -1,8 +1,9 @@
-import * as core from "@actions/core";
+import type { Context } from "effect";
 import { Effect, FiberRef, FiberRefs, Layer, LogLevel, Logger } from "effect";
 import type { Scope } from "effect/Scope";
 import type { ActionLogLevel } from "../schemas/LogLevel.js";
 import { ActionLogger } from "../services/ActionLogger.js";
+import { ActionsCore } from "../services/ActionsCore.js";
 
 /**
  * FiberRef that holds the current action log level for the fiber.
@@ -31,7 +32,11 @@ const shouldEmitUserFacing = (effectLevel: LogLevel.LogLevel, actionLevel: Actio
 	return LogLevel.greaterThanEqual(effectLevel, LogLevel.Warning);
 };
 
-const emitToGitHub = (level: LogLevel.LogLevel, message: string): void => {
+const emitToGitHub = (
+	core: Context.Tag.Service<typeof ActionsCore>,
+	level: LogLevel.LogLevel,
+	message: string,
+): void => {
 	if (LogLevel.greaterThanEqual(level, LogLevel.Error)) {
 		core.error(message);
 	} else if (LogLevel.greaterThanEqual(level, LogLevel.Warning)) {
@@ -47,7 +52,7 @@ const emitToGitHub = (level: LogLevel.LogLevel, message: string): void => {
  * - Always writes to `core.debug()` (GitHub-gated shadow channel).
  * - Writes to user-facing output based on the action log level.
  */
-export const makeActionLogger = (): Logger.Logger<unknown, void> =>
+export const makeActionLogger = (core: Context.Tag.Service<typeof ActionsCore>): Logger.Logger<unknown, void> =>
 	Logger.make(({ logLevel, message, context }) => {
 		const text = formatMessage(message);
 
@@ -57,14 +62,19 @@ export const makeActionLogger = (): Logger.Logger<unknown, void> =>
 		const actionLevel = FiberRefs.getOrDefault(context, CurrentLogLevel);
 
 		if (shouldEmitUserFacing(logLevel, actionLevel)) {
-			emitToGitHub(logLevel, text);
+			emitToGitHub(core, logLevel, text);
 		}
 	});
 
 /**
  * Layer that installs the GitHub Actions logger as the default Effect logger.
  */
-export const ActionLoggerLayer: Layer.Layer<never> = Logger.replace(Logger.defaultLogger, makeActionLogger());
+export const ActionLoggerLayer: Layer.Layer<never, never, ActionsCore> = Layer.unwrapEffect(
+	Effect.gen(function* () {
+		const core = yield* ActionsCore;
+		return Logger.replace(Logger.defaultLogger, makeActionLogger(core));
+	}),
+);
 
 // -- Buffer implementation --
 
@@ -74,7 +84,7 @@ interface LogBuffer {
 
 const createBuffer = (): LogBuffer => ({ entries: [] });
 
-const flushBuffer = (label: string, buffer: LogBuffer): void => {
+const flushBuffer = (core: Context.Tag.Service<typeof ActionsCore>, label: string, buffer: LogBuffer): void => {
 	if (buffer.entries.length > 0) {
 		core.info(`--- Buffered output for "${label}" ---`);
 		for (const entry of buffer.entries) {
@@ -87,50 +97,56 @@ const flushBuffer = (label: string, buffer: LogBuffer): void => {
 /**
  * Live implementation of the ActionLogger service.
  */
-export const ActionLoggerLive: Layer.Layer<ActionLogger> = Layer.succeed(ActionLogger, {
-	group: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
-		Effect.acquireUseRelease(
-			Effect.sync(() => core.startGroup(name)),
-			() => effect,
-			() => Effect.sync(() => core.endGroup()),
-		) as Effect.Effect<A, E, Exclude<R, Scope>>,
+export const ActionLoggerLive: Layer.Layer<ActionLogger, never, ActionsCore> = Layer.effect(
+	ActionLogger,
+	Effect.gen(function* () {
+		const core = yield* ActionsCore;
+		return {
+			group: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
+				Effect.acquireUseRelease(
+					Effect.sync(() => core.startGroup(name)),
+					() => effect,
+					() => Effect.sync(() => core.endGroup()),
+				) as Effect.Effect<A, E, Exclude<R, Scope>>,
 
-	withBuffer: <A, E, R>(label: string, effect: Effect.Effect<A, E, R>) =>
-		FiberRef.get(CurrentLogLevel).pipe(
-			Effect.flatMap((level) => {
-				if (level !== "info") {
-					return effect;
-				}
-				const buffer = createBuffer();
-				const bufferingLogger = Logger.make(({ logLevel, message }) => {
-					const text = formatMessage(message);
-					core.debug(text);
-					if (LogLevel.greaterThanEqual(logLevel, LogLevel.Warning)) {
-						emitToGitHub(logLevel, text);
-					} else {
-						buffer.entries.push(text);
-					}
-				});
-				return effect.pipe(
-					Logger.withMinimumLogLevel(LogLevel.All),
-					Effect.provide(Logger.replace(Logger.defaultLogger, bufferingLogger)),
-					Effect.tapErrorCause(() => Effect.sync(() => flushBuffer(label, buffer))),
-				);
-			}),
-		) as Effect.Effect<A, E, Exclude<R, Scope>>,
+			withBuffer: <A, E, R>(label: string, effect: Effect.Effect<A, E, R>) =>
+				FiberRef.get(CurrentLogLevel).pipe(
+					Effect.flatMap((level) => {
+						if (level !== "info") {
+							return effect;
+						}
+						const buffer = createBuffer();
+						const bufferingLogger = Logger.make(({ logLevel, message }) => {
+							const text = formatMessage(message);
+							core.debug(text);
+							if (LogLevel.greaterThanEqual(logLevel, LogLevel.Warning)) {
+								emitToGitHub(core, logLevel, text);
+							} else {
+								buffer.entries.push(text);
+							}
+						});
+						return effect.pipe(
+							Logger.withMinimumLogLevel(LogLevel.All),
+							Effect.provide(Logger.replace(Logger.defaultLogger, bufferingLogger)),
+							Effect.tapErrorCause(() => Effect.sync(() => flushBuffer(core, label, buffer))),
+						);
+					}),
+				) as Effect.Effect<A, E, Exclude<R, Scope>>,
 
-	annotationError: (message, properties) =>
-		Effect.sync(() => {
-			properties !== undefined ? core.error(message, properties) : core.error(message);
-		}),
+			annotationError: (message, properties) =>
+				Effect.sync(() => {
+					properties !== undefined ? core.error(message, properties) : core.error(message);
+				}),
 
-	annotationWarning: (message, properties) =>
-		Effect.sync(() => {
-			properties !== undefined ? core.warning(message, properties) : core.warning(message);
-		}),
+			annotationWarning: (message, properties) =>
+				Effect.sync(() => {
+					properties !== undefined ? core.warning(message, properties) : core.warning(message);
+				}),
 
-	annotationNotice: (message, properties) =>
-		Effect.sync(() => {
-			properties !== undefined ? core.notice(message, properties) : core.notice(message);
-		}),
-});
+			annotationNotice: (message, properties) =>
+				Effect.sync(() => {
+					properties !== undefined ? core.notice(message, properties) : core.notice(message);
+				}),
+		};
+	}),
+);

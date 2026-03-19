@@ -1,6 +1,6 @@
-import type { AnnotationProperties } from "@actions/core";
 import type { Effect } from "effect";
 import { Context } from "effect";
+import type { AnnotationProperties } from "./ActionsCore.js";
 
 /**
  * Service for action-specific logging operations beyond the Effect Logger.
