@@ -83,7 +83,7 @@ const generateToken = (
 			};
 		},
 		catch: (error) => new GitHubAppError({ operation: "token", reason: String(error) }),
-	}).pipe(Effect.withSpan("GitHubApp.generateToken"));
+	});
 
 const revokeToken = (token: string): Effect.Effect<void, GitHubAppError> =>
 	Effect.tryPromise({
@@ -100,7 +100,7 @@ const revokeToken = (token: string): Effect.Effect<void, GitHubAppError> =>
 			}
 		},
 		catch: (error) => new GitHubAppError({ operation: "revoke", reason: String(error) }),
-	}).pipe(Effect.withSpan("GitHubApp.revokeToken"));
+	});
 
 /**
  * Live implementation of GitHubApp using octokit auth-app.
@@ -130,7 +130,7 @@ export const GitHubAppLive: Layer.Layer<GitHubApp, never, OctokitAuthApp> = Laye
 					generateToken(authApp, appId, privateKey),
 					(tokenInfo) => effect(tokenInfo.token),
 					(tokenInfo) => revokeToken(tokenInfo.token).pipe(Effect.catchAll(() => Effect.void)),
-				).pipe(Effect.withSpan("GitHubApp.withToken")),
+				),
 		};
 	}),
 );

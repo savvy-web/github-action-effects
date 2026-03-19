@@ -43,10 +43,7 @@ export const GitHubClientLive = (token: string): Layer.Layer<GitHubClient, GitHu
 					Effect.tryPromise({
 						try: () => fn(octokit),
 						catch: (error) => wrapError(operation, error),
-					}).pipe(
-						Effect.map((response) => response.data),
-						Effect.withSpan("GitHubClient.rest", { attributes: { "github.operation": operation } }),
-					),
+					}).pipe(Effect.map((response) => response.data)),
 
 				paginate: <T>(
 					operation: string,
@@ -70,21 +67,14 @@ export const GitHubClientLive = (token: string): Layer.Layer<GitHubClient, GitHu
 							}),
 						);
 
-					return loop(1, []).pipe(
-						Effect.withSpan("GitHubClient.paginate", {
-							attributes: {
-								"github.operation": operation,
-								"pagination.perPage": perPage,
-							},
-						}),
-					);
+					return loop(1, []);
 				},
 
 				graphql: <T>(query: string, variables: Record<string, unknown> = {}) =>
 					Effect.tryPromise({
 						try: () => octokit.graphql<T>(query, variables),
 						catch: (error) => wrapError("graphql", error),
-					}).pipe(Effect.withSpan("GitHubClient.graphql", { attributes: { "github.operation": "graphql" } })),
+					}),
 
 				repo: Effect.try({
 					try: () => {
@@ -104,7 +94,7 @@ export const GitHubClientLive = (token: string): Layer.Layer<GitHubClient, GitHu
 							reason: error instanceof Error ? error.message : String(error),
 							retryable: false,
 						}),
-				}).pipe(Effect.withSpan("GitHubClient.repo")),
+				}),
 			})),
 		),
 	);

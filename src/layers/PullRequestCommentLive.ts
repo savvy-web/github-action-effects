@@ -53,7 +53,6 @@ export const PullRequestCommentLive: Layer.Layer<PullRequestComment, never, GitH
 			).pipe(
 				Effect.map((data) => data.id),
 				Effect.mapError(mapError(prNumber, "create")),
-				Effect.withSpan("PullRequestComment.create", { attributes: { "pr.number": String(prNumber) } }),
 			),
 
 		upsert: (prNumber: number, markerKey: string, body: string) => {
@@ -99,12 +98,7 @@ export const PullRequestCommentLive: Layer.Layer<PullRequestComment, never, GitH
 								.pipe(Effect.map((data) => data.id));
 						}),
 					),
-			).pipe(
-				Effect.mapError(mapError(prNumber, "upsert")),
-				Effect.withSpan("PullRequestComment.upsert", {
-					attributes: { "pr.number": String(prNumber), "comment.marker": markerKey },
-				}),
-			);
+			).pipe(Effect.mapError(mapError(prNumber, "upsert")));
 		},
 
 		find: (prNumber: number, markerKey: string) => {
@@ -129,12 +123,7 @@ export const PullRequestCommentLive: Layer.Layer<PullRequestComment, never, GitH
 							return Option.none();
 						}),
 					),
-			).pipe(
-				Effect.mapError(mapError(prNumber, "find")),
-				Effect.withSpan("PullRequestComment.find", {
-					attributes: { "pr.number": String(prNumber), "comment.marker": markerKey },
-				}),
-			);
+			).pipe(Effect.mapError(mapError(prNumber, "find")));
 		},
 
 		delete: (prNumber: number, commentId: number) =>
@@ -146,10 +135,6 @@ export const PullRequestCommentLive: Layer.Layer<PullRequestComment, never, GitH
 						comment_id: commentId,
 					}),
 				),
-			).pipe(
-				Effect.asVoid,
-				Effect.mapError(mapError(prNumber, "delete")),
-				Effect.withSpan("PullRequestComment.delete", { attributes: { "pr.number": String(prNumber) } }),
-			),
+			).pipe(Effect.asVoid, Effect.mapError(mapError(prNumber, "delete"))),
 	})),
 );

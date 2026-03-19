@@ -79,10 +79,7 @@ const toErrorMissing = (
  */
 export const TokenPermissionCheckerLive = (permissions: Record<string, string>): Layer.Layer<TokenPermissionChecker> =>
 	Layer.succeed(TokenPermissionChecker, {
-		check: (requirements) =>
-			Effect.sync(() => comparePermissions(permissions, requirements)).pipe(
-				Effect.withSpan("TokenPermissionChecker.check"),
-			),
+		check: (requirements) => Effect.sync(() => comparePermissions(permissions, requirements)),
 
 		assertSufficient: (requirements) =>
 			Effect.gen(function* () {
@@ -96,7 +93,7 @@ export const TokenPermissionCheckerLive = (permissions: Record<string, string>):
 					);
 				}
 				return result;
-			}).pipe(Effect.withSpan("TokenPermissionChecker.assertSufficient")),
+			}),
 
 		assertExact: (requirements) =>
 			Effect.gen(function* () {
@@ -122,10 +119,7 @@ export const TokenPermissionCheckerLive = (permissions: Record<string, string>):
 					);
 				}
 				return result;
-			}).pipe(Effect.withSpan("TokenPermissionChecker.assertExact")),
+			}),
 
-		warnOverPermissioned: (requirements) =>
-			Effect.sync(() => comparePermissions(permissions, requirements)).pipe(
-				Effect.withSpan("TokenPermissionChecker.warnOverPermissioned"),
-			),
+		warnOverPermissioned: (requirements) => Effect.sync(() => comparePermissions(permissions, requirements)),
 	});

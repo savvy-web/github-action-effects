@@ -37,9 +37,6 @@ export const GitHubGraphQLLive: Layer.Layer<GitHubGraphQL, never, GitHubClient> 
 							errors: extractGraphQLErrors(error),
 						}),
 				),
-				Effect.withSpan("GitHubGraphQL.query", {
-					attributes: { "graphql.operation": operation },
-				}),
 			),
 
 		mutation: <T>(operation: string, mutationString: string, variables?: Record<string, unknown>) =>
@@ -52,9 +49,6 @@ export const GitHubGraphQLLive: Layer.Layer<GitHubGraphQL, never, GitHubClient> 
 							errors: extractGraphQLErrors(error),
 						}),
 				),
-				Effect.withSpan("GitHubGraphQL.mutation", {
-					attributes: { "graphql.operation": operation },
-				}),
 			),
 	})),
 );

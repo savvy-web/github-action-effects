@@ -27,9 +27,6 @@ export const PackagePublishLive: Layer.Layer<PackagePublish, never, CommandRunne
 								reason: error.reason,
 							}),
 					),
-					Effect.withSpan("PackagePublish.setupAuth", {
-						attributes: { "publish.registry": registryUrl },
-					}),
 				),
 
 			pack: (packageDir: string) =>
@@ -80,9 +77,6 @@ export const PackagePublishLive: Layer.Layer<PackagePublish, never, CommandRunne
 											: String(error),
 								}),
 					),
-					Effect.withSpan("PackagePublish.pack", {
-						attributes: { "publish.packageDir": packageDir },
-					}),
 				),
 
 			publish: (
@@ -110,9 +104,6 @@ export const PackagePublishLive: Layer.Layer<PackagePublish, never, CommandRunne
 								reason: error.reason,
 							}),
 					),
-					Effect.withSpan("PackagePublish.publish", {
-						attributes: { "publish.packageDir": packageDir },
-					}),
 				);
 			},
 
@@ -127,9 +118,6 @@ export const PackagePublishLive: Layer.Layer<PackagePublish, never, CommandRunne
 								reason: error.reason,
 							}),
 					),
-					Effect.withSpan("PackagePublish.verifyIntegrity", {
-						attributes: { "publish.package": packageName, "publish.version": version },
-					}),
 				),
 
 			publishToRegistries: (
@@ -166,9 +154,6 @@ export const PackagePublishLive: Layer.Layer<PackagePublish, never, CommandRunne
 										: String(error),
 							}),
 					),
-					Effect.withSpan("PackagePublish.publishToRegistries", {
-						attributes: { "publish.registryCount": String(registries.length) },
-					}),
 				),
 		})),
 	),

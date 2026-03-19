@@ -23,29 +23,29 @@ const makeTestClient = (state: PackagePublishTestState): typeof PackagePublish.S
 	setupAuth: (registry, token) =>
 		Effect.sync(() => {
 			state.setupAuthCalls.push({ registry, token });
-		}).pipe(Effect.withSpan("PackagePublish.setupAuth")),
+		}),
 
 	pack: (packageDir) =>
 		Effect.sync(() => {
 			state.packCalls.push({ packageDir });
 			return state.packResult;
-		}).pipe(Effect.withSpan("PackagePublish.pack")),
+		}),
 
 	publish: (packageDir, options) =>
 		Effect.sync(() => {
 			state.publishCalls.push(options ? { packageDir, options: options as Record<string, unknown> } : { packageDir });
-		}).pipe(Effect.withSpan("PackagePublish.publish")),
+		}),
 
 	verifyIntegrity: (packageName, version, expectedDigest) =>
 		Effect.sync(() => {
 			state.verifyIntegrityCalls.push({ packageName, version, expectedDigest });
 			return state.integrityMatch;
-		}).pipe(Effect.withSpan("PackagePublish.verifyIntegrity")),
+		}),
 
 	publishToRegistries: (packageDir, registries) =>
 		Effect.sync(() => {
 			state.publishToRegistriesCalls.push({ packageDir, registries });
-		}).pipe(Effect.withSpan("PackagePublish.publishToRegistries")),
+		}),
 });
 
 const makeState = (

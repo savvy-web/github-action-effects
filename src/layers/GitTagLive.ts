@@ -43,11 +43,7 @@ export const GitTagLive: Layer.Layer<GitTag, never, GitHubClient> = Layer.effect
 						sha,
 					}),
 				),
-			).pipe(
-				Effect.asVoid,
-				Effect.mapError(mapError("create", tag)),
-				Effect.withSpan("GitTag.create", { attributes: { "tag.name": tag } }),
-			),
+			).pipe(Effect.asVoid, Effect.mapError(mapError("create", tag))),
 
 		delete: (tag) =>
 			Effect.flatMap(client.repo, ({ owner, repo }) =>
@@ -58,11 +54,7 @@ export const GitTagLive: Layer.Layer<GitTag, never, GitHubClient> = Layer.effect
 						ref: `tags/${tag}`,
 					}),
 				),
-			).pipe(
-				Effect.asVoid,
-				Effect.mapError(mapError("delete", tag)),
-				Effect.withSpan("GitTag.delete", { attributes: { "tag.name": tag } }),
-			),
+			).pipe(Effect.asVoid, Effect.mapError(mapError("delete", tag))),
 
 		list: (prefix) =>
 			Effect.flatMap(client.repo, ({ owner, repo }) =>
@@ -85,7 +77,6 @@ export const GitTagLive: Layer.Layer<GitTag, never, GitHubClient> = Layer.effect
 					),
 				),
 				Effect.mapError(mapError("list")),
-				Effect.withSpan("GitTag.list"),
 			),
 
 		resolve: (tag) =>
@@ -100,7 +91,6 @@ export const GitTagLive: Layer.Layer<GitTag, never, GitHubClient> = Layer.effect
 			).pipe(
 				Effect.map((data) => (data as { object: { sha: string } }).object.sha),
 				Effect.mapError(mapError("resolve", tag)),
-				Effect.withSpan("GitTag.resolve", { attributes: { "tag.name": tag } }),
 			),
 	})),
 );

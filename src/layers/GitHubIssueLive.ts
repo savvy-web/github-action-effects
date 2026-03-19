@@ -89,7 +89,6 @@ export const GitHubIssueLive: Layer.Layer<GitHubIssue, never, GitHubClient | Git
 				).pipe(
 					Effect.map((items) => items.map((item) => toIssueData(item as unknown as RawIssue))),
 					Effect.mapError(mapClientError("list")),
-					Effect.withSpan("GitHubIssue.list"),
 				),
 
 			close: (issueNumber, reason) =>
@@ -103,13 +102,7 @@ export const GitHubIssueLive: Layer.Layer<GitHubIssue, never, GitHubClient | Git
 							...(reason !== undefined ? { state_reason: reason } : {}),
 						}),
 					),
-				).pipe(
-					Effect.asVoid,
-					Effect.mapError(mapClientError("close", issueNumber)),
-					Effect.withSpan("GitHubIssue.close", {
-						attributes: { "issue.number": String(issueNumber) },
-					}),
-				),
+				).pipe(Effect.asVoid, Effect.mapError(mapClientError("close", issueNumber))),
 
 			comment: (issueNumber, body) =>
 				Effect.flatMap(client.repo, ({ owner, repo }) =>
@@ -124,9 +117,6 @@ export const GitHubIssueLive: Layer.Layer<GitHubIssue, never, GitHubClient | Git
 				).pipe(
 					Effect.map((data) => ({ id: (data as unknown as { id: number }).id })),
 					Effect.mapError(mapClientError("comment", issueNumber)),
-					Effect.withSpan("GitHubIssue.comment", {
-						attributes: { "issue.number": String(issueNumber) },
-					}),
 				),
 
 			getLinkedIssues: (prNumber) =>
@@ -146,9 +136,6 @@ export const GitHubIssueLive: Layer.Layer<GitHubIssue, never, GitHubClient | Git
 								retryable: false,
 							}),
 					),
-					Effect.withSpan("GitHubIssue.getLinkedIssues", {
-						attributes: { "pr.number": String(prNumber) },
-					}),
 				),
 		})),
 	),

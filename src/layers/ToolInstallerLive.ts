@@ -98,7 +98,6 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller, never, ActionsCore | 
 							Effect.map((cachedPath) => (options?.binSubPath ? `${cachedPath}/${options.binSubPath}` : cachedPath)),
 						);
 					}),
-					Effect.withSpan("ToolInstaller.install", { attributes: { tool: name, version, downloadUrl } }),
 				),
 
 			isCached: (name: string, version: string) =>
@@ -106,7 +105,6 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller, never, ActionsCore | 
 					Effect.map((cached) => cached !== ""),
 					Effect.catchAll(() => Effect.succeed(false)),
 					Effect.catchAllDefect(() => Effect.succeed(false)),
-					Effect.withSpan("ToolInstaller.isCached", { attributes: { tool: name, version } }),
 				),
 
 			installAndAddToPath: (name: string, version: string, downloadUrl: string, options?: ToolInstallOptions) =>
@@ -160,7 +158,6 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller, never, ActionsCore | 
 								}),
 						}),
 					),
-					Effect.withSpan("ToolInstaller.installAndAddToPath", { attributes: { tool: name, version, downloadUrl } }),
 				),
 		};
 	}),

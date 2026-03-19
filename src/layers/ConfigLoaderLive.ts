@@ -51,7 +51,6 @@ export const ConfigLoaderLive: Layer.Layer<ConfigLoader, never, FileSystem.FileS
 					}),
 				),
 				Effect.flatMap((data) => validate(path, schema, data)),
-				Effect.withSpan("ConfigLoader.loadJson", { attributes: { path } }),
 			),
 
 		loadJsonc: <T>(path: string, schema: Schema.Schema<T>) =>
@@ -69,7 +68,6 @@ export const ConfigLoaderLive: Layer.Layer<ConfigLoader, never, FileSystem.FileS
 					),
 				),
 				Effect.flatMap((data) => validate(path, schema, data)),
-				Effect.withSpan("ConfigLoader.loadJsonc", { attributes: { path } }),
 			),
 
 		loadYaml: <T>(path: string, schema: Schema.Schema<T>) =>
@@ -87,14 +85,12 @@ export const ConfigLoaderLive: Layer.Layer<ConfigLoader, never, FileSystem.FileS
 					),
 				),
 				Effect.flatMap((data) => validate(path, schema, data)),
-				Effect.withSpan("ConfigLoader.loadYaml", { attributes: { path } }),
 			),
 
 		exists: (path: string) =>
 			fs.access(path).pipe(
 				Effect.map(() => true),
 				Effect.catchAll(() => Effect.succeed(false)),
-				Effect.withSpan("ConfigLoader.exists", { attributes: { path } }),
 			),
 	})),
 );
