@@ -141,14 +141,6 @@ Build Tooling:
   DryRunLive             — reads enabled flag from constructor param
   DryRunTest             — always dry, records guarded labels in state
 
-Observability:
-  ActionTelemetryLive    — in-memory metrics + Effect.annotateCurrentSpan
-  ActionTelemetryTest    — in-memory metrics + attributes
-
-  InMemoryTracer.layer   — captures Effect.withSpan spans in memory for reporting
-  OtelTelemetryLive      — bridges Effect tracer to OpenTelemetry (static import, regular dep)
-  OtelExporterLive       — configures OTel exporter via static @effect/opentelemetry import
-
 Platform:
   NodeContext.layer      — @effect/platform-node: FileSystem, Path, Terminal,
                            CommandExecutor, WorkerManager (provided by Action.run)
@@ -192,12 +184,6 @@ DI via `Layer.effect` and `yield*`:
 - `GitHubClientLive` -- `yield* ActionsGitHub`
 - `GitHubAppLive` -- `yield* OctokitAuthApp`
 - `ToolInstallerLive` -- `yield* ActionsCore` + `yield* ActionsToolCache`
-
-### OTel Layers
-
-- `OtelExporterLive` / `OtelTelemetryLive` -- static `@effect/opentelemetry`
-  and `@opentelemetry/*` imports (these are regular dependencies, not optional
-  peers)
 
 Consumers do not need bare `import` hints (e.g., `import "@actions/tool-cache"`)
 in their entry points. ncc resolves all imports statically from the library's
@@ -330,29 +316,6 @@ verification across multiple registries.
 permissions from the `InstallationToken.permissions` field and compares
 against requirements using hierarchical level comparison.
 
-### OtelExporterLive
-
-Takes resolved `ResolvedOtelConfig`. When `enabled=false`, returns
-`InMemoryTracer.layer`. When `enabled=true`, uses a static import of
-`@effect/opentelemetry` to configure `EffectOtel.Tracer.layerGlobal` with
-GitHub-aware resource attributes from `GitHubOtelAttributes.fromEnvironment()`.
-OTel packages are regular dependencies (not optional peers), so static
-imports work reliably in ncc bundles.
-
-### OtelTelemetryLive
-
-Bridges Effect's `Tracer` to `@effect/opentelemetry` via a static import.
-When provided, replaces InMemoryTracer with an OTel-backed tracer. Accepts
-optional `OtelConfig` with `serviceName`, `serviceVersion`, and
-`resourceAttributes`.
-
-### InMemoryTracer
-
-`InMemoryTracer.layer` -- captures all `Effect.withSpan` spans in memory.
-`InMemoryTracer.getSpans()` retrieves completed spans for rendering via
-`TelemetryReport`. Each `provide(InMemoryTracer.layer)` creates an isolated
-store.
-
 ---
 
 ## Test Layer Details
@@ -399,10 +362,6 @@ Test layers use the namespace object pattern for ergonomic test setup:
 - `ConfigLoaderTest.empty()` / `ConfigLoaderTest.layer(state)`
 - `DryRunTest.empty()` / `DryRunTest.layer(state)` -- always dry, records guarded labels
 
-**Observability:**
-
-- `ActionTelemetryTest.empty()` / `ActionTelemetryTest.layer(state)`
-
 Test layers for services like CheckRun, PullRequestComment, GitBranch, etc.
 do NOT depend on GitHubClient -- they operate entirely in-memory.
 
@@ -427,9 +386,9 @@ Tier 1 — Depends on platform wrappers:
   ToolInstaller             <- depends on ActionsCore + ActionsToolCache
 
 Tier 1 — Independent (no service or platform dependencies):
-  ActionEnvironment, DryRun, ActionTelemetry,
-  GithubMarkdown, SemverResolver, ErrorAccumulator, GitHubOtelAttributes,
-  ReportBuilder, TelemetryReport
+  ActionEnvironment, DryRun,
+  GithubMarkdown, SemverResolver, ErrorAccumulator,
+  ReportBuilder
 
 Tier 2 — Single service dependency:
   NpmRegistry               <- depends on CommandRunner
@@ -505,7 +464,7 @@ const MyActionLayer = Layer.mergeAll(
 
 ## Current State
 
-All 30 domain services have both live and test layer implementations. The 6
+All 27 domain services have both live and test layer implementations. The 6
 platform wrapper services have only live layers. The four-tier dependency graph
 is stable, and layer composition patterns are well-established with `Action.run()`
 providing the core layers automatically. All `@actions/*` package imports are

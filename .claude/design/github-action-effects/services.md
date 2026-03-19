@@ -26,7 +26,7 @@ See [layers.md](./layers.md) for live and test layer implementations.
 
 ## Overview
 
-Thirty-six service modules plus six namespace/utility objects, each
+Thirty-three service modules plus five namespace/utility objects, each
 independently usable. `Action.run()` automatically provides
 `NodeContext.layer` from `@effect/platform-node`, so programs also have
 access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
@@ -77,9 +77,6 @@ access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
 │   ├── ConfigLoader        — JSON/JSONC/YAML config loading with schema validation
 │   └── DryRun              — Mutation interception for dry-run mode
 │
-├── Observability
-│   └── ActionTelemetry     — Metric recording and span attributes
-│
 ├── Namespace Objects
 │   ├── Action.*            — run, parseInputs, makeLogger, setLogLevel, resolveLogLevel
 │   └── GithubMarkdown.*    — table, heading, details, bold, code, etc.
@@ -88,9 +85,7 @@ access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
     ├── AutoMerge           — PR auto-merge enable/disable via GraphQL
     ├── SemverResolver      — Semver comparison, parsing, resolution
     ├── ErrorAccumulator    — Process-all-collect-failures pattern
-    ├── GitHubOtelAttributes — Map GitHub env vars to OTel resource attributes
-    ├── ReportBuilder       — Fluent markdown report builder
-    └── TelemetryReport     — Render spans/metrics as GFM markdown
+    └── ReportBuilder       — Fluent markdown report builder
 ```
 
 ---
@@ -109,7 +104,6 @@ single export, reducing barrel clutter and improving discoverability.
   - `platform` -- platform layer providing `ActionsCore` (defaults to
     `ActionsCoreLive`; pass `ActionsPlatformLive` to include all wrapper
     services). Uses `ActionsCore` via DI for `getInput`/`setFailed`/`debug`.
-  Automatically parses OTel inputs and wires up exporter when enabled.
 - `Action.parseInputs(config, crossValidate?)` -- Read and validate all inputs
   at once from a config record
 - `Action.makeLogger()` -- Create the Effect Logger for GitHub Actions
@@ -628,18 +622,6 @@ Cross-cutting mutation interception for dry-run mode.
 
 **Error type:** (none)
 
-### ActionTelemetry Service
-
-Numeric metric recording and span attribute annotation.
-
-**Interface:**
-
-- `metric(name, value, unit?)` -- Record a numeric metric value
-- `attribute(key, value)` -- Annotate the current span with a key-value attribute
-- `getMetrics()` -- Retrieve all recorded metrics. Returns `Array<MetricData>`
-
-**Error type:** (none -- never fails)
-
 ### TokenPermissionChecker Service
 
 Check GitHub token permissions against requirements with three enforcement
@@ -711,14 +693,6 @@ captured in the failures array.
 
 **Types:** `AccumulateResult` -- `{ successes, failures }`
 
-### GitHubOtelAttributes (Pure Function)
-
-Map GitHub Actions environment variables to OpenTelemetry semantic convention
-resource attributes.
-
-- `fromEnvironment(env?)` -- Read `GITHUB_*` and `RUNNER_*` env vars, return
-  `Record<string, string>` with OTel attribute keys
-
 ### ReportBuilder (Fluent Builder)
 
 Composable markdown report builder with multiple output targets.
@@ -734,17 +708,6 @@ Composable markdown report builder with multiple output targets.
 - `report.toCheckRun(checkRunId)` -- Set as check run output
 
 **Types:** `Report` (interface)
-
-### TelemetryReport (Effect Functions)
-
-Render telemetry span data and metrics as GitHub-Flavored Markdown.
-
-- `fromSpans(spans, metrics?)` -- Render as GFM markdown string
-- `toSummary(spans, metrics?)` -- Write to step summary via `ActionOutputs`
-- `toComment(prNumber, markerKey, spans, metrics?)` -- Upsert as PR comment
-- `toCheckRun(checkRunId, spans, metrics?)` -- Set as check run output
-
-**Types:** `SpanSummary` -- `{ name, duration, status, parentName?, attributes }`
 
 ---
 
@@ -774,24 +737,21 @@ Pass `ActionsPlatformLive` as `platform` to provide all 6 wrapper services.
 **Behavior:**
 
 1. Resolves `ActionsCore` from the platform layer (defaults to
-   `ActionsCoreLive`). All OTel input reading, `setFailed` calls, and
-   `debug` calls go through this injected `core` reference — `Action.run()`
-   does not import `@actions/core` directly.
+   `ActionsCoreLive`). All `setFailed` calls and `debug` calls go through
+   this injected `core` reference — `Action.run()` does not import
+   `@actions/core` directly.
 2. Provides core Live layers (ActionInputsLive, ActionLoggerLive,
    ActionOutputsLive, NodeContext.layer) plus ActionLoggerLayer (the
    Effect Logger integration). All core layers depend on `ActionsCore` from
    the platform layer. NodeContext.layer provides Node.js platform services
    from `@effect/platform-node`.
-3. Parses OTel inputs (`otel-enabled`, `otel-endpoint`, `otel-protocol`,
-   `otel-headers`) and conditionally wires up OtelExporterLive or
-   InMemoryTracer based on resolved config.
-4. Catches all errors (via `Effect.catchAllCause`) and routes them to
+3. Catches all errors (via `Effect.catchAllCause`) and routes them to
    `core.setFailed()` using `Action.formatCause` for structured
    `[Tag] message` output, plus JS stack trace and Effect span trace via
    `core.debug()`.
-5. Runs the program with `Effect.runPromise()`
-6. Merges any user-supplied `layer` with the core layers
-7. Last-resort catch on the promise sets `process.exitCode = 1` if even
+4. Runs the program with `Effect.runPromise()`
+5. Merges any user-supplied `layer` with the core layers
+6. Last-resort catch on the promise sets `process.exitCode = 1` if even
    `setFailed` fails
 
 **Note:** `ActionStateLive` is not included in the core layers because not
@@ -802,9 +762,9 @@ option.
 
 ## Current State
 
-All 36 service modules (30 domain + 6 platform wrapper) and 6 namespace/utility
+All 33 service modules (27 domain + 6 platform wrapper) and 5 namespace/utility
 objects are fully defined with interfaces, error types, and live layer
-implementations. The 30 domain services also have test layer implementations.
+implementations. The 27 domain services also have test layer implementations.
 The service catalog is stable and actively used by downstream actions.
 
 ## Rationale

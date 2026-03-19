@@ -61,29 +61,11 @@ The `@actions/*` and `@octokit/auth-app` packages are exclusively imported by
 their corresponding wrapper Live layers. All domain Live layers consume these
 packages through the wrapper services via `Layer.effect` and `yield*`.
 
-### Regular Dependencies (Bundled)
-
-| Package | Used By | Purpose |
-| --- | --- | --- |
-| `@effect/opentelemetry` | OtelExporterLive, OtelTelemetryLive | Effect tracer to OTel bridge |
-| `@opentelemetry/api` | OtelTelemetryLive | OTel API types |
-| `@opentelemetry/exporter-trace-otlp-grpc` | OtelExporterLive | gRPC trace export |
-| `@opentelemetry/exporter-trace-otlp-proto` | OtelExporterLive | HTTP/protobuf trace export |
-| `@opentelemetry/exporter-trace-otlp-http` | OtelExporterLive | HTTP/JSON trace export |
-| `@opentelemetry/exporter-metrics-otlp-grpc` | OtelExporterLive | gRPC metric export |
-| `@opentelemetry/exporter-metrics-otlp-proto` | OtelExporterLive | HTTP/protobuf metric export |
-| `@opentelemetry/exporter-metrics-otlp-http` | OtelExporterLive | HTTP/JSON metric export |
-| `@opentelemetry/resources` | OtelExporterLive | OTel resource definitions |
-| `@opentelemetry/sdk-metrics` | OtelExporterLive | OTel metrics SDK |
-| `@opentelemetry/sdk-trace-node` | OtelExporterLive | OTel tracing SDK |
-
-OTel packages are regular `dependencies` (not optional peers) to avoid
-version management burden on consumers. All Live layers use static imports
-exclusively. `@vercel/ncc` cannot follow dynamic `import()` calls, so static
-imports are required for reliable ncc bundling. The `@actions/*` packages are
-statically imported only by the 6 platform wrapper Live layers; domain Live
-layers use `yield*` DI instead. Consumers do not need bare `import` hints in
-their entry points.
+All Live layers use static imports exclusively. `@vercel/ncc` cannot follow
+dynamic `import()` calls, so static imports are required for reliable ncc
+bundling. The `@actions/*` packages are statically imported only by the 6
+platform wrapper Live layers; domain Live layers use `yield*` DI instead.
+Consumers do not need bare `import` hints in their entry points.
 
 ---
 
@@ -106,9 +88,9 @@ Tier 1 — Depend on platform wrappers:
   ToolInstaller             -> ActionsCore + ActionsToolCache
 
 Tier 1 — Independent (no service dependencies):
-  ActionEnvironment, DryRun, ActionTelemetry
+  ActionEnvironment, DryRun,
   GithubMarkdown, SemverResolver, ErrorAccumulator,
-  GitHubOtelAttributes, ReportBuilder, TelemetryReport
+  ReportBuilder
 
 Tier 2 — Single service dependency:
   NpmRegistry               -> CommandRunner
@@ -181,16 +163,6 @@ they operate entirely in-memory.
 Actions built with the builder benefit from this library but it is not
 required. Any Node.js 24 action can use these services.
 
-### OpenTelemetry
-
-When OTel is enabled (via `otel-enabled` input or `OTEL_EXPORTER_OTLP_ENDPOINT`
-env var), `Action.run()` automatically wires up the `@effect/opentelemetry`
-tracer bridge via static imports. `GitHubOtelAttributes.fromEnvironment()` maps
-GitHub environment variables to OTel semantic conventions for resource
-attributes. OTel packages are regular dependencies (not optional peers) to
-ensure reliable ncc bundling. See
-[otel-exporter-inputs.md](./otel-exporter-inputs.md) for details.
-
 ## Current State
 
 All peer dependencies and service tiers are documented with a complete dependency
@@ -209,4 +181,3 @@ Separating required from optional peer dependencies and organizing services into
 - [Architecture Index](./index.md) -- overall architecture and design overview
 - [Services](./services.md) -- service interface definitions
 - [Layers](./layers.md) -- layer dependency graph and composition
-- [OTel Exporter Inputs](./otel-exporter-inputs.md) -- OpenTelemetry exporter configuration

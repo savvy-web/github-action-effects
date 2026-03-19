@@ -75,7 +75,6 @@ No separate `Base` export is needed. The `*Base` exports were removed in v0.8.0.
 | `ToolInstallerError` | ToolInstaller | operation, name, reason |
 | `TokenPermissionError` | TokenPermissionChecker | missing permissions array |
 | `SemverResolverError` | SemverResolver | operation, version, reason |
-| `OtelExporterError` | OtelExporterLive | operation (`"resolve"`, `"init"`, `"export"`), reason |
 
 ### Error Hierarchy
 
@@ -152,24 +151,14 @@ platform wrapper services. They are exported from the main barrel and the
 | `PackageManagerInfo` | `schemas/PackageManager.ts` | Detected PM info |
 | `NpmPackageInfo` | `schemas/NpmPackage.ts` | npm registry package metadata |
 | `RateLimitStatus` | `schemas/RateLimit.ts` | GitHub API rate limit status |
-| `MetricData` | `schemas/Telemetry.ts` | Numeric metric observation |
 | `PermissionLevel` | `schemas/TokenPermission.ts` | Token permission level (`"read"`, `"write"`, `"admin"`) |
 | `PermissionGap` | `schemas/TokenPermission.ts` | Missing/insufficient permission |
 | `ExtraPermission` | `schemas/TokenPermission.ts` | Over-scoped permission |
 | `PermissionCheckResult` | `schemas/TokenPermission.ts` | Full permission check result |
-| `OtelEnabled` | `schemas/OtelExporter.ts` | OTel enabled state (`"enabled"`, `"disabled"`, `"auto"`) |
-| `OtelProtocol` | `schemas/OtelExporter.ts` | OTLP protocol (`"grpc"`, `"http/protobuf"`, `"http/json"`) |
 | `WorkspaceType` | `schemas/Workspace.ts` | Workspace type enum |
 | `WorkspaceInfo` | `schemas/Workspace.ts` | Detected workspace metadata |
 | `WorkspacePackage` | `schemas/Workspace.ts` | Individual workspace package |
 | `InstallationToken` | `services/GitHubApp.ts` | GitHub App installation token with permissions |
-
-### Schema Utilities
-
-| Utility | Location | Purpose |
-| --- | --- | --- |
-| `resolveOtelConfig` | `schemas/OtelExporter.ts` | Resolve OTel config from inputs + env vars |
-| `parseOtelHeaders` | `schemas/OtelExporter.ts` | Parse OTLP header string to record |
 
 ### Shared Decode Helpers
 
@@ -245,20 +234,6 @@ ActionState.get(key, schema)
   -> typed value | ActionStateError (decode_failed)
 ```
 
-### OTel Export Flow
-
-```text
-Action.run(program)
-  -> parse otel-enabled/endpoint/protocol/headers inputs
-  -> resolveOtelConfig(inputs, env)
-  -> if enabled:
-       OtelExporterLive(config) uses static @effect/opentelemetry import
-       -> EffectOtel.Tracer.layerGlobal bridges Effect spans to OTel
-       -> GitHub resource attributes merged from GitHubOtelAttributes
-  -> if disabled/auto-no-endpoint:
-       InMemoryTracer captures spans for TelemetryReport rendering
-```
-
 ### Permission Check Flow
 
 ```text
@@ -273,7 +248,7 @@ TokenPermissionChecker.assertSufficient(requirements)
 
 ## Current State
 
-All 27 error types and 30+ schemas are fully defined and in use across the
+All 26 error types and 25+ schemas are fully defined and in use across the
 service catalog. The error hierarchy with domain-specific wrapping of
 `GitHubClientError` is stable. The platform service interfaces (`AnnotationProperties`,
 `ActionsExecOptions`, `GitHubOctokit`, `AppAuth`) and action run types
