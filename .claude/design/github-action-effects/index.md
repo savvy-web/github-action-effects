@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-18
-last-synced: 2026-03-18
+updated: 2026-03-19
+last-synced: 2026-03-19
 completeness: 95
 related:
   - ./services.md
@@ -78,8 +78,8 @@ GitHub Actions development suffers from four recurring pain points:
 - **Effect-native** -- All services are Effect services with proper Layer composition
 - **Peer dependencies** -- `effect` and `@actions/*` packages are peers; users
   bring their own versions (action-builder bundles with ncc anyway). OTel
-  packages are regular dependencies (bundled by ncc) to avoid dynamic import
-  failures.
+  packages are regular dependencies (bundled by ncc). All Live layers use
+  static imports exclusively -- ncc cannot follow dynamic `import()` calls.
 - **Single entry point** -- One barrel export at `@savvy-web/github-action-effects`
 - **Incrementally adoptable** -- Use one service or all of them; no all-or-nothing
 
@@ -93,13 +93,16 @@ GitHub Actions development suffers from four recurring pain points:
 
 - **Decision:** `effect` and all `@actions/*` packages are peer dependencies.
   OpenTelemetry packages (`@effect/opentelemetry`, `@opentelemetry/*`) are
-  regular `dependencies`, not peer dependencies.
+  regular `dependencies`, not peer dependencies. All Live layers use static
+  imports for their peer dependencies (no dynamic `import()` calls).
 - **Rationale:** `@savvy-web/github-action-builder` bundles everything with
   `@vercel/ncc` into a single file. Peer deps let the bundler resolve versions
   from the consumer's package.json, avoiding duplication and version conflicts.
-  OTel packages were moved from optional peers to regular dependencies because
-  ncc cannot resolve dynamic `import()` calls -- static imports with bundled
-  packages are required for reliable ncc output.
+  All Live layers use static imports because ncc cannot follow dynamic
+  `import()` calls. This applies uniformly to both optional peers
+  (`@actions/tool-cache`, `@octokit/auth-app`, `@actions/github`,
+  `@actions/exec`, `@actions/cache`) and regular dependencies (OTel packages).
+  Consumers do not need bare `import` hints in their entry points.
 - **Trade-off:** Users must install effect themselves. This is acceptable since
   this library targets Effect-using action authors. OTel packages add to
   bundle size but are necessary for correct ncc compilation.

@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-18
-last-synced: 2026-03-18
+updated: 2026-03-19
+last-synced: 2026-03-19
 completeness: 85
 related:
   - ./index.md
@@ -73,9 +73,13 @@ All optional peers are marked `optional: true` in `peerDependenciesMeta`.
 | `@opentelemetry/sdk-metrics` | OtelExporterLive | OTel metrics SDK |
 | `@opentelemetry/sdk-trace-node` | OtelExporterLive | OTel tracing SDK |
 
-OTel packages are regular `dependencies` (not optional peers) because
-`@vercel/ncc` cannot resolve dynamic `import()` calls. Static imports with
-bundled dependencies ensure reliable ncc compilation.
+OTel packages are regular `dependencies` (not optional peers) to avoid
+version management burden on consumers. All Live layers -- including those
+for optional peers like `@actions/tool-cache`, `@octokit/auth-app`,
+`@actions/github`, `@actions/exec`, and `@actions/cache` -- use static
+imports exclusively. `@vercel/ncc` cannot follow dynamic `import()` calls,
+so static imports are required for reliable ncc bundling. Consumers do not
+need bare `import` hints in their entry points.
 
 ---
 

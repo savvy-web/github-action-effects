@@ -19,7 +19,11 @@ Composable [Effect](https://effect.website) services for building Node.js 24 Git
 ## Installation
 
 ```bash
-npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
+# @effect/cluster, @effect/rpc, and @effect/sql are transitive peers required
+# by @effect/platform-node — they are not used directly by your action code.
+npm install @savvy-web/github-action-effects effect @actions/core \
+  @effect/platform @effect/platform-node \
+  @effect/cluster @effect/rpc @effect/sql
 ```
 
 ## Quick Start

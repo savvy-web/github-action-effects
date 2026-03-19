@@ -1,3 +1,4 @@
+import { createAppAuth } from "@octokit/auth-app";
 import { Effect, Layer } from "effect";
 import { GitHubAppError } from "../errors/GitHubAppError.js";
 import type { InstallationToken } from "../services/GitHubApp.js";
@@ -64,7 +65,6 @@ const generateToken = (
 ): Effect.Effect<InstallationToken, GitHubAppError> =>
 	Effect.tryPromise({
 		try: async () => {
-			const { createAppAuth } = await import("@octokit/auth-app");
 			const auth = createAppAuth({ appId, privateKey });
 
 			const resolvedId = installationId ?? (await resolveInstallationId(auth));
