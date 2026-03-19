@@ -1,6 +1,6 @@
-import * as github from "@actions/github";
 import { Effect, Layer } from "effect";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
+import { ActionsGitHub } from "../services/ActionsGitHub.js";
 import { GitHubClient } from "../services/GitHubClient.js";
 
 const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
@@ -29,13 +29,15 @@ const wrapError = (operation: string, error: unknown): GitHubClientError => {
  *
  * @public
  */
-export const GitHubClientLive = (token: string): Layer.Layer<GitHubClient, GitHubClientError> =>
+export const GitHubClientLive = (token: string): Layer.Layer<GitHubClient, GitHubClientError, ActionsGitHub> =>
 	Layer.effect(
 		GitHubClient,
-		Effect.try({
-			try: () => github.getOctokit(token),
-			catch: (error) => wrapError("getOctokit", error),
-		}).pipe(
+		Effect.flatMap(ActionsGitHub, (gh) =>
+			Effect.try({
+				try: () => gh.getOctokit(token),
+				catch: (error) => wrapError("getOctokit", error),
+			}),
+		).pipe(
 			Effect.map((octokit) => ({
 				rest: <T>(operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 					Effect.tryPromise({

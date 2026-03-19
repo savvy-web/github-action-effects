@@ -1,16 +1,21 @@
-import * as github from "@actions/github";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ActionsGitHub } from "../services/ActionsGitHub.js";
 import { GitHubClient } from "../services/GitHubClient.js";
 import { GitHubClientLive } from "./GitHubClientLive.js";
 
-const mockOctokit = vi.hoisted(() => ({
-	graphql: vi.fn(),
-}));
+const mockGraphql = vi.fn();
 
-vi.mock("@actions/github", () => ({
-	getOctokit: vi.fn(() => mockOctokit),
-}));
+const mockOctokit = {
+	graphql: mockGraphql,
+	rest: {},
+	request: {},
+};
+
+const makeActionsGitHubLayer = () =>
+	Layer.succeed(ActionsGitHub, {
+		getOctokit: vi.fn(() => mockOctokit),
+	});
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -21,7 +26,7 @@ afterEach(() => {
 	delete process.env.GITHUB_REPOSITORY;
 });
 
-const makeLayer = () => GitHubClientLive("fake-token");
+const makeLayer = () => GitHubClientLive("fake-token").pipe(Layer.provide(makeActionsGitHubLayer()));
 
 const run = <A, E>(effect: Effect.Effect<A, E, GitHubClient>) => Effect.runPromise(Effect.provide(effect, makeLayer()));
 
@@ -30,10 +35,18 @@ const runExit = <A, E>(effect: Effect.Effect<A, E, GitHubClient>) =>
 
 describe("GitHubClientLive", () => {
 	it("creates octokit with token", async () => {
-		await run(
-			Effect.flatMap(GitHubClient, (client) => client.rest("test.init", (_octokit) => Promise.resolve({ data: null }))),
+		const getOctokitSpy = vi.fn(() => mockOctokit);
+		const spiedLayer = Layer.succeed(ActionsGitHub, { getOctokit: getOctokitSpy });
+		const layer = GitHubClientLive("fake-token").pipe(Layer.provide(spiedLayer));
+		await Effect.runPromise(
+			Effect.provide(
+				Effect.flatMap(GitHubClient, (client) =>
+					client.rest("test.init", (_octokit) => Promise.resolve({ data: null })),
+				),
+				layer,
+			),
 		);
-		expect(github.getOctokit).toHaveBeenCalledWith("fake-token");
+		expect(getOctokitSpy).toHaveBeenCalledWith("fake-token");
 	});
 
 	describe("rest", () => {
@@ -85,16 +98,16 @@ describe("GitHubClientLive", () => {
 
 	describe("graphql", () => {
 		it("calls octokit.graphql with query and variables", async () => {
-			mockOctokit.graphql.mockResolvedValue({ viewer: { login: "user" } });
+			mockGraphql.mockResolvedValue({ viewer: { login: "user" } });
 			const result = await run(
 				Effect.flatMap(GitHubClient, (client) => client.graphql<{ viewer: { login: string } }>("{ viewer { login } }")),
 			);
 			expect(result).toEqual({ viewer: { login: "user" } });
-			expect(mockOctokit.graphql).toHaveBeenCalledWith("{ viewer { login } }", {});
+			expect(mockGraphql).toHaveBeenCalledWith("{ viewer { login } }", {});
 		});
 
 		it("wraps graphql errors", async () => {
-			mockOctokit.graphql.mockRejectedValue(new Error("graphql error"));
+			mockGraphql.mockRejectedValue(new Error("graphql error"));
 			const exit = await runExit(Effect.flatMap(GitHubClient, (client) => client.graphql("{ bad }")));
 			expect(exit._tag).toBe("Failure");
 		});
