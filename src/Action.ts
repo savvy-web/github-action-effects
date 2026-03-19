@@ -6,6 +6,7 @@ import type { ActionInputError } from "./errors/ActionInputError.js";
 import { ActionInputsLive } from "./layers/ActionInputsLive.js";
 import { ActionLoggerLayer, ActionLoggerLive, makeActionLogger, setLogLevel } from "./layers/ActionLoggerLive.js";
 import { ActionOutputsLive } from "./layers/ActionOutputsLive.js";
+import { ActionsCoreLive } from "./layers/ActionsCoreLive.js";
 import { InMemoryTracer } from "./layers/InMemoryTracer.js";
 import { OtelExporterLive } from "./layers/OtelExporterLive.js";
 import type { LogLevelInput } from "./schemas/LogLevel.js";
@@ -55,7 +56,12 @@ export type ParsedInputs<T extends Record<string, InputConfig>> = {
 };
 
 /** Standard live layer combining all core services. */
-const CoreLive = Layer.mergeAll(ActionInputsLive, ActionLoggerLive, ActionOutputsLive, PlatformNode.NodeContext.layer);
+const CoreLive = Layer.mergeAll(
+	ActionInputsLive,
+	ActionLoggerLive,
+	ActionOutputsLive,
+	PlatformNode.NodeContext.layer,
+).pipe(Layer.provide(ActionsCoreLive));
 
 /**
  * Namespace for top-level GitHub Action helpers.
