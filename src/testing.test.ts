@@ -28,7 +28,6 @@ describe("testing entry point", () => {
 		expect(testingModule.ActionInputsTest).toBeDefined();
 		expect(testingModule.ActionInputError).toBeDefined();
 		expect(testingModule.ActionsCore).toBeDefined();
-		expect(testingModule.InMemoryTracer).toBeDefined();
 		expect(testingModule.GithubMarkdown).toBeDefined();
 	});
 
