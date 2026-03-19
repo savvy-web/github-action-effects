@@ -26,7 +26,7 @@ See [layers.md](./layers.md) for live and test layer implementations.
 
 ## Overview
 
-Thirty-six service modules plus six namespace/utility objects, each
+Thirty-five service modules plus five namespace/utility objects, each
 independently usable. `Action.run()` automatically provides
 `NodeContext.layer` from `@effect/platform-node`, so programs also have
 access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
@@ -62,6 +62,7 @@ access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
 │   ├── GitHubIssue         — Issue management + linked issues
 │   ├── GitHubApp           — GitHub App authentication lifecycle
 │   ├── CheckRun            — Check runs with bracket pattern
+│   ├── PullRequest         — PR lifecycle (CRUD, merge, labels, reviewers)
 │   ├── PullRequestComment  — Sticky (upsert) PR comments
 │   ├── RateLimiter         — Rate limit awareness and retry
 │   └── WorkflowDispatch    — Trigger and monitor workflow runs
@@ -77,9 +78,6 @@ access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
 │   ├── ConfigLoader        — JSON/JSONC/YAML config loading with schema validation
 │   └── DryRun              — Mutation interception for dry-run mode
 │
-├── Observability
-│   └── ActionTelemetry     — Metric recording and span attributes
-│
 ├── Namespace Objects
 │   ├── Action.*            — run, parseInputs, makeLogger, setLogLevel, resolveLogLevel
 │   └── GithubMarkdown.*    — table, heading, details, bold, code, etc.
@@ -88,9 +86,7 @@ access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
     ├── AutoMerge           — PR auto-merge enable/disable via GraphQL
     ├── SemverResolver      — Semver comparison, parsing, resolution
     ├── ErrorAccumulator    — Process-all-collect-failures pattern
-    ├── GitHubOtelAttributes — Map GitHub env vars to OTel resource attributes
-    ├── ReportBuilder       — Fluent markdown report builder
-    └── TelemetryReport     — Render spans/metrics as GFM markdown
+    └── ReportBuilder       — Fluent markdown report builder
 ```
 
 ---
@@ -109,7 +105,6 @@ single export, reducing barrel clutter and improving discoverability.
   - `platform` -- platform layer providing `ActionsCore` (defaults to
     `ActionsCoreLive`; pass `ActionsPlatformLive` to include all wrapper
     services). Uses `ActionsCore` via DI for `getInput`/`setFailed`/`debug`.
-  Automatically parses OTel inputs and wires up exporter when enabled.
 - `Action.parseInputs(config, crossValidate?)` -- Read and validate all inputs
   at once from a config record
 - `Action.makeLogger()` -- Create the Effect Logger for GitHub Actions
@@ -178,7 +173,7 @@ Wraps `@actions/exec`. Provides a single `exec` method. Defines the
 ### ActionsToolCache Service
 
 Wraps `@actions/tool-cache`. Provides `find`, `downloadTool`, `extractTar`,
-`extractZip`, and `cacheDir`.
+`extractZip`, `cacheDir`, and `cacheFile`.
 
 ### OctokitAuthApp Service
 
@@ -452,6 +447,36 @@ Create, update, and complete GitHub check runs with bracket pattern.
 
 **Error type:** `CheckRunError`
 
+### PullRequest Service
+
+Full pull request lifecycle management: CRUD, merge, labels, reviewers, and
+auto-merge via GraphQL.
+
+**Interface:**
+
+- `get(number)` -- Get a single PR by number. Returns `PullRequestInfo`
+- `list(options?)` -- List PRs matching filters. Options: `{ head?, base?,
+  state?, perPage?, paginate? }`. Returns `ReadonlyArray<PullRequestInfo>`
+- `create(options)` -- Create a new PR. Options: `{ title, body, head, base,
+  draft?, autoMerge? }`. Returns `PullRequestInfo`
+- `update(number, options)` -- Update an existing PR. Options: `{ title?,
+  body?, state?, autoMerge? }`. Returns `PullRequestInfo`
+- `getOrCreate(options)` -- Find existing PR for head->base or create one;
+  updates title/body if found. Returns `PullRequestInfo & { created: boolean }`
+- `merge(number, options?)` -- Immediately merge a PR. Options: `{ method?,
+  commitTitle?, commitMessage? }`
+- `addLabels(number, labels)` -- Add labels to a PR
+- `requestReviewers(number, options)` -- Request reviewers. Options:
+  `{ reviewers?, teamReviewers? }`
+
+**Types:**
+
+- `PullRequestInfo` -- `{ number, url, nodeId, title, state, head, base,
+  draft, merged }`
+- `PullRequestListOptions` -- `{ head?, base?, state?, perPage?, paginate? }`
+
+**Error type:** `PullRequestError`
+
 ### PullRequestComment Service
 
 Sticky (upsert) PR comments with marker-based idempotency.
@@ -576,17 +601,27 @@ Monorepo workspace detection.
 
 ### ToolInstaller Service
 
-Download, extract, cache, and add tool binaries to PATH.
+Download, extract, cache, and add tool binaries to PATH. Supports both
+archive-based installation (download, extract, cache directory) and single
+binary installation (download, cache file, optional chmod).
 
 **Interface:**
 
-- `install(name, version, downloadUrl, options?)` -- Download and cache.
-  Returns cached tool path
-- `isCached(name, version)` -- Check if tool is cached
-- `installAndAddToPath(name, version, downloadUrl, options?)` -- Install and
-  add to PATH
+- `install(name, version, downloadUrl, options?)` -- Download archive, extract,
+  and cache a tool. Returns cached tool path
+- `isCached(name, version)` -- Check if tool is already cached
+- `installAndAddToPath(name, version, downloadUrl, options?)` -- Install
+  archive-based tool and add to PATH
+- `installBinary(name, version, downloadUrl, options?)` -- Download, cache, and
+  optionally chmod a single binary file. Returns the cached directory path
+- `installBinaryAndAddToPath(name, version, downloadUrl, options?)` -- Install
+  a single binary and add it to the system PATH. Returns the cached directory
+  path
 
-**Types:** `ToolInstallOptions` -- `{ archiveType?, binSubPath?, platform?, arch? }`
+**Types:**
+
+- `ToolInstallOptions` -- `{ archiveType?, binSubPath?, platform?, arch? }`
+- `BinaryInstallOptions` -- `{ binaryName?, executable? }`
 
 **Error type:** `ToolInstallerError`
 
@@ -627,18 +662,6 @@ Cross-cutting mutation interception for dry-run mode.
   return fallback. Otherwise: execute the effect.
 
 **Error type:** (none)
-
-### ActionTelemetry Service
-
-Numeric metric recording and span attribute annotation.
-
-**Interface:**
-
-- `metric(name, value, unit?)` -- Record a numeric metric value
-- `attribute(key, value)` -- Annotate the current span with a key-value attribute
-- `getMetrics()` -- Retrieve all recorded metrics. Returns `Array<MetricData>`
-
-**Error type:** (none -- never fails)
 
 ### TokenPermissionChecker Service
 
@@ -711,14 +734,6 @@ captured in the failures array.
 
 **Types:** `AccumulateResult` -- `{ successes, failures }`
 
-### GitHubOtelAttributes (Pure Function)
-
-Map GitHub Actions environment variables to OpenTelemetry semantic convention
-resource attributes.
-
-- `fromEnvironment(env?)` -- Read `GITHUB_*` and `RUNNER_*` env vars, return
-  `Record<string, string>` with OTel attribute keys
-
 ### ReportBuilder (Fluent Builder)
 
 Composable markdown report builder with multiple output targets.
@@ -727,24 +742,12 @@ Composable markdown report builder with multiple output targets.
 - `report.stat(label, value)` -- Add a key-value summary row
 - `report.section(title, content)` -- Add a titled section
 - `report.details(summary, content)` -- Add a collapsible block
-- `report.timings(spans)` -- Add a timing table from span summaries
 - `report.toMarkdown()` -- Render to markdown string
 - `report.toSummary()` -- Write to step summary via `ActionOutputs`
 - `report.toComment(prNumber, markerKey)` -- Upsert as PR comment
 - `report.toCheckRun(checkRunId)` -- Set as check run output
 
 **Types:** `Report` (interface)
-
-### TelemetryReport (Effect Functions)
-
-Render telemetry span data and metrics as GitHub-Flavored Markdown.
-
-- `fromSpans(spans, metrics?)` -- Render as GFM markdown string
-- `toSummary(spans, metrics?)` -- Write to step summary via `ActionOutputs`
-- `toComment(prNumber, markerKey, spans, metrics?)` -- Upsert as PR comment
-- `toCheckRun(checkRunId, spans, metrics?)` -- Set as check run output
-
-**Types:** `SpanSummary` -- `{ name, duration, status, parentName?, attributes }`
 
 ---
 
@@ -774,24 +777,21 @@ Pass `ActionsPlatformLive` as `platform` to provide all 6 wrapper services.
 **Behavior:**
 
 1. Resolves `ActionsCore` from the platform layer (defaults to
-   `ActionsCoreLive`). All OTel input reading, `setFailed` calls, and
-   `debug` calls go through this injected `core` reference — `Action.run()`
-   does not import `@actions/core` directly.
+   `ActionsCoreLive`). All `setFailed` calls and `debug` calls go through
+   this injected `core` reference — `Action.run()` does not import
+   `@actions/core` directly.
 2. Provides core Live layers (ActionInputsLive, ActionLoggerLive,
    ActionOutputsLive, NodeContext.layer) plus ActionLoggerLayer (the
    Effect Logger integration). All core layers depend on `ActionsCore` from
    the platform layer. NodeContext.layer provides Node.js platform services
    from `@effect/platform-node`.
-3. Parses OTel inputs (`otel-enabled`, `otel-endpoint`, `otel-protocol`,
-   `otel-headers`) and conditionally wires up OtelExporterLive or
-   InMemoryTracer based on resolved config.
-4. Catches all errors (via `Effect.catchAllCause`) and routes them to
+3. Catches all errors (via `Effect.catchAllCause`) and routes them to
    `core.setFailed()` using `Action.formatCause` for structured
    `[Tag] message` output, plus JS stack trace and Effect span trace via
    `core.debug()`.
-5. Runs the program with `Effect.runPromise()`
-6. Merges any user-supplied `layer` with the core layers
-7. Last-resort catch on the promise sets `process.exitCode = 1` if even
+4. Runs the program with `Effect.runPromise()`
+5. Merges any user-supplied `layer` with the core layers
+6. Last-resort catch on the promise sets `process.exitCode = 1` if even
    `setFailed` fails
 
 **Note:** `ActionStateLive` is not included in the core layers because not
@@ -802,9 +802,9 @@ option.
 
 ## Current State
 
-All 36 service modules (30 domain + 6 platform wrapper) and 6 namespace/utility
+All 35 service modules (29 domain + 6 platform wrapper) and 5 namespace/utility
 objects are fully defined with interfaces, error types, and live layer
-implementations. The 30 domain services also have test layer implementations.
+implementations. The 29 domain services also have test layer implementations.
 The service catalog is stable and actively used by downstream actions.
 
 ## Rationale

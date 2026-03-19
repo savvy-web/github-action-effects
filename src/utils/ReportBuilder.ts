@@ -6,16 +6,13 @@ import { ActionOutputs } from "../services/ActionOutputs.js";
 import { CheckRun } from "../services/CheckRun.js";
 import { PullRequestComment } from "../services/PullRequestComment.js";
 import { GithubMarkdown } from "./GithubMarkdown.js";
-import type { SpanSummary } from "./TelemetryReport.js";
-import { TelemetryReport } from "./TelemetryReport.js";
 
 /**
  * A report entry — one of the content blocks that can be added.
  */
 type ReportEntry =
 	| { readonly _tag: "section"; readonly title: string; readonly content: string }
-	| { readonly _tag: "details"; readonly summary: string; readonly content: string }
-	| { readonly _tag: "timings"; readonly spans: ReadonlyArray<SpanSummary> };
+	| { readonly _tag: "details"; readonly summary: string; readonly content: string };
 
 /**
  * A stat row for the summary table.
@@ -37,8 +34,6 @@ export interface Report {
 	readonly stat: (label: string, value: string | number) => Report;
 	/** Add a collapsible details block. */
 	readonly details: (summary: string, content: string) => Report;
-	/** Add a timing table from span summaries. */
-	readonly timings: (spans: ReadonlyArray<SpanSummary>) => Report;
 	/** Render to markdown string. */
 	readonly toMarkdown: () => string;
 	/** Write to step summary via ActionOutputs. */
@@ -65,9 +60,6 @@ const makeReport = (title: string, stats: ReadonlyArray<StatRow>, entries: Reado
 	details: (summary: string, content: string): Report =>
 		makeReport(title, stats, [...entries, { _tag: "details", summary, content }]),
 
-	timings: (spans: ReadonlyArray<SpanSummary>): Report =>
-		makeReport(title, stats, [...entries, { _tag: "timings", spans }]),
-
 	toMarkdown: (): string => {
 		const parts: Array<string> = [];
 
@@ -89,9 +81,6 @@ const makeReport = (title: string, stats: ReadonlyArray<StatRow>, entries: Reado
 					break;
 				case "details":
 					parts.push(GithubMarkdown.details(entry.summary, entry.content));
-					break;
-				case "timings":
-					parts.push(TelemetryReport.fromSpans(entry.spans));
 					break;
 			}
 		}

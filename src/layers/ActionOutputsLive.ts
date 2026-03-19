@@ -9,10 +9,7 @@ export const ActionOutputsLive: Layer.Layer<ActionOutputs, never, ActionsCore> =
 		const core = yield* ActionsCore;
 
 		return {
-			set: (name, value) =>
-				Effect.sync(() => core.setOutput(name, value)).pipe(
-					Effect.withSpan("ActionOutputs.set", { attributes: { "output.name": name } }),
-				),
+			set: (name, value) => Effect.sync(() => core.setOutput(name, value)),
 
 			setJson: <A, I>(name: string, value: A, schema: Schema.Schema<A, I, never>) =>
 				Schema.encode(schema)(value).pipe(
@@ -25,7 +22,6 @@ export const ActionOutputsLive: Layer.Layer<ActionOutputs, never, ActionsCore> =
 								reason: `Output "${name}" validation failed: ${parseError.message}`,
 							}),
 					),
-					Effect.withSpan("ActionOutputs.setJson", { attributes: { "output.name": name } }),
 				),
 
 			summary: (content) =>
@@ -36,19 +32,15 @@ export const ActionOutputsLive: Layer.Layer<ActionOutputs, never, ActionsCore> =
 							outputName: "summary",
 							reason: `Failed to write step summary: ${error instanceof Error ? error.message : String(error)}`,
 						}),
-				}).pipe(Effect.asVoid, Effect.withSpan("ActionOutputs.summary")),
+				}).pipe(Effect.asVoid),
 
-			exportVariable: (name, value) =>
-				Effect.sync(() => core.exportVariable(name, value)).pipe(
-					Effect.withSpan("ActionOutputs.exportVariable", { attributes: { "output.name": name } }),
-				),
+			exportVariable: (name, value) => Effect.sync(() => core.exportVariable(name, value)),
 
-			addPath: (path) => Effect.sync(() => core.addPath(path)).pipe(Effect.withSpan("ActionOutputs.addPath")),
+			addPath: (path) => Effect.sync(() => core.addPath(path)),
 
-			setFailed: (message) =>
-				Effect.sync(() => core.setFailed(message)).pipe(Effect.withSpan("ActionOutputs.setFailed")),
+			setFailed: (message) => Effect.sync(() => core.setFailed(message)),
 
-			setSecret: (value) => Effect.sync(() => core.setSecret(value)).pipe(Effect.withSpan("ActionOutputs.setSecret")),
+			setSecret: (value) => Effect.sync(() => core.setSecret(value)),
 		};
 	}),
 );

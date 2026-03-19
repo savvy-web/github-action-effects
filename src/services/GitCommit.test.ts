@@ -97,6 +97,14 @@ describe("GitCommit", () => {
 			expect(state.refUpdates).toHaveLength(1);
 			expect(state.refUpdates[0]).toEqual({ ref: "main", sha: "commit-sha-1", force: true });
 		});
+
+		it("records ref update without force when force is undefined", async () => {
+			const state = GitCommitTest.empty();
+			await run(state, updateRef("main", "commit-sha-1"));
+			expect(state.refUpdates).toHaveLength(1);
+			expect(state.refUpdates[0]).toEqual({ ref: "main", sha: "commit-sha-1" });
+			expect(state.refUpdates[0]).not.toHaveProperty("force");
+		});
 	});
 
 	describe("commitFiles", () => {

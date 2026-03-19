@@ -42,9 +42,6 @@ export const NpmRegistryLive: Layer.Layer<NpmRegistry, never, CommandRunner> = L
 					if (typeof data === "string") return data;
 					return String(data);
 				}),
-				Effect.withSpan("NpmRegistry.getLatestVersion", {
-					attributes: { "npm.package": pkg },
-				}),
 			),
 
 		getDistTags: (pkg: string) =>
@@ -59,9 +56,6 @@ export const NpmRegistryLive: Layer.Layer<NpmRegistry, never, CommandRunner> = L
 				),
 				Effect.flatMap((output) => parseJson(pkg, "view", output.stdout)),
 				Effect.map((data) => data as Record<string, string>),
-				Effect.withSpan("NpmRegistry.getDistTags", {
-					attributes: { "npm.package": pkg },
-				}),
 			),
 
 		getPackageInfo: (pkg: string, version?: string) => {
@@ -97,9 +91,6 @@ export const NpmRegistryLive: Layer.Layer<NpmRegistry, never, CommandRunner> = L
 							tarball: (d["dist.tarball"] as string | undefined) ?? (d.dist as Record<string, string>)?.tarball,
 						};
 					}),
-					Effect.withSpan("NpmRegistry.getPackageInfo", {
-						attributes: { "npm.package": pkg },
-					}),
 				);
 		},
 
@@ -119,9 +110,6 @@ export const NpmRegistryLive: Layer.Layer<NpmRegistry, never, CommandRunner> = L
 					// Single version returns as a string, not array
 					if (typeof data === "string") return [data];
 					return [];
-				}),
-				Effect.withSpan("NpmRegistry.getVersions", {
-					attributes: { "npm.package": pkg },
 				}),
 			),
 	})),

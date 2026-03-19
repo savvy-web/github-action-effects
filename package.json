@@ -9,7 +9,6 @@
 		"effect-ts",
 		"actions",
 		"octokit",
-		"opentelemetry",
 		"schema-validation",
 		"typed-errors",
 		"service-layer",
@@ -58,20 +57,9 @@
 		"types:check": "tsgo --noEmit"
 	},
 	"dependencies": {
-		"@effect/opentelemetry": "catalog:silk",
-		"@opentelemetry/api": "^1.9.0",
-		"@opentelemetry/exporter-metrics-otlp-grpc": "^0.213.0",
-		"@opentelemetry/exporter-metrics-otlp-http": "^0.213.0",
-		"@opentelemetry/exporter-metrics-otlp-proto": "^0.213.0",
-		"@opentelemetry/exporter-trace-otlp-grpc": "^0.213.0",
-		"@opentelemetry/exporter-trace-otlp-http": "^0.213.0",
-		"@opentelemetry/exporter-trace-otlp-proto": "^0.213.0",
-		"@opentelemetry/resources": "^2.6.0",
-		"@opentelemetry/sdk-metrics": "^2.6.0",
-		"@opentelemetry/sdk-trace-node": "^2.6.0",
 		"jsonc-effect": "^0.2.0",
 		"semver-effect": "^0.2.0",
-		"yaml-effect": "^0.1.5"
+		"yaml-effect": "^0.2.0"
 	},
 	"devDependencies": {
 		"@actions/cache": "^6.0.0",

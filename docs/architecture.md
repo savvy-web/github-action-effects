@@ -14,7 +14,7 @@ src/
   services/    - Effect service definitions (interfaces + tags)
   layers/      - Live and Test implementations of each service
   errors/      - Tagged error types (Data.TaggedError)
-  schemas/     - Effect Schema definitions (LogLevel, OtelExporter, Workspace, etc.)
+  schemas/     - Effect Schema definitions (LogLevel, Workspace, etc.)
   utils/       - Namespace utilities (GithubMarkdown, AutoMerge, SemverResolver, etc.)
   Action.ts    - Action namespace (run, parseInputs, makeLogger, setLogLevel, resolveLogLevel)
   index.ts     - Barrel export (single entry point)
@@ -399,14 +399,13 @@ See [services.md](./services.md) for usage examples of each service.
 | --- | --- | --- |
 | ActionEnvironment | ActionEnvironmentLive | Typed env var access |
 | ActionCache | ActionCacheLive | GitHub Actions cache |
-| ActionTelemetry | ActionTelemetryLive | Metrics and span attributes |
 | CommandRunner | CommandRunnerLive | Shell execution with capture |
 | ConfigLoader | ConfigLoaderLive | JSON/JSONC/YAML config loading |
 | DryRun | DryRunLive | Mutation interception |
 | TokenPermissionChecker | TokenPermissionCheckerLive | Token permission checks |
 | RateLimiter | RateLimiterLive | Rate limit guard and retry |
 | WorkflowDispatch | WorkflowDispatchLive | Workflow trigger and poll |
-| ToolInstaller | ToolInstallerLive | Tool binary installation |
+| ToolInstaller | ToolInstallerLive | Tool installation (archives and standalone binaries) |
 
 ## Test Layers
 
@@ -433,7 +432,6 @@ All extended services ship with test layers following the same pattern:
 | --- | --- |
 | ActionEnvironmentTest | - |
 | ActionCacheTest | ActionCacheTestState |
-| ActionTelemetryTest | ActionTelemetryTestState |
 | GitHubClientTest | GitHubClientTestState |
 | GitHubGraphQLTest | GitHubGraphQLTestState |
 | GitHubReleaseLive | GitHubReleaseTestState |

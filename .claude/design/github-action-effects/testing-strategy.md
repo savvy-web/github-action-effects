@@ -193,6 +193,9 @@ auth, test layer in-memory token state.
 completes with "failure" and re-raises cause, annotations capped at 50,
 test layer CheckRunRecord array.
 
+**PullRequest** -- get/list/create/update/getOrCreate/merge/addLabels/
+requestReviewers, auto-merge via GraphQL, test layer in-memory PR state.
+
 **PullRequestComment** -- create/upsert/find/delete, marker pattern
 `<!-- savvy-web:KEY -->`, test layer per-PR comment storage with
 instance-scoped ID counter.
@@ -221,8 +224,9 @@ PM detection logic, frozen lockfile, test layer in-memory state.
 **WorkspaceDetector** -- detect/listPackages/getPackage, pnpm-workspace.yaml
 and package.json workspaces parsing, test layer in-memory state.
 
-**ToolInstaller** -- install/isCached/installAndAddToPath, download/extract/
-cache lifecycle, test layer in-memory tool cache.
+**ToolInstaller** -- install/isCached/installAndAddToPath/installBinary/
+installBinaryAndAddToPath, download/extract/cache lifecycle, single binary
+installation with chmod, test layer in-memory tool cache.
 
 **ChangesetAnalyzer** -- parseAll/hasChangesets/generate, changeset YAML
 frontmatter parsing, test layer in-memory state.
@@ -233,20 +237,6 @@ of loaded configs, test layer in-memory config state.
 **DryRun** -- isDryRun/guard, mutation interception, test layer always-dry
 with recorded labels.
 
-### Observability
-
-**ActionTelemetry** -- metric/attribute/getMetrics, in-memory recording,
-test layer state.
-
-**InMemoryTracer** -- span capture via Effect.withSpan, getSpans retrieval,
-isolated stores per layer provision.
-
-**OtelExporterLive** -- config resolution, enabled/disabled branching,
-resource attribute merging.
-
-**OtelTelemetryLive** -- @effect/opentelemetry bridge via static import,
-resource attribute configuration.
-
 ### Utilities
 
 **GithubMarkdown** -- Pure function output matches expected markdown strings.
@@ -254,26 +244,17 @@ resource attribute configuration.
 **SemverResolver** -- compare/satisfies/latestInRange/increment/parse with
 valid and invalid inputs.
 
-**AutoMerge** -- enable/disable GraphQL mutations, withSpan instrumentation.
+**AutoMerge** -- enable/disable GraphQL mutations.
 
 **ErrorAccumulator** -- Sequential and concurrent accumulation, success/
 failure collection.
 
-**GitHubOtelAttributes** -- Environment variable mapping, missing var handling,
-composed repository URL.
-
 **ReportBuilder** -- Fluent builder API, markdown rendering, multi-target
 output (summary/comment/checkRun).
-
-**TelemetryReport** -- Span rendering with parent/child hierarchy, metrics
-table, multi-target output.
 
 ### Schemas
 
 **LogLevel** -- Parsing and round-trip validation, auto resolution.
-
-**OtelExporter** -- resolveOtelConfig with input/env priority, parseOtelHeaders
-edge cases, auto mode with/without endpoint.
 
 ---
 
@@ -286,7 +267,7 @@ action-builder's `persistLocal` feature to run actions in Docker containers.
 
 ## Current State
 
-Unit tests cover all 30 domain services, 6 namespace/utility objects, and key
+Unit tests cover all 29 domain services, 4 namespace/utility objects, and key
 schemas. The 6 platform wrapper services are tested indirectly through the Live
 layers that depend on them (e.g., `ActionInputsLive.test.ts` mocks `ActionsCore`).
 Coverage meets the 80% threshold. Integration tests are deferred pending service

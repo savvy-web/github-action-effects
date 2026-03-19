@@ -58,11 +58,7 @@ export const WorkflowDispatchLive: Layer.Layer<WorkflowDispatch, never, GitHubCl
 						...(inputs !== undefined ? { inputs } : {}),
 					}),
 				),
-			).pipe(
-				Effect.asVoid,
-				Effect.mapError(mapError(workflow, "dispatch")),
-				Effect.withSpan("WorkflowDispatch.dispatch", { attributes: { "workflow.name": workflow } }),
-			);
+			).pipe(Effect.asVoid, Effect.mapError(mapError(workflow, "dispatch")));
 
 		const getRunStatus = (runId: number): Effect.Effect<WorkflowRunStatus, WorkflowDispatchError> =>
 			Effect.flatMap(client.repo, ({ owner, repo }) =>
@@ -79,7 +75,6 @@ export const WorkflowDispatchLive: Layer.Layer<WorkflowDispatch, never, GitHubCl
 					return { status: typed.status, conclusion: typed.conclusion };
 				}),
 				Effect.mapError(mapError(String(runId), "status")),
-				Effect.withSpan("WorkflowDispatch.getRunStatus", { attributes: { "workflow.name": String(runId) } }),
 			);
 
 		const dispatchAndWait = (
@@ -153,7 +148,7 @@ export const WorkflowDispatchLive: Layer.Layer<WorkflowDispatch, never, GitHubCl
 						return Effect.fail(error);
 					}),
 				);
-			}).pipe(Effect.withSpan("WorkflowDispatch.dispatchAndWait", { attributes: { "workflow.name": workflow } }));
+			});
 		};
 
 		return {

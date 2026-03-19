@@ -48,7 +48,6 @@ export const AutoMerge = {
 				}),
 			),
 			Effect.asVoid,
-			Effect.withSpan("AutoMerge.enable", { attributes: { "pr.nodeId": prNodeId } }),
 		),
 
 	/**
@@ -62,6 +61,5 @@ export const AutoMerge = {
 				}),
 			),
 			Effect.asVoid,
-			Effect.withSpan("AutoMerge.disable", { attributes: { "pr.nodeId": prNodeId } }),
 		),
 } as const;

@@ -4,7 +4,6 @@ import { ActionOutputsTest } from "../layers/ActionOutputsTest.js";
 import { CheckRunTest } from "../layers/CheckRunTest.js";
 import { PullRequestCommentTest } from "../layers/PullRequestCommentTest.js";
 import { ReportBuilder } from "./ReportBuilder.js";
-import type { SpanSummary } from "./TelemetryReport.js";
 
 describe("ReportBuilder", () => {
 	describe("create", () => {
@@ -14,7 +13,6 @@ describe("ReportBuilder", () => {
 			expect(typeof report.section).toBe("function");
 			expect(typeof report.stat).toBe("function");
 			expect(typeof report.details).toBe("function");
-			expect(typeof report.timings).toBe("function");
 			expect(typeof report.toMarkdown).toBe("function");
 			expect(typeof report.toSummary).toBe("function");
 			expect(typeof report.toComment).toBe("function");
@@ -48,17 +46,6 @@ describe("ReportBuilder", () => {
 			expect(md).toContain("<summary>Click to expand</summary>");
 			expect(md).toContain("Hidden content");
 			expect(md).toContain("</details>");
-		});
-
-		it("renders timings from spans", () => {
-			const spans: Array<SpanSummary> = [
-				{ name: "build", duration: 200, status: "ok", attributes: {} },
-				{ name: "test", duration: 1500, status: "error", attributes: {} },
-			];
-			const md = ReportBuilder.create("CI Report").timings(spans).toMarkdown();
-			expect(md).toContain("### Timing Report");
-			expect(md).toContain("| build | 200ms |");
-			expect(md).toContain("| test | 1.50s |");
 		});
 
 		it("chains multiple methods producing correct output order", () => {

@@ -13,4 +13,5 @@ export const ActionsToolCacheLive: Layer.Layer<ActionsToolCache> = Layer.succeed
 	extractTar: (file, dest, flags) => tc.extractTar(file, dest, flags),
 	extractZip: (file, dest) => tc.extractZip(file, dest),
 	cacheDir: (sourceDir, tool, version) => tc.cacheDir(sourceDir, tool, version),
+	cacheFile: (sourceFile, targetFile, tool, version) => tc.cacheFile(sourceFile, targetFile, tool, version),
 });

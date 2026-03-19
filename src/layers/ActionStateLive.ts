@@ -14,7 +14,6 @@ export const ActionStateLive: Layer.Layer<ActionState, never, ActionsCore> = Lay
 				encodeState(key, value, schema).pipe(
 					Effect.tap((json) => Effect.sync(() => core.saveState(key, json))),
 					Effect.asVoid,
-					Effect.withSpan("ActionState.save", { attributes: { "state.key": key } }),
 				),
 
 			get: <A, I>(key: string, schema: Schema.Schema<A, I, never>) =>
@@ -31,7 +30,6 @@ export const ActionStateLive: Layer.Layer<ActionState, never, ActionsCore> = Lay
 						}
 						return decodeState(key, raw, schema);
 					}),
-					Effect.withSpan("ActionState.get", { attributes: { "state.key": key } }),
 				),
 
 			getOptional: <A, I>(key: string, schema: Schema.Schema<A, I, never>) =>
@@ -42,7 +40,6 @@ export const ActionStateLive: Layer.Layer<ActionState, never, ActionsCore> = Lay
 						}
 						return decodeState(key, raw, schema).pipe(Effect.map((a) => Option.some(a)));
 					}),
-					Effect.withSpan("ActionState.getOptional", { attributes: { "state.key": key } }),
 				),
 		};
 	}),

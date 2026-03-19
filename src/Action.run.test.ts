@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Action } from "./Action.js";
 import type { ActionsPlatform } from "./layers/ActionsPlatformLive.js";
 import { ActionsCore } from "./services/ActionsCore.js";
@@ -36,16 +36,8 @@ const mockPlatform = (overrides: Partial<Context.Tag.Service<typeof ActionsCore>
 	// biome-ignore lint/suspicious/noExplicitAny: test helper — only ActionsCore matters
 	mockCore(overrides) as any;
 
-beforeEach(() => {
-	// Clear OTel env vars so resolveOtelConfig doesn't pick them up
-	vi.stubEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "");
-	vi.stubEnv("OTEL_EXPORTER_OTLP_PROTOCOL", "");
-	vi.stubEnv("OTEL_EXPORTER_OTLP_HEADERS", "");
-});
-
 afterEach(() => {
 	vi.clearAllMocks();
-	vi.unstubAllEnvs();
 });
 
 describe("Action.run", () => {
@@ -74,59 +66,6 @@ describe("Action.run", () => {
 
 		await Action.run(program, { layer: MyServiceLive, platform: mockPlatform({ setFailed }) });
 		expect(setFailed).not.toHaveBeenCalled();
-	});
-
-	it("writes telemetry summary when log level is debug", async () => {
-		const setFailed = vi.fn();
-		const addRaw = vi.fn().mockReturnThis();
-		const write = vi.fn().mockResolvedValue(undefined);
-		const getInput = vi.fn().mockImplementation((name: string) => (name === "log-level" ? "debug" : ""));
-		const platform = mockPlatform({ setFailed, getInput, summary: { addRaw, write } });
-
-		const program = Effect.void.pipe(Effect.withSpan("test-operation"));
-
-		await Action.run(program, { platform });
-		expect(setFailed).not.toHaveBeenCalled();
-		expect(addRaw).toHaveBeenCalledWith(expect.stringContaining("test-operation"));
-		expect(write).toHaveBeenCalled();
-	});
-
-	it("writes telemetry summary on failure when log level is debug", async () => {
-		const setFailed = vi.fn();
-		const addRaw = vi.fn().mockReturnThis();
-		const write = vi.fn().mockResolvedValue(undefined);
-		const getInput = vi.fn().mockImplementation((name: string) => (name === "log-level" ? "debug" : ""));
-		const platform = mockPlatform({ setFailed, getInput, summary: { addRaw, write } });
-
-		const program = Effect.fail("boom").pipe(Effect.withSpan("failing-operation"));
-
-		await Action.run(program, { platform });
-		expect(setFailed).toHaveBeenCalledWith(expect.stringContaining("Action failed"));
-		expect(addRaw).toHaveBeenCalledWith(expect.stringContaining("failing-operation"));
-		expect(write).toHaveBeenCalled();
-	});
-
-	it("skips telemetry summary when log level is not debug", async () => {
-		const setFailed = vi.fn();
-		const addRaw = vi.fn().mockReturnThis();
-		const platform = mockPlatform({ setFailed, summary: { addRaw, write: vi.fn() } });
-
-		const program = Effect.void.pipe(Effect.withSpan("test-operation"));
-
-		await Action.run(program, { platform });
-		expect(setFailed).not.toHaveBeenCalled();
-		expect(addRaw).not.toHaveBeenCalled();
-	});
-
-	it("does not write telemetry summary when no spans are recorded", async () => {
-		const setFailed = vi.fn();
-		const addRaw = vi.fn().mockReturnThis();
-		const getInput = vi.fn().mockImplementation((name: string) => (name === "log-level" ? "debug" : ""));
-		const platform = mockPlatform({ setFailed, getInput, summary: { addRaw, write: vi.fn() } });
-
-		await Action.run(Effect.void, { platform });
-		expect(setFailed).not.toHaveBeenCalled();
-		expect(addRaw).not.toHaveBeenCalled();
 	});
 
 	it("flushes buffered log output on failure", async () => {

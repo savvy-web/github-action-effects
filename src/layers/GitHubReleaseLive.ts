@@ -83,7 +83,6 @@ export const GitHubReleaseLive: Layer.Layer<GitHubRelease, never, GitHubClient> 
 			).pipe(
 				Effect.map((data) => toReleaseData(data as unknown as RawRelease)),
 				Effect.mapError(mapError("create", options.tag)),
-				Effect.withSpan("GitHubRelease.create", { attributes: { "release.tag": options.tag } }),
 			),
 
 		uploadAsset: (releaseId, name, data, contentType) =>
@@ -101,9 +100,6 @@ export const GitHubReleaseLive: Layer.Layer<GitHubRelease, never, GitHubClient> 
 			).pipe(
 				Effect.map((data) => toReleaseAsset(data as unknown as RawAsset)),
 				Effect.mapError(mapError("uploadAsset")),
-				Effect.withSpan("GitHubRelease.uploadAsset", {
-					attributes: { "release.id": String(releaseId), "asset.name": name },
-				}),
 			),
 
 		getByTag: (tag) =>
@@ -118,7 +114,6 @@ export const GitHubReleaseLive: Layer.Layer<GitHubRelease, never, GitHubClient> 
 			).pipe(
 				Effect.map((data) => toReleaseData(data as unknown as RawRelease)),
 				Effect.mapError(mapError("getByTag", tag)),
-				Effect.withSpan("GitHubRelease.getByTag", { attributes: { "release.tag": tag } }),
 			),
 
 		list: (options) =>
@@ -140,7 +135,6 @@ export const GitHubReleaseLive: Layer.Layer<GitHubRelease, never, GitHubClient> 
 			).pipe(
 				Effect.map((items) => items.map((item) => toReleaseData(item as unknown as RawRelease))),
 				Effect.mapError(mapError("list")),
-				Effect.withSpan("GitHubRelease.list"),
 			),
 	})),
 );

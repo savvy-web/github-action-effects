@@ -56,9 +56,6 @@ export { ActionStateLive } from "./layers/ActionStateLive.js";
 export type { ActionStateTestState } from "./layers/ActionStateTest.js";
 export { ActionStateTest } from "./layers/ActionStateTest.js";
 export type { ActionsPlatform } from "./layers/ActionsPlatformLive.js";
-export { ActionTelemetryLive } from "./layers/ActionTelemetryLive.js";
-export type { ActionTelemetryTestState } from "./layers/ActionTelemetryTest.js";
-export { ActionTelemetryTest } from "./layers/ActionTelemetryTest.js";
 export { ChangesetAnalyzerLive } from "./layers/ChangesetAnalyzerLive.js";
 export type { ChangesetAnalyzerTestState } from "./layers/ChangesetAnalyzerTest.js";
 export { ChangesetAnalyzerTest } from "./layers/ChangesetAnalyzerTest.js";
@@ -98,14 +95,9 @@ export { GitHubReleaseTest } from "./layers/GitHubReleaseTest.js";
 export { GitTagLive } from "./layers/GitTagLive.js";
 export type { GitTagTestState } from "./layers/GitTagTest.js";
 export { GitTagTest } from "./layers/GitTagTest.js";
-export type { CompletedSpan } from "./layers/InMemoryTracer.js";
-export { InMemoryTracer } from "./layers/InMemoryTracer.js";
 export { NpmRegistryLive } from "./layers/NpmRegistryLive.js";
 export type { NpmRegistryTestState } from "./layers/NpmRegistryTest.js";
 export { NpmRegistryTest } from "./layers/NpmRegistryTest.js";
-export { OtelExporterLive } from "./layers/OtelExporterLive.js";
-export type { OtelConfig } from "./layers/OtelTelemetryLive.js";
-export { OtelTelemetryLive } from "./layers/OtelTelemetryLive.js";
 export { PackageManagerAdapterLive } from "./layers/PackageManagerAdapterLive.js";
 export type { PackageManagerAdapterTestState } from "./layers/PackageManagerAdapterTest.js";
 export { PackageManagerAdapterTest } from "./layers/PackageManagerAdapterTest.js";
@@ -156,19 +148,12 @@ export { ActionLogLevel, LogLevelInput } from "./schemas/LogLevel.js";
 export type { NpmPackageInfo as NpmPackageInfoType } from "./schemas/NpmPackage.js";
 export { NpmPackageInfo } from "./schemas/NpmPackage.js";
 export type {
-	OtelEnabled as OtelEnabledType,
-	OtelProtocol as OtelProtocolType,
-	ResolvedOtelConfig as ResolvedOtelConfigType,
-} from "./schemas/OtelExporter.js";
-export { OtelEnabled, OtelProtocol, parseOtelHeaders, resolveOtelConfig } from "./schemas/OtelExporter.js";
-export type {
 	PackageManagerInfo as PackageManagerInfoType,
 	PackageManagerName as PackageManagerNameType,
 } from "./schemas/PackageManager.js";
 export { PackageManagerInfo, PackageManagerName } from "./schemas/PackageManager.js";
 export type { RateLimitStatus as RateLimitStatusType } from "./schemas/RateLimit.js";
 export { RateLimitStatus } from "./schemas/RateLimit.js";
-export { MetricData } from "./schemas/Telemetry.js";
 export type {
 	ExtraPermission as ExtraPermissionType,
 	PermissionCheckResult as PermissionCheckResultType,
@@ -199,7 +184,6 @@ export { ActionsExec } from "./services/ActionsExec.js";
 export type { GitHubOctokit } from "./services/ActionsGitHub.js";
 export { ActionsGitHub } from "./services/ActionsGitHub.js";
 export { ActionsToolCache } from "./services/ActionsToolCache.js";
-export { ActionTelemetry } from "./services/ActionTelemetry.js";
 export { ChangesetAnalyzer } from "./services/ChangesetAnalyzer.js";
 export type { AnnotationLevel, CheckRunAnnotation, CheckRunConclusion, CheckRunOutput } from "./services/CheckRun.js";
 export { CheckRun } from "./services/CheckRun.js";
@@ -232,7 +216,7 @@ export type { CommentRecord } from "./services/PullRequestComment.js";
 export { PullRequestComment } from "./services/PullRequestComment.js";
 export { RateLimiter } from "./services/RateLimiter.js";
 export { TokenPermissionChecker } from "./services/TokenPermissionChecker.js";
-export type { ToolInstallOptions } from "./services/ToolInstaller.js";
+export type { BinaryInstallOptions, ToolInstallOptions } from "./services/ToolInstaller.js";
 export { ToolInstaller } from "./services/ToolInstaller.js";
 export type { PollOptions, WorkflowRunStatus } from "./services/WorkflowDispatch.js";
 export { WorkflowDispatch } from "./services/WorkflowDispatch.js";
@@ -240,10 +224,7 @@ export { WorkspaceDetector } from "./services/WorkspaceDetector.js";
 export { AutoMerge } from "./utils/AutoMerge.js";
 export type { AccumulateResult } from "./utils/ErrorAccumulator.js";
 export { ErrorAccumulator } from "./utils/ErrorAccumulator.js";
-export { GitHubOtelAttributes } from "./utils/GitHubOtelAttributes.js";
 export { GithubMarkdown } from "./utils/GithubMarkdown.js";
 export type { Report } from "./utils/ReportBuilder.js";
 export { ReportBuilder } from "./utils/ReportBuilder.js";
 export { SemverResolver } from "./utils/SemverResolver.js";
-export type { SpanSummary } from "./utils/TelemetryReport.js";
-export { TelemetryReport } from "./utils/TelemetryReport.js";

@@ -193,7 +193,6 @@ export const PackageManagerAdapterLive: Layer.Layer<
 							}),
 						);
 					}),
-					Effect.withSpan("PackageManagerAdapter.detect"),
 				);
 
 			const install = (options?: InstallOptions): Effect.Effect<void, PackageManagerError> =>
@@ -213,20 +212,13 @@ export const PackageManagerAdapterLive: Layer.Layer<
 						);
 					}),
 					Effect.asVoid,
-					Effect.withSpan("PackageManagerAdapter.install"),
 				);
 
 			const getCachePaths = (): Effect.Effect<Array<string>, PackageManagerError> =>
-				detect().pipe(
-					Effect.flatMap((info) => getCachePathEffect(runner, info.name)),
-					Effect.withSpan("PackageManagerAdapter.getCachePaths"),
-				);
+				detect().pipe(Effect.flatMap((info) => getCachePathEffect(runner, info.name)));
 
 			const getLockfilePaths = (): Effect.Effect<Array<string>, PackageManagerError> =>
-				detect().pipe(
-					Effect.map((info) => lockfilePathsMap[info.name]),
-					Effect.withSpan("PackageManagerAdapter.getLockfilePaths"),
-				);
+				detect().pipe(Effect.map((info) => lockfilePathsMap[info.name]));
 
 			const exec: (typeof PackageManagerAdapter.Service)["exec"] = (args, options) =>
 				detect().pipe(
@@ -242,9 +234,6 @@ export const PackageManagerAdapterLive: Layer.Layer<
 							),
 						),
 					),
-					Effect.withSpan("PackageManagerAdapter.exec", {
-						attributes: { args: args.join(" ") },
-					}),
 				);
 
 			return { detect, install, getCachePaths, getLockfilePaths, exec };

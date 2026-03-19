@@ -48,12 +48,7 @@ export const GitBranchLive: Layer.Layer<GitBranch, never, GitHubClient> = Layer.
 						sha,
 					}),
 				),
-			).pipe(
-				Effect.asVoid,
-				retryOnTransient,
-				Effect.mapError(mapError(name, "create")),
-				Effect.withSpan("GitBranch.create", { attributes: { "branch.name": name } }),
-			),
+			).pipe(Effect.asVoid, retryOnTransient, Effect.mapError(mapError(name, "create"))),
 
 		exists: (name) =>
 			Effect.flatMap(client.repo, ({ owner, repo }) =>
@@ -72,7 +67,6 @@ export const GitBranchLive: Layer.Layer<GitBranch, never, GitHubClient> = Layer.
 					}
 					return Effect.fail(new GitBranchError({ branch: name, operation: "get", reason: error.reason }));
 				}),
-				Effect.withSpan("GitBranch.exists", { attributes: { "branch.name": name } }),
 			),
 
 		delete: (name) =>
@@ -84,12 +78,7 @@ export const GitBranchLive: Layer.Layer<GitBranch, never, GitHubClient> = Layer.
 						ref: `heads/${name}`,
 					}),
 				),
-			).pipe(
-				Effect.asVoid,
-				retryOnTransient,
-				Effect.mapError(mapError(name, "delete")),
-				Effect.withSpan("GitBranch.delete", { attributes: { "branch.name": name } }),
-			),
+			).pipe(Effect.asVoid, retryOnTransient, Effect.mapError(mapError(name, "delete"))),
 
 		getSha: (name) =>
 			Effect.flatMap(client.repo, ({ owner, repo }) =>
@@ -103,7 +92,6 @@ export const GitBranchLive: Layer.Layer<GitBranch, never, GitHubClient> = Layer.
 			).pipe(
 				Effect.map((data) => (data as { object: { sha: string } }).object.sha),
 				Effect.mapError(mapError(name, "get")),
-				Effect.withSpan("GitBranch.getSha", { attributes: { "branch.name": name } }),
 			),
 
 		reset: (name, sha) =>
@@ -117,11 +105,6 @@ export const GitBranchLive: Layer.Layer<GitBranch, never, GitHubClient> = Layer.
 						force: true,
 					}),
 				),
-			).pipe(
-				Effect.asVoid,
-				retryOnTransient,
-				Effect.mapError(mapError(name, "reset")),
-				Effect.withSpan("GitBranch.reset", { attributes: { "branch.name": name } }),
-			),
+			).pipe(Effect.asVoid, retryOnTransient, Effect.mapError(mapError(name, "reset"))),
 	})),
 );

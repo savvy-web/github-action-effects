@@ -2,6 +2,8 @@ import { Data } from "effect";
 
 /**
  * Error from tool installation operations.
+ *
+ * @public
  */
 export class ToolInstallerError extends Data.TaggedError("ToolInstallerError")<{
 	/** The tool name. */
@@ -11,7 +13,7 @@ export class ToolInstallerError extends Data.TaggedError("ToolInstallerError")<{
 	readonly version: string;
 
 	/** The operation that failed. */
-	readonly operation: "download" | "extract" | "cache" | "path";
+	readonly operation: "download" | "extract" | "cache" | "path" | "chmod";
 
 	/** Human-readable description. */
 	readonly reason: string;

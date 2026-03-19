@@ -104,6 +104,9 @@ GitHub API:
   CheckRunLive           — Layer.effect depending on GitHubClient; caps annotations at 50
   CheckRunTest           — in-memory CheckRunRecord array; resets ID counter on .empty()
 
+  PullRequestLive        — Layer.effect depending on GitHubClient + GitHubGraphQL
+  PullRequestTest        — in-memory PR state with CRUD, merge, labels, reviewers
+
   PullRequestCommentLive — Layer.effect depending on GitHubClient; uses Issues API
   PullRequestCommentTest — in-memory Map<prNumber, comments[]>; instance-scoped nextId
 
@@ -140,14 +143,6 @@ Build Tooling:
 
   DryRunLive             — reads enabled flag from constructor param
   DryRunTest             — always dry, records guarded labels in state
-
-Observability:
-  ActionTelemetryLive    — in-memory metrics + Effect.annotateCurrentSpan
-  ActionTelemetryTest    — in-memory metrics + attributes
-
-  InMemoryTracer.layer   — captures Effect.withSpan spans in memory for reporting
-  OtelTelemetryLive      — bridges Effect tracer to OpenTelemetry (static import, regular dep)
-  OtelExporterLive       — configures OTel exporter via static @effect/opentelemetry import
 
 Platform:
   NodeContext.layer      — @effect/platform-node: FileSystem, Path, Terminal,
@@ -193,12 +188,6 @@ DI via `Layer.effect` and `yield*`:
 - `GitHubAppLive` -- `yield* OctokitAuthApp`
 - `ToolInstallerLive` -- `yield* ActionsCore` + `yield* ActionsToolCache`
 
-### OTel Layers
-
-- `OtelExporterLive` / `OtelTelemetryLive` -- static `@effect/opentelemetry`
-  and `@opentelemetry/*` imports (these are regular dependencies, not optional
-  peers)
-
 Consumers do not need bare `import` hints (e.g., `import "@actions/tool-cache"`)
 in their entry points. ncc resolves all imports statically from the library's
 wrapper Live layer files.
@@ -219,7 +208,7 @@ functions as a service value. They have no service dependencies.
 - `ActionsCacheLive` -- `Layer.succeed(ActionsCache, { saveCache, restoreCache })`
 - `ActionsExecLive` -- `Layer.succeed(ActionsExec, { exec })`
 - `ActionsToolCacheLive` -- `Layer.succeed(ActionsToolCache, { find, downloadTool,
-  extractTar, extractZip, cacheDir })`
+  extractTar, extractZip, cacheDir, cacheFile })`
 - `OctokitAuthAppLive` -- `Layer.succeed(OctokitAuthApp, { createAppAuth })`
 
 ### ActionLoggerLive
@@ -272,6 +261,13 @@ yield `ActionsExec`. Adds stdout/stderr buffer listeners to capture output.
 
 `Layer.Layer<CheckRun, never, GitHubClient>`. Annotations capped at 50 per
 API call.
+
+### PullRequestLive
+
+`Layer.Layer<PullRequest, never, GitHubClient | GitHubGraphQL>`. Uses REST
+API for PR CRUD, merge, labels, and reviewer operations. Delegates auto-merge
+enable/disable to `GitHubGraphQL` using the `AutoMerge` utility's GraphQL
+mutations.
 
 ### PullRequestCommentLive
 
@@ -330,29 +326,6 @@ verification across multiple registries.
 permissions from the `InstallationToken.permissions` field and compares
 against requirements using hierarchical level comparison.
 
-### OtelExporterLive
-
-Takes resolved `ResolvedOtelConfig`. When `enabled=false`, returns
-`InMemoryTracer.layer`. When `enabled=true`, uses a static import of
-`@effect/opentelemetry` to configure `EffectOtel.Tracer.layerGlobal` with
-GitHub-aware resource attributes from `GitHubOtelAttributes.fromEnvironment()`.
-OTel packages are regular dependencies (not optional peers), so static
-imports work reliably in ncc bundles.
-
-### OtelTelemetryLive
-
-Bridges Effect's `Tracer` to `@effect/opentelemetry` via a static import.
-When provided, replaces InMemoryTracer with an OTel-backed tracer. Accepts
-optional `OtelConfig` with `serviceName`, `serviceVersion`, and
-`resourceAttributes`.
-
-### InMemoryTracer
-
-`InMemoryTracer.layer` -- captures all `Effect.withSpan` spans in memory.
-`InMemoryTracer.getSpans()` retrieves completed spans for rendering via
-`TelemetryReport`. Each `provide(InMemoryTracer.layer)` creates an isolated
-store.
-
 ---
 
 ## Test Layer Details
@@ -383,6 +356,7 @@ Test layers use the namespace object pattern for ergonomic test setup:
 - `GitHubIssueTest.empty()` / `GitHubIssueTest.layer(state)`
 - `GitHubAppTest.empty()` / `GitHubAppTest.layer(state)`
 - `CheckRunTest.empty()` / `CheckRunTest.layer(state)` -- resets ID counter
+- `PullRequestTest.empty()` / `PullRequestTest.layer(state)`
 - `PullRequestCommentTest.empty()` / `PullRequestCommentTest.layer(state)`
 - `RateLimiterTest.empty()` / `RateLimiterTest.layer(state)`
 - `WorkflowDispatchTest.empty()` / `WorkflowDispatchTest.layer(state)`
@@ -398,10 +372,6 @@ Test layers use the namespace object pattern for ergonomic test setup:
 - `ChangesetAnalyzerTest.empty()` / `ChangesetAnalyzerTest.layer(state)`
 - `ConfigLoaderTest.empty()` / `ConfigLoaderTest.layer(state)`
 - `DryRunTest.empty()` / `DryRunTest.layer(state)` -- always dry, records guarded labels
-
-**Observability:**
-
-- `ActionTelemetryTest.empty()` / `ActionTelemetryTest.layer(state)`
 
 Test layers for services like CheckRun, PullRequestComment, GitBranch, etc.
 do NOT depend on GitHubClient -- they operate entirely in-memory.
@@ -427,9 +397,9 @@ Tier 1 — Depends on platform wrappers:
   ToolInstaller             <- depends on ActionsCore + ActionsToolCache
 
 Tier 1 — Independent (no service or platform dependencies):
-  ActionEnvironment, DryRun, ActionTelemetry,
-  GithubMarkdown, SemverResolver, ErrorAccumulator, GitHubOtelAttributes,
-  ReportBuilder, TelemetryReport
+  ActionEnvironment, DryRun,
+  GithubMarkdown, SemverResolver, ErrorAccumulator,
+  ReportBuilder
 
 Tier 2 — Single service dependency:
   NpmRegistry               <- depends on CommandRunner
@@ -448,6 +418,7 @@ Tier 3 — GitHubClient dependents:
   RateLimiter               <- depends on GitHubClient
   WorkflowDispatch          <- depends on GitHubClient
   GitHubIssue               <- depends on GitHubClient + GitHubGraphQL
+  PullRequest               <- depends on GitHubClient + GitHubGraphQL
   PackageManagerAdapter     <- depends on CommandRunner + FileSystem
   WorkspaceDetector         <- depends on FileSystem + CommandRunner
 
@@ -505,7 +476,7 @@ const MyActionLayer = Layer.mergeAll(
 
 ## Current State
 
-All 30 domain services have both live and test layer implementations. The 6
+All 29 domain services have both live and test layer implementations. The 6
 platform wrapper services have only live layers. The four-tier dependency graph
 is stable, and layer composition patterns are well-established with `Action.run()`
 providing the core layers automatically. All `@actions/*` package imports are

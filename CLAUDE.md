@@ -6,8 +6,8 @@ code in this repository.
 ## Project Status
 
 Effect-based utility library for building robust, well-logged, and
-schema-validated GitHub Actions. Provides 30 Effect services covering inputs,
-logging, outputs, state, telemetry, GitHub API operations, git operations,
+schema-validated GitHub Actions. Provides 27 Effect services covering inputs,
+logging, outputs, state, GitHub API operations, git operations,
 config loading, tool management, package manager abstraction, npm registry
 queries, package publishing, workspace detection, PR lifecycle management,
 and token permission checks.
@@ -63,11 +63,11 @@ pnpm vitest run src/services/ActionInputs.test.ts
 
 ```text
 src/
-  services/    -- Effect service interfaces (30 services)
-  layers/      -- Live and Test layer implementations + InMemoryTracer
+  services/    -- Effect service interfaces (27 services)
+  layers/      -- Live and Test layer implementations
   errors/      -- Tagged error types (Data.TaggedError)
   schemas/     -- Effect Schema definitions (LogLevel, Changeset, PackageManager, etc.)
-  utils/       -- GithubMarkdown, ReportBuilder, TelemetryReport
+  utils/       -- GithubMarkdown, ReportBuilder
 ```
 
 ### Services
@@ -78,7 +78,6 @@ src/
 | ActionLogger | Structured logging (info/verbose/debug) | — |
 | ActionOutputs | Typed outputs + step summaries | — |
 | ActionState | State transfer between action phases | — |
-| ActionTelemetry | Metrics recording (metrics-only) | — |
 | ActionCache | Cache save/restore | @actions/cache |
 | ActionEnvironment | GitHub/runner context access | — |
 | DryRun | Mutation guard with fallback values | — |
@@ -104,13 +103,6 @@ src/
 | PackagePublish | Pack + publish to registries | — |
 | PackageManagerAdapter | Unified PM interface | — |
 | WorkspaceDetector | Monorepo workspace detection + listing | — |
-
-### Telemetry
-
-- All service methods instrumented with `Effect.withSpan`
-- `InMemoryTracer` captures spans for GitHub-native output
-- `OtelTelemetryLive` bridges to OpenTelemetry exporters (OTel packages are
-  regular dependencies, statically imported)
 
 ### Key Patterns
 

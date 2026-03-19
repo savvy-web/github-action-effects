@@ -103,7 +103,6 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 					).pipe(
 						Effect.map((data) => toInfo(data as unknown as RawPull)),
 						Effect.mapError(mapClientError("get", number)),
-						Effect.withSpan("PullRequest.get", { attributes: { "pr.number": String(number) } }),
 					),
 
 				list: (options) =>
@@ -130,7 +129,6 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 					}).pipe(
 						Effect.map((items) => (items as unknown as RawPull[]).map(toInfo)),
 						Effect.mapError(mapClientError("list")),
-						Effect.withSpan("PullRequest.list"),
 					),
 
 				create: (options) =>
@@ -150,9 +148,6 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 						Effect.map((data) => toInfo(data as unknown as RawPull)),
 						Effect.mapError(mapClientError("create")),
 						Effect.tap((info) => handleAutoMerge(info.nodeId, info.number, options.autoMerge)),
-						Effect.withSpan("PullRequest.create", {
-							attributes: { "pr.head": options.head, "pr.base": options.base },
-						}),
 					),
 
 				update: (number, options) =>
@@ -171,7 +166,6 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 						Effect.map((data) => toInfo(data as unknown as RawPull)),
 						Effect.mapError(mapClientError("update", number)),
 						Effect.tap((info) => handleAutoMerge(info.nodeId, info.number, options.autoMerge)),
-						Effect.withSpan("PullRequest.update", { attributes: { "pr.number": String(number) } }),
 					),
 
 				getOrCreate: (options) =>
@@ -233,9 +227,6 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 					).pipe(
 						Effect.mapError(mapClientError("getOrCreate")),
 						Effect.tap((info) => handleAutoMerge(info.nodeId, info.number, options.autoMerge)),
-						Effect.withSpan("PullRequest.getOrCreate", {
-							attributes: { "pr.head": options.head, "pr.base": options.base },
-						}),
 					),
 
 				merge: (number, options) =>
@@ -250,11 +241,7 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 								...(options?.commitMessage ? { commit_message: options.commitMessage } : {}),
 							}),
 						),
-					).pipe(
-						Effect.asVoid,
-						Effect.mapError(mapClientError("merge", number)),
-						Effect.withSpan("PullRequest.merge", { attributes: { "pr.number": String(number) } }),
-					),
+					).pipe(Effect.asVoid, Effect.mapError(mapClientError("merge", number))),
 
 				addLabels: (number, labels) =>
 					Effect.flatMap(client.repo, ({ owner, repo }) =>
@@ -266,13 +253,7 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 								labels: [...labels],
 							}),
 						),
-					).pipe(
-						Effect.asVoid,
-						Effect.mapError(mapClientError("addLabels", number)),
-						Effect.withSpan("PullRequest.addLabels", {
-							attributes: { "pr.number": String(number) },
-						}),
-					),
+					).pipe(Effect.asVoid, Effect.mapError(mapClientError("addLabels", number))),
 
 				requestReviewers: (number, options) =>
 					Effect.flatMap(client.repo, ({ owner, repo }) =>
@@ -285,13 +266,7 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 								...(options.teamReviewers ? { team_reviewers: [...options.teamReviewers] } : {}),
 							}),
 						),
-					).pipe(
-						Effect.asVoid,
-						Effect.mapError(mapClientError("requestReviewers", number)),
-						Effect.withSpan("PullRequest.requestReviewers", {
-							attributes: { "pr.number": String(number) },
-						}),
-					),
+					).pipe(Effect.asVoid, Effect.mapError(mapClientError("requestReviewers", number))),
 			};
 		}),
 	),

@@ -43,7 +43,6 @@ export const GitCommitLive: Layer.Layer<GitCommit, never, GitHubClient> = Layer.
 			).pipe(
 				Effect.map((data) => (data as { sha: string }).sha),
 				Effect.mapError(mapError("tree")),
-				Effect.withSpan("GitCommit.createTree"),
 			),
 
 		createCommit: (message, treeSha, parentShas) =>
@@ -60,7 +59,6 @@ export const GitCommitLive: Layer.Layer<GitCommit, never, GitHubClient> = Layer.
 			).pipe(
 				Effect.map((data) => (data as { sha: string }).sha),
 				Effect.mapError(mapError("commit")),
-				Effect.withSpan("GitCommit.createCommit"),
 			),
 
 		updateRef: (ref, sha, force) =>
@@ -74,11 +72,7 @@ export const GitCommitLive: Layer.Layer<GitCommit, never, GitHubClient> = Layer.
 						force: force ?? false,
 					}),
 				),
-			).pipe(
-				Effect.asVoid,
-				Effect.mapError(mapError("ref")),
-				Effect.withSpan("GitCommit.updateRef", { attributes: { "git.ref": ref } }),
-			),
+			).pipe(Effect.asVoid, Effect.mapError(mapError("ref"))),
 
 		commitFiles: (branch, message, files) =>
 			Effect.gen(function* () {
@@ -144,6 +138,6 @@ export const GitCommitLive: Layer.Layer<GitCommit, never, GitHubClient> = Layer.
 					.pipe(Effect.mapError(mapError("ref")));
 
 				return commitSha;
-			}).pipe(Effect.withSpan("GitCommit.commitFiles", { attributes: { "git.branch": branch } })),
+			}),
 	})),
 );

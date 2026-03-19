@@ -12,7 +12,6 @@ related:
   - ./errors-and-schemas.md
   - ./testing-strategy.md
   - ./integration-points.md
-  - ./otel-exporter-inputs.md
 dependencies: []
 ---
 
@@ -30,15 +29,13 @@ schema-validated GitHub Actions with Node.js 24.
 | [errors-and-schemas.md](./errors-and-schemas.md) | Error types, schema patterns, data flow |
 | [testing-strategy.md](./testing-strategy.md) | Testing approach, coverage requirements, test layer patterns |
 | [integration-points.md](./integration-points.md) | Peer dependencies, how services compose, data flow diagrams |
-| [otel-exporter-inputs.md](./otel-exporter-inputs.md) | OTel exporter input design and Action.run() integration |
 
 ## Current State
 
-The library provides 36 Effect services (30 domain services + 6 platform
+The library provides 35 Effect services (29 domain services + 6 platform
 wrapper services) spanning core action I/O, GitHub API integration, git
-operations, build tooling, observability, and platform abstraction, along with
-utility namespaces for markdown generation, report building, and telemetry
-output.
+operations, build tooling, and platform abstraction, along with utility
+namespaces for markdown generation and report building.
 
 ## Overview
 
@@ -50,18 +47,16 @@ building blocks.
 
 ### Scope
 
-The library provides 36 service interfaces, 6 utility namespaces, 28 error
-types, and 13 schema modules. Services cover six domains:
+The library provides 35 service interfaces, 5 utility namespaces, 28 error
+types, and 11 schema modules. Services cover five domains:
 
 - **Core action I/O** -- inputs, outputs, state, logging, environment, cache
 - **Git operations** -- branches, commits, tags via Git Data API
-- **GitHub API** -- REST client, GraphQL, releases, issues, PR comments, check
-  runs, workflow dispatch, app auth, rate limiting
+- **GitHub API** -- REST client, GraphQL, releases, issues, PR lifecycle, PR
+  comments, check runs, workflow dispatch, app auth, rate limiting
 - **Build tooling** -- command execution, npm registry, package publishing,
   workspace detection, package manager adaptation, tool installation, changeset
   analysis, config loading
-- **Observability** -- telemetry recording, OTel bridge, in-memory tracing,
-  OTLP export, report building
 - **Platform abstraction** -- wrapper services for `@actions/*` and
   `@octokit/auth-app` packages, enabling DI for all external platform calls
 
@@ -83,8 +78,7 @@ GitHub Actions development suffers from four recurring pain points:
 - **Utility-first** -- Provide composable services, not an opinionated framework
 - **Effect-native** -- All services are Effect services with proper Layer composition
 - **Peer dependencies** -- `effect` and `@actions/*` packages are peers; users
-  bring their own versions (action-builder bundles with ncc anyway). OTel
-  packages are regular dependencies (bundled by ncc). All Live layers use
+  bring their own versions (action-builder bundles with ncc anyway). All Live layers use
   static imports exclusively -- ncc cannot follow dynamic `import()` calls.
 - **Platform abstraction** -- All `@actions/*` and `@octokit/auth-app` calls
   go through wrapper services (`ActionsCore`, `ActionsGitHub`, `ActionsCache`,
@@ -103,20 +97,18 @@ GitHub Actions development suffers from four recurring pain points:
 #### AD-1: Peer Dependencies for effect and @actions/*
 
 - **Decision:** `effect` and all `@actions/*` packages are peer dependencies.
-  OpenTelemetry packages (`@effect/opentelemetry`, `@opentelemetry/*`) are
-  regular `dependencies`, not peer dependencies. All Live layers use static
-  imports for their peer dependencies (no dynamic `import()` calls).
+  All Live layers use static imports for their peer dependencies (no dynamic
+  `import()` calls).
 - **Rationale:** `@savvy-web/github-action-builder` bundles everything with
   `@vercel/ncc` into a single file. Peer deps let the bundler resolve versions
   from the consumer's package.json, avoiding duplication and version conflicts.
   All Live layers use static imports because ncc cannot follow dynamic
-  `import()` calls. This applies uniformly to both optional peers
+  `import()` calls. This applies to both optional peers
   (`@actions/tool-cache`, `@octokit/auth-app`, `@actions/github`,
-  `@actions/exec`, `@actions/cache`) and regular dependencies (OTel packages).
-  Consumers do not need bare `import` hints in their entry points.
+  `@actions/exec`, `@actions/cache`) and `effect`. Consumers do not need bare
+  `import` hints in their entry points.
 - **Trade-off:** Users must install effect themselves. This is acceptable since
-  this library targets Effect-using action authors. OTel packages add to
-  bundle size but are necessary for correct ncc compilation.
+  this library targets Effect-using action authors.
 
 #### AD-2: Two Entry Points — Main and Testing Subpath
 
@@ -183,9 +175,9 @@ GitHub Actions development suffers from four recurring pain points:
 - **Decision:** Pure computation patterns and thin API wrappers use
   `const X = { ... } as const` namespace objects instead of full services
 - **Rationale:** GithubMarkdown, SemverResolver, ErrorAccumulator,
-  AutoMerge, GitHubOtelAttributes, ReportBuilder, and TelemetryReport
-  do not need dependency injection or state management. Namespace objects
-  avoid service ceremony while remaining api-extractor compatible.
+  AutoMerge, and ReportBuilder do not need dependency injection or state
+  management. Namespace objects avoid service ceremony while remaining
+  api-extractor compatible.
 
 ### Constraints
 

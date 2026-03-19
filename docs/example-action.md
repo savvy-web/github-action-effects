@@ -384,6 +384,5 @@ patterns for testing logging, state, and annotations.
 * [Testing Guide](./testing.md) -- test every service with in-memory layers
 * [Architecture](./architecture.md) -- API reference, layer composition, and
   logging pipeline
-* [OpenTelemetry](./otel.md) -- OTel configuration and tracing guide
 * [Patterns](./patterns.md) -- dry-run mode, error accumulation, permission
   checking, and more

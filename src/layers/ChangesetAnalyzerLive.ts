@@ -136,7 +136,6 @@ export const ChangesetAnalyzerLive: Layer.Layer<ChangesetAnalyzer, never, FileSy
 							}),
 						),
 					),
-					Effect.withSpan("ChangesetAnalyzer.parseAll", { attributes: { dir: changesetDir } }),
 				);
 			},
 
@@ -145,7 +144,6 @@ export const ChangesetAnalyzerLive: Layer.Layer<ChangesetAnalyzer, never, FileSy
 				return listChangesetFiles(changesetDir).pipe(
 					Effect.map((files) => files.length > 0),
 					Effect.catchAll(() => Effect.succeed(false)),
-					Effect.withSpan("ChangesetAnalyzer.hasChangesets", { attributes: { dir: changesetDir } }),
 				);
 			},
 
@@ -164,7 +162,6 @@ export const ChangesetAnalyzerLive: Layer.Layer<ChangesetAnalyzer, never, FileSy
 								reason: `Failed to write changeset file ${path}: ${error.message}`,
 							}),
 					),
-					Effect.withSpan("ChangesetAnalyzer.generate", { attributes: { dir: changesetDir } }),
 				);
 			},
 		};

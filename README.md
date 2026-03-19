@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
 [![Node.js 24](https://img.shields.io/badge/Node.js-24-339933)](https://nodejs.org/)
 
-Composable [Effect](https://effect.website) services for building Node.js 24 GitHub Actions with schema-validated inputs, structured logging, GitHub API operations, package publishing, OpenTelemetry tracing, and more -- without the boilerplate.
+Composable [Effect](https://effect.website) services for building Node.js 24 GitHub Actions with schema-validated inputs, structured logging, GitHub API operations, package publishing, and more -- without the boilerplate.
 
 ## Features
 
@@ -13,7 +13,6 @@ Composable [Effect](https://effect.website) services for building Node.js 24 Git
 - **Structured logging** -- three-tier logger (info/verbose/debug) with buffer-on-failure and collapsible groups
 - **GitHub API services** -- releases, issues, PRs, check runs, branches, tags, commits, and GraphQL via Octokit
 - **Package publishing** -- npm registry queries, multi-registry publish, workspace detection, changeset analysis
-- **OpenTelemetry integration** -- opt-in tracing and metrics with auto-configured OTLP export
 - **In-memory test layers** -- every service ships with a test layer for fast, deterministic tests
 - **Platform abstraction** -- `@actions/*` packages wrapped in Effect services for dependency injection and custom platform overrides
 - **Test-friendly imports** -- `./testing` subpath provides everything without triggering `@actions/*` module resolution
@@ -44,7 +43,7 @@ const program = Effect.gen(function* () {
 Action.run(program);
 ```
 
-`Action.run` provides all core service layers (including `NodeContext.layer` for `FileSystem`, `Path`, `Terminal`, `CommandExecutor`, and `WorkerManager` from `@effect/platform`), installs the Effect logger, auto-configures OTel tracing, and catches errors with `core.setFailed` automatically.
+`Action.run` provides all core service layers (including `NodeContext.layer` for `FileSystem`, `Path`, `Terminal`, `CommandExecutor`, and `WorkerManager` from `@effect/platform`), installs the Effect logger, and catches errors with `core.setFailed` automatically.
 
 Pass additional layers or a custom platform via the options object:
 
@@ -58,7 +57,7 @@ Action.run(program, { platform: myCustomPlatformLayer });
 
 ## Services
 
-### Action Services (30)
+### Action Services (27)
 
 | Service | Description |
 | --- | --- |
@@ -68,7 +67,6 @@ Action.run(program, { platform: myCustomPlatformLayer });
 | ActionState | Schema-serialized state transfer across pre/main/post phases |
 | ActionEnvironment | Typed access to GITHUB_\* and RUNNER_\* environment variables |
 | ActionCache | Save/restore/withCache bracket for GitHub Actions cache |
-| ActionTelemetry | Record numeric metrics, annotate spans |
 | GitHubClient | Octokit REST and GraphQL with pagination |
 | GitHubGraphQL | Typed GraphQL queries and mutations |
 | GitHubRelease | Create releases, upload assets, list/get by tag |
@@ -91,7 +89,7 @@ Action.run(program, { platform: myCustomPlatformLayer });
 | TokenPermissionChecker | Check, assert, or warn about GitHub token permission gaps |
 | RateLimiter | Rate limit awareness with guard and exponential backoff retry |
 | WorkflowDispatch | Trigger workflows, poll until completion, get run status |
-| ToolInstaller | Download, extract, cache, and add tool binaries to PATH |
+| ToolInstaller | Download, extract, cache, and add tool binaries to PATH (archives and standalone binaries) |
 
 ### Platform Wrapper Services (6)
 
@@ -116,22 +114,7 @@ Live layers no longer import `@actions/*` directly. Instead, these wrapper servi
 | `AutoMerge` | Enable/disable PR auto-merge via GraphQL |
 | `SemverResolver` | Compare, satisfy, increment, parse semver versions with Effect error handling |
 | `ErrorAccumulator` | Process all items collecting successes and failures without short-circuiting |
-| `GitHubOtelAttributes` | Map GITHUB_*/RUNNER_* env vars to OTel semantic convention resource attributes |
 | `ReportBuilder` | Fluent builder for markdown reports -- render to summary, PR comment, or check run |
-| `TelemetryReport` | Render span timings and metrics as GFM tables |
-
-## OpenTelemetry
-
-`Action.run` auto-reads four optional inputs for OTel configuration:
-
-| Input | Default | Description |
-| --- | --- | --- |
-| `otel-enabled` | `"auto"` | `"enabled"`, `"disabled"`, or `"auto"` (enabled when endpoint is set) |
-| `otel-endpoint` | `""` | OTLP endpoint URL (falls back to `OTEL_EXPORTER_OTLP_ENDPOINT`) |
-| `otel-protocol` | `"grpc"` | `"grpc"`, `"http/protobuf"`, or `"http/json"` |
-| `otel-headers` | `""` | Comma-separated `key=value` pairs for OTLP headers |
-
-When no endpoint is configured, tracing falls back to an in-memory tracer. A timing summary is appended to the step summary when `log-level` is set to `debug` (or `auto` with `RUNNER_DEBUG=1`).
 
 ## Testing
 
@@ -179,12 +162,11 @@ const layer = ActionInputsLive.pipe(Layer.provide(mockPlatform));
 ## Documentation
 
 - [Example Action](./docs/example-action.md) -- end-to-end tutorial
-- [Advanced Action](./docs/advanced-action.md) -- three-stage app (pre/main/post) with GitHub App auth, OTel, state, and log levels
+- [Advanced Action](./docs/advanced-action.md) -- three-stage app (pre/main/post) with GitHub App auth, state, and log levels
 - [Services Guide](./docs/services.md) -- detailed guide for each service
 - [Architecture](./docs/architecture.md) -- API reference and layer composition
 - [Peer Dependencies](./docs/peer-dependencies.md) -- required and optional peer dependencies with service mapping
 - [Testing](./docs/testing.md) -- testing with in-memory layers
-- [OpenTelemetry](./docs/otel.md) -- OTel configuration and tracing guide
 - [Patterns](./docs/patterns.md) -- dry-run mode, error accumulation, permission checking, and more
 - [Error Handling](./docs/error-handling.md) -- `Action.formatCause` and error handling patterns
 

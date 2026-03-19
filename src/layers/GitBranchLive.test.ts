@@ -133,6 +133,44 @@ describe("GitBranchLive", () => {
 			);
 		});
 
+		it("fails with GitBranchError on non-404 error", async () => {
+			const mockClientWith500: typeof GitHubClient.Service = {
+				...mockClient,
+				rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
+					Effect.tryPromise({
+						try: () =>
+							fn({
+								rest: {
+									git: {
+										createRef: mockCreateRef,
+										getRef: mockGetRef,
+										deleteRef: mockDeleteRef,
+										updateRef: mockUpdateRef,
+									},
+								},
+							}),
+						catch: () =>
+							new GitHubClientError({
+								operation: _operation,
+								status: 500,
+								reason: "Internal Server Error",
+								retryable: false,
+							}),
+					}).pipe(Effect.map((r) => r.data)),
+			};
+			mockGetRef.mockRejectedValue(new Error("Server Error"));
+			const layer500 = Layer.provide(GitBranchLive, Layer.succeed(GitHubClient, mockClientWith500));
+			const exit = await Effect.runPromise(
+				Effect.exit(
+					Effect.provide(
+						Effect.flatMap(GitBranch, (svc) => svc.exists("branch")),
+						layer500,
+					),
+				),
+			);
+			expect(exit._tag).toBe("Failure");
+		});
+
 		it("returns false on 404", async () => {
 			mockGetRef.mockRejectedValue(new Error("Not Found"));
 			const mockClientWith404: typeof GitHubClient.Service = {

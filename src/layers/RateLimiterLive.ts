@@ -39,7 +39,6 @@ export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = La
 					const typed = data as { resources: { core: RateLimitStatus } };
 					return typed.resources.core;
 				}),
-				Effect.withSpan("RateLimiter.checkRest"),
 			);
 
 		const checkGraphQL = (): Effect.Effect<
@@ -51,7 +50,6 @@ export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = La
 					const typed = data as { resources: { graphql: RateLimitStatus } };
 					return typed.resources.graphql;
 				}),
-				Effect.withSpan("RateLimiter.checkGraphQL"),
 			);
 
 		return {
@@ -88,7 +86,6 @@ export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = La
 						}
 						return effect;
 					}),
-					Effect.withSpan("RateLimiter.withRateLimit"),
 				),
 
 			withRetry: <A, E, R>(
@@ -101,7 +98,6 @@ export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = La
 					Effect.retry(
 						Schedule.exponential(Duration.millis(baseDelay)).pipe(Schedule.compose(Schedule.recurs(maxRetries))),
 					),
-					Effect.withSpan("RateLimiter.withRetry"),
 				);
 			},
 		};

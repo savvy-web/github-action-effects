@@ -77,6 +77,97 @@ describe("ToolInstaller", () => {
 		});
 	});
 
+	describe("installBinary", () => {
+		it("returns base path and records install", async () => {
+			const state = ToolInstallerTest.empty();
+
+			const result = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.installBinary("biome", "1.0.0", "https://example.com/biome")),
+			);
+
+			expect(result).toBe("/tools/biome/1.0.0");
+			expect(state.installed).toHaveLength(1);
+			expect(state.installed[0]).toEqual({ name: "biome", version: "1.0.0", path: "/tools/biome/1.0.0" });
+		});
+
+		it("uses custom binaryName when provided", async () => {
+			const state = ToolInstallerTest.empty();
+
+			await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinary("my-tool", "2.0.0", "https://example.com/my-tool-linux", { binaryName: "tool" }),
+				),
+			);
+
+			expect(state.installed).toHaveLength(1);
+			expect(state.installed[0]?.name).toBe("my-tool");
+		});
+
+		it("marks tool as cached after install", async () => {
+			const state = ToolInstallerTest.empty();
+
+			await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.installBinary("biome", "1.0.0", "https://example.com/biome")),
+			);
+
+			const isCached = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.isCached("biome", "1.0.0")),
+			);
+			expect(isCached).toBe(true);
+		});
+	});
+
+	describe("installBinaryAndAddToPath", () => {
+		it("returns base path, records install, and adds to PATH", async () => {
+			const state = ToolInstallerTest.empty();
+
+			const result = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinaryAndAddToPath("biome", "1.0.0", "https://example.com/biome"),
+				),
+			);
+
+			expect(result).toBe("/tools/biome/1.0.0");
+			expect(state.installed).toHaveLength(1);
+			expect(state.addedToPaths).toEqual(["/tools/biome/1.0.0"]);
+		});
+
+		it("uses custom binaryName and adds correct path", async () => {
+			const state = ToolInstallerTest.empty();
+
+			await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinaryAndAddToPath("my-tool", "2.0.0", "https://example.com/my-tool", { binaryName: "tool" }),
+				),
+			);
+
+			expect(state.addedToPaths).toEqual(["/tools/my-tool/2.0.0"]);
+		});
+
+		it("marks tool as cached after install", async () => {
+			const state = ToolInstallerTest.empty();
+
+			await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinaryAndAddToPath("biome", "1.0.0", "https://example.com/biome"),
+				),
+			);
+
+			const isCached = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.isCached("biome", "1.0.0")),
+			);
+			expect(isCached).toBe(true);
+		});
+	});
+
 	describe("installAndAddToPath", () => {
 		it("returns path, records install, and adds to PATH", async () => {
 			const state = ToolInstallerTest.empty();

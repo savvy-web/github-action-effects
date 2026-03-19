@@ -49,7 +49,6 @@ export const CheckRunLive: Layer.Layer<CheckRun, never, GitHubClient> = Layer.ef
 			).pipe(
 				Effect.map((data) => (data as { id: number }).id),
 				Effect.mapError(mapError(name, "create")),
-				Effect.withSpan("CheckRun.create", { attributes: { "checkrun.name": name } }),
 			);
 
 		const completeCheckRun = (
@@ -85,16 +84,9 @@ export const CheckRunLive: Layer.Layer<CheckRun, never, GitHubClient> = Layer.ef
 							output: formatOutput(output),
 						}),
 					),
-				).pipe(
-					Effect.asVoid,
-					Effect.mapError(mapError("", "update")),
-					Effect.withSpan("CheckRun.update", { attributes: { "checkrun.id": String(checkRunId) } }),
-				),
+				).pipe(Effect.asVoid, Effect.mapError(mapError("", "update"))),
 
-			complete: (checkRunId, conclusion, output) =>
-				completeCheckRun("", checkRunId, conclusion, output).pipe(
-					Effect.withSpan("CheckRun.complete", { attributes: { "checkrun.id": String(checkRunId) } }),
-				),
+			complete: (checkRunId, conclusion, output) => completeCheckRun("", checkRunId, conclusion, output),
 
 			withCheckRun: (name, headSha, effect) =>
 				Effect.flatMap(createCheckRun(name, headSha), (checkRunId) =>
@@ -103,7 +95,7 @@ export const CheckRunLive: Layer.Layer<CheckRun, never, GitHubClient> = Layer.ef
 							completeCheckRun(name, checkRunId, "failure").pipe(Effect.flatMap(() => Effect.failCause(cause))),
 						onSuccess: (result) => completeCheckRun(name, checkRunId, "success").pipe(Effect.map(() => result)),
 					}),
-				).pipe(Effect.withSpan("CheckRun.withCheckRun", { attributes: { "checkrun.name": name } })),
+				),
 		};
 	}),
 );

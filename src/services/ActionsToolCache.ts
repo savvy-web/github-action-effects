@@ -13,5 +13,6 @@ export class ActionsToolCache extends Context.Tag("github-action-effects/Actions
 		readonly extractTar: (file: string, dest?: string, flags?: string) => Promise<string>;
 		readonly extractZip: (file: string, dest?: string) => Promise<string>;
 		readonly cacheDir: (sourceDir: string, tool: string, version: string) => Promise<string>;
+		readonly cacheFile: (sourceFile: string, targetFile: string, tool: string, version: string) => Promise<string>;
 	}
 >() {}

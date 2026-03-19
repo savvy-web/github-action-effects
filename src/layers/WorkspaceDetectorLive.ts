@@ -111,7 +111,6 @@ export const WorkspaceDetectorLive: Layer.Layer<WorkspaceDetector, never, FileSy
 						}),
 					);
 				}),
-				Effect.withSpan("WorkspaceDetector.detect"),
 			);
 
 		const readPackageJson = (dir: string): Effect.Effect<WorkspacePackage, WorkspaceDetectorError> =>
@@ -185,7 +184,6 @@ export const WorkspaceDetectorLive: Layer.Layer<WorkspaceDetector, never, FileSy
 						);
 					}).pipe(Effect.map((results) => results.flat()));
 				}),
-				Effect.withSpan("WorkspaceDetector.listPackages"),
 			);
 
 		const getPackage = (nameOrPath: string): Effect.Effect<WorkspacePackage, WorkspaceDetectorError> =>
@@ -202,7 +200,6 @@ export const WorkspaceDetectorLive: Layer.Layer<WorkspaceDetector, never, FileSy
 					}
 					return Effect.succeed(found);
 				}),
-				Effect.withSpan("WorkspaceDetector.getPackage", { attributes: { "workspace.nameOrPath": nameOrPath } }),
 			);
 
 		return { detect, listPackages, getPackage };
