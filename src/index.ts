@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-export type { CoreServices, InputConfig, ParsedInputs } from "./Action.js";
+export type { ActionRunOptions, CoreServices, InputConfig, ParsedInputs } from "./Action.js";
 // -- Namespaces --
 export { Action } from "./Action.js";
 // -- Errors --
@@ -56,6 +56,14 @@ export { ActionOutputsTest } from "./layers/ActionOutputsTest.js";
 export { ActionStateLive } from "./layers/ActionStateLive.js";
 export type { ActionStateTestState } from "./layers/ActionStateTest.js";
 export { ActionStateTest } from "./layers/ActionStateTest.js";
+export { ActionsCacheLive } from "./layers/ActionsCacheLive.js";
+// -- Platform Layers --
+export { ActionsCoreLive } from "./layers/ActionsCoreLive.js";
+export { ActionsExecLive } from "./layers/ActionsExecLive.js";
+export { ActionsGitHubLive } from "./layers/ActionsGitHubLive.js";
+export type { ActionsPlatform } from "./layers/ActionsPlatformLive.js";
+export { ActionsPlatformLive } from "./layers/ActionsPlatformLive.js";
+export { ActionsToolCacheLive } from "./layers/ActionsToolCacheLive.js";
 export { ActionTelemetryLive } from "./layers/ActionTelemetryLive.js";
 export type { ActionTelemetryTestState } from "./layers/ActionTelemetryTest.js";
 export { ActionTelemetryTest } from "./layers/ActionTelemetryTest.js";
@@ -103,6 +111,7 @@ export { InMemoryTracer } from "./layers/InMemoryTracer.js";
 export { NpmRegistryLive } from "./layers/NpmRegistryLive.js";
 export type { NpmRegistryTestState } from "./layers/NpmRegistryTest.js";
 export { NpmRegistryTest } from "./layers/NpmRegistryTest.js";
+export { OctokitAuthAppLive } from "./layers/OctokitAuthAppLive.js";
 export { OtelExporterLive } from "./layers/OtelExporterLive.js";
 export type { OtelConfig } from "./layers/OtelTelemetryLive.js";
 export { OtelTelemetryLive } from "./layers/OtelTelemetryLive.js";
@@ -190,6 +199,15 @@ export { ActionInputs } from "./services/ActionInputs.js";
 export { ActionLogger } from "./services/ActionLogger.js";
 export { ActionOutputs } from "./services/ActionOutputs.js";
 export { ActionState } from "./services/ActionState.js";
+export { ActionsCache } from "./services/ActionsCache.js";
+// -- Platform Services --
+export type { AnnotationProperties } from "./services/ActionsCore.js";
+export { ActionsCore } from "./services/ActionsCore.js";
+export type { ActionsExecOptions } from "./services/ActionsExec.js";
+export { ActionsExec } from "./services/ActionsExec.js";
+export type { GitHubOctokit } from "./services/ActionsGitHub.js";
+export { ActionsGitHub } from "./services/ActionsGitHub.js";
+export { ActionsToolCache } from "./services/ActionsToolCache.js";
 export { ActionTelemetry } from "./services/ActionTelemetry.js";
 export { ChangesetAnalyzer } from "./services/ChangesetAnalyzer.js";
 export type { AnnotationLevel, CheckRunAnnotation, CheckRunConclusion, CheckRunOutput } from "./services/CheckRun.js";
@@ -211,6 +229,8 @@ export { GitHubRelease } from "./services/GitHubRelease.js";
 export type { TagRef } from "./services/GitTag.js";
 export { GitTag } from "./services/GitTag.js";
 export { NpmRegistry } from "./services/NpmRegistry.js";
+export type { AppAuth } from "./services/OctokitAuthApp.js";
+export { OctokitAuthApp } from "./services/OctokitAuthApp.js";
 export type { InstallOptions } from "./services/PackageManagerAdapter.js";
 export { PackageManagerAdapter } from "./services/PackageManagerAdapter.js";
 export type { PackResult, RegistryTarget } from "./services/PackagePublish.js";
