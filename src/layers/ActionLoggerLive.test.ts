@@ -24,7 +24,7 @@ const mockCore = (overrides: Partial<Context.Tag.Service<typeof ActionsCore>> = 
 		endGroup: () => {},
 		getState: () => "",
 		saveState: () => {},
-		summary: { write: () => Promise.resolve(), addRaw: () => ({}) },
+		summary: { write: () => Promise.resolve(), addRaw: () => ({ write: () => Promise.resolve() }) },
 		...overrides,
 	});
 

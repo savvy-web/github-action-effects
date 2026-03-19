@@ -7,6 +7,8 @@ import { Context } from "effect";
  */
 export interface GitHubOctokit {
 	readonly graphql: <T>(query: string, parameters?: Record<string, unknown>) => Promise<T>;
+	// Typed as unknown to avoid importing Octokit's deep type hierarchy;
+	// consumers pass the octokit instance to callback fns that cast internally.
 	readonly rest: unknown;
 	readonly request: unknown;
 }

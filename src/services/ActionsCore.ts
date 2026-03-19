@@ -43,6 +43,6 @@ export class ActionsCore extends Context.Tag("github-action-effects/ActionsCore"
 		readonly endGroup: () => void;
 		readonly getState: (name: string) => string;
 		readonly saveState: (name: string, value: string) => void;
-		readonly summary: { write: () => Promise<unknown>; addRaw: (text: string) => unknown };
+		readonly summary: { write: () => Promise<unknown>; addRaw: (text: string) => { write: () => Promise<unknown> } };
 	}
 >() {}

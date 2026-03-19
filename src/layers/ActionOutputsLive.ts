@@ -30,7 +30,7 @@ export const ActionOutputsLive: Layer.Layer<ActionOutputs, never, ActionsCore> =
 
 			summary: (content) =>
 				Effect.tryPromise({
-					try: () => (core.summary.addRaw(content) as { write: () => Promise<unknown> }).write(),
+					try: () => core.summary.addRaw(content).write(),
 					catch: (error) =>
 						new ActionOutputError({
 							outputName: "summary",

@@ -64,9 +64,14 @@ export interface ActionRunOptions<R = never> {
 	/** Additional layer to merge with the core services. */
 	readonly layer?: Layer.Layer<R, never, never>;
 	/**
-	 * Platform layer providing {@link ActionsCore} (and optionally other wrapper services).
-	 * Defaults to {@link ActionsCoreLive}.
-	 * Pass {@link ActionsPlatformLive} to include all platform wrapper services.
+	 * Platform layer providing {@link ActionsCore} used internally by Action.run
+	 * for reading OTel inputs, error handling, and the Effect logger.
+	 * Defaults to {@link ActionsCoreLive}. Override in tests to inject a mock
+	 * {@link ActionsCore} without loading `@actions/core`.
+	 *
+	 * Note: platform wrapper services required by your own layers (e.g.,
+	 * {@link ActionsGitHub} for {@link GitHubClientLive}) must be included
+	 * in `options.layer`, not here.
 	 */
 	readonly platform?: Layer.Layer<ActionsCore, never, never>;
 }
