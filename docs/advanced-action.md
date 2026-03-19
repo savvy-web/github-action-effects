@@ -508,6 +508,140 @@ configures tracing in every phase. No additional setup is needed.
 **Bracket patterns clean up automatically.** `GitHubApp.withToken` revokes
 the installation token even if the callback fails, preventing token leaks.
 
+## Testing
+
+Test each phase independently using test layers from the `/testing` subpath.
+Each phase is a pure Effect program that requires injected services -- test
+layers replace all live dependencies without any mocking framework.
+
+### Testing a single phase
+
+Test `pre.ts` logic by providing test layers for every required service:
+
+```typescript
+import { Effect, Layer, Schema } from "effect"
+import { describe, expect, it } from "vitest"
+import {
+  ActionInputsTest,
+  ActionLoggerTest,
+  ActionStateTest,
+  GitHubAppTest,
+  TokenPermissionCheckerTest,
+} from "@savvy-web/github-action-effects/testing"
+
+describe("pre phase", () => {
+  it("saves timing state on startup", async () => {
+    const stateState = ActionStateTest.empty()
+
+    const layer = Layer.mergeAll(
+      ActionInputsTest({
+        "app-id": "12345",
+        "private-key": "pem-key-value",
+        "log-level": "info",
+      }),
+      ActionLoggerTest.layer(ActionLoggerTest.empty()),
+      ActionStateTest.layer(stateState),
+      GitHubAppTest.layer(GitHubAppTest.empty()),
+      TokenPermissionCheckerTest.layer(TokenPermissionCheckerTest.empty()),
+    )
+
+    // Run your pre.ts program (import it from your source)
+    // await preProgram.pipe(Effect.provide(layer), Effect.runPromise)
+
+    // Verify timing state was saved
+    expect(stateState.entries.has("timing")).toBe(true)
+    const timing = JSON.parse(stateState.entries.get("timing") ?? "{}")
+    expect(typeof timing.startedAt).toBe("number")
+  })
+})
+```
+
+### Testing cross-phase state with pre-populated ActionStateTest
+
+Simulate state written by `pre.ts` when testing `main.ts` or `post.ts`.
+Pre-populate the `ActionStateTest` entries directly:
+
+```typescript
+import { Effect, Layer, Schema } from "effect"
+import { describe, expect, it } from "vitest"
+import {
+  ActionInputsTest,
+  ActionLoggerTest,
+  ActionOutputsTest,
+  ActionStateTest,
+} from "@savvy-web/github-action-effects/testing"
+
+const TimingState = Schema.Struct({ startedAt: Schema.Number })
+const TokenState = Schema.Struct({
+  installationId: Schema.Number,
+  permissions: Schema.Record({ key: Schema.String, value: Schema.String }),
+})
+
+describe("post phase", () => {
+  it("reads timing from pre phase state", async () => {
+    const stateState = ActionStateTest.empty()
+    const outputState = ActionOutputsTest.empty()
+
+    // Simulate state written by pre.ts
+    stateState.entries.set("timing", JSON.stringify({ startedAt: Date.now() - 5000 }))
+    stateState.entries.set("token", JSON.stringify({
+      installationId: 42,
+      permissions: { contents: "write" },
+    }))
+
+    const layer = Layer.mergeAll(
+      ActionInputsTest({ "log-level": "info" }),
+      ActionLoggerTest.layer(ActionLoggerTest.empty()),
+      ActionOutputsTest.layer(outputState),
+      ActionStateTest.layer(stateState),
+    )
+
+    // Run your post.ts program against the pre-populated state
+    // await postProgram.pipe(Effect.provide(layer), Effect.runPromise)
+
+    // Verify duration-ms output was set
+    expect(outputState.outputs.some((o) => o.name === "duration-ms")).toBe(true)
+  })
+})
+```
+
+### Asserting spans with InMemoryTracer
+
+Verify that your phase programs emit the expected telemetry spans using
+`InMemoryTracer`:
+
+```typescript
+import { Effect, Layer } from "effect"
+import { describe, expect, it } from "vitest"
+import {
+  ActionInputsTest,
+  ActionLoggerTest,
+  InMemoryTracer,
+} from "@savvy-web/github-action-effects/testing"
+
+describe("span assertions", () => {
+  it("emits pre-phase span", async () => {
+    const tracer = InMemoryTracer.make()
+
+    const layer = Layer.mergeAll(
+      ActionInputsTest({ "log-level": "info" }),
+      ActionLoggerTest.layer(ActionLoggerTest.empty()),
+      // Provide InMemoryTracer as the tracer
+      tracer.layer,
+    )
+
+    // Run your program wrapped with Effect.withSpan("pre-phase")
+    // await preProgram.pipe(Effect.provide(layer), Effect.runPromise)
+
+    const spans = tracer.spans()
+    expect(spans.some((s) => s.name === "pre-phase")).toBe(true)
+  })
+})
+```
+
+See [Testing Guide](./testing.md) for the complete test layer API and more
+patterns.
+
 ## Next Steps
 
 - [Services Guide](./services.md) -- detailed usage for each service

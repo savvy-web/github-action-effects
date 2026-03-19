@@ -135,6 +135,73 @@ Note: `ActionStateLive` is not included in core layers because not all actions
 need multi-phase state. Pass it as the second `layer` argument to `Action.run`
 when needed.
 
+## Platform Wrapper Services
+
+All `@actions/*` and `@octokit/auth-app` package calls are isolated behind
+thin wrapper services. This is what makes Live layers fully testable without
+`vi.mock`.
+
+### Purpose
+
+Before the platform abstraction, Live layers imported `@actions/core`,
+`@actions/github`, etc. directly. This meant any file that imported a Live
+layer would transitively pull in those packages -- including test files -- even
+when tests were only using in-memory test layers.
+
+The platform wrapper pattern moves those static imports to a single dedicated
+Live layer per package. All other Live layers depend only on the wrapper
+service interface, which test code can satisfy with mock implementations.
+
+### The 6 Wrapper Services
+
+| Service | Live Layer | Wraps |
+| --- | --- | --- |
+| `ActionsCore` | `ActionsCoreLive` | `@actions/core` |
+| `ActionsGitHub` | `ActionsGitHubLive` | `@actions/github` |
+| `ActionsCache` | `ActionsCacheLive` | `@actions/cache` |
+| `ActionsExec` | `ActionsExecLive` | `@actions/exec` |
+| `ActionsToolCache` | `ActionsToolCacheLive` | `@actions/tool-cache` |
+| `OctokitAuthApp` | `OctokitAuthAppLive` | `@octokit/auth-app` |
+
+Each wrapper service is a thin Effect service interface that mirrors the
+relevant API surface of its underlying package. The Live layer provides the
+real implementation that calls the actual package functions.
+
+### ActionsPlatformLive
+
+`ActionsPlatformLive` is a convenience bundle that merges all six wrapper
+Live layers into a single `Layer<ActionsPlatform>`:
+
+```typescript
+import { ActionsPlatformLive } from "@savvy-web/github-action-effects"
+
+// Provides ActionsCore, ActionsGitHub, ActionsCache, ActionsExec,
+// ActionsToolCache, and OctokitAuthApp all at once
+Action.run(program, Layer.merge(ActionStateLive, ActionsPlatformLive))
+```
+
+`Action.run` already includes `ActionsCoreLive` internally (it is required for
+core operations). `ActionsPlatformLive` is useful when you need all platform
+wrappers in a single expression -- for example, in integration tests that
+exercise multiple Live layers simultaneously.
+
+### Injecting a Custom Platform in Action.run
+
+`Action.run` accepts an optional `platform` option that replaces the default
+`ActionsCoreLive`:
+
+```typescript
+import { Action, ActionsCoreLive } from "@savvy-web/github-action-effects"
+import { ActionsPlatformLive } from "@savvy-web/github-action-effects"
+
+// Use all platform wrappers (for actions that need GitHub API, exec, etc.)
+Action.run(program, undefined, { platform: ActionsPlatformLive })
+```
+
+This design means `/testing` subpath imports never trigger `@actions/*`
+package loads, since `ActionsCoreLive` (the only place those static imports
+live) is not re-exported from `/testing`.
+
 ## Layer Composition
 
 Services use `Context.GenericTag` (not class-based `Tag`) for their

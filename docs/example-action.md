@@ -287,6 +287,97 @@ Effect `Cause`, use `Action.formatCause(cause)`. It returns a `[Tag] message`
 string that is parseable by both humans and AI. See
 [patterns.md](./patterns.md#actionformatcause) for details.
 
+## Testing
+
+Test your action's `program` function using test layers from the `/testing`
+subpath. No mocks, no real `@actions/core` calls -- just in-memory service
+implementations.
+
+```typescript
+// src/main.test.ts
+import { Effect, Layer, Schema } from "effect"
+import { describe, expect, it } from "vitest"
+import {
+  ActionInputs,
+  ActionInputsTest,
+  ActionLogger,
+  ActionLoggerTest,
+  ActionOutputs,
+  ActionOutputsTest,
+} from "@savvy-web/github-action-effects/testing"
+
+// Import the program from your action source
+// import { program } from "./main.js"
+
+// For this example, define a simplified version inline
+const ConfigSchema = Schema.Struct({
+  threshold: Schema.Number,
+  packages: Schema.Array(Schema.String),
+})
+
+const program = Effect.gen(function* () {
+  const inputs = yield* ActionInputs
+  const outputs = yield* ActionOutputs
+
+  const packageName = yield* inputs.get("package-name", Schema.String)
+  const config = yield* inputs.getJson("config", ConfigSchema)
+
+  yield* outputs.set("status", "success")
+  yield* outputs.setJson("report", {
+    total: config.packages.length,
+    passed: config.packages.length,
+    failed: 0,
+  }, Schema.Struct({
+    total: Schema.Number,
+    passed: Schema.Number,
+    failed: Schema.Number,
+  }))
+
+  return packageName
+})
+
+describe("package checker action", () => {
+  it("reads inputs and sets outputs", async () => {
+    const outputState = ActionOutputsTest.empty()
+    const logState = ActionLoggerTest.empty()
+
+    const layer = Layer.mergeAll(
+      ActionInputsTest({
+        "package-name": "my-pkg",
+        "config": JSON.stringify({ threshold: 80, packages: ["pkg-a", "pkg-b"] }),
+        "log-level": "info",
+        "dry-run": "false",
+      }),
+      ActionOutputsTest.layer(outputState),
+      ActionLoggerTest.layer(logState),
+    )
+
+    await program.pipe(Effect.provide(layer), Effect.runPromise)
+
+    expect(outputState.outputs).toContainEqual({ name: "status", value: "success" })
+  })
+
+  it("fails when package-name input is missing", async () => {
+    const layer = Layer.mergeAll(
+      ActionInputsTest({}),
+      ActionOutputsTest.layer(ActionOutputsTest.empty()),
+      ActionLoggerTest.layer(ActionLoggerTest.empty()),
+    )
+
+    const exit = await program.pipe(
+      Effect.provide(layer),
+      Effect.runPromise,
+      (p) => Effect.runPromise(Effect.exit(program.pipe(Effect.provide(layer)))),
+    )
+
+    expect(exit._tag).toBe("Failure")
+  })
+})
+```
+
+See [Testing Guide](./testing.md) for the full API of each test layer and
+patterns for testing logging, state, and annotations.
+
 ## Next Steps
 
 * [Services Guide](./services.md) -- detailed guide for every service
