@@ -11,7 +11,7 @@ export interface BinaryInstallOptions {
 	/** Name for the cached binary file. Defaults to the tool name. */
 	readonly binaryName?: string;
 
-	/** Set executable permission (chmod 0o755) on unix. Defaults to true. */
+	/** Set executable permission (chmod 0o755). Defaults to true. */
 	readonly executable?: boolean;
 }
 

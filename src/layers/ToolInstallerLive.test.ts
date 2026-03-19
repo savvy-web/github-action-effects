@@ -647,6 +647,28 @@ describe("ToolInstallerLive", () => {
 			expect(addPath).toHaveBeenCalledWith("/cached/biome/1.0.0");
 		});
 
+		it("skips chmod when executable is false", async () => {
+			const { chmod } = await import("node:fs/promises");
+			vi.mocked(chmod).mockClear();
+			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
+			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockResolvedValue("/tmp/download");
+			const cacheFile = vi
+				.fn<(sourceFile: string, targetFile: string, tool: string, version: string) => Promise<string>>()
+				.mockResolvedValue("/cached/biome/1.0.0");
+			const addPath = vi.fn<(path: string) => void>();
+
+			await run(
+				Effect.flatMap(ToolInstaller, (svc) =>
+					svc.installBinaryAndAddToPath("biome", "1.0.0", "https://example.com/biome", { executable: false }),
+				),
+				{ find, downloadTool, cacheFile },
+				{ addPath },
+			);
+
+			expect(chmod).not.toHaveBeenCalled();
+			expect(addPath).toHaveBeenCalledWith("/cached/biome/1.0.0");
+		});
+
 		it("fails with ToolInstallerError on addPath failure", async () => {
 			const find = vi.fn<(name: string, version: string) => string>().mockReturnValue("");
 			const downloadTool = vi.fn<(url: string) => Promise<string>>().mockResolvedValue("/tmp/download");

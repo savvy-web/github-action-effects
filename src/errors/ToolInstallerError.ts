@@ -2,6 +2,8 @@ import { Data } from "effect";
 
 /**
  * Error from tool installation operations.
+ *
+ * @public
  */
 export class ToolInstallerError extends Data.TaggedError("ToolInstallerError")<{
 	/** The tool name. */

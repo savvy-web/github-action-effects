@@ -51,6 +51,63 @@ const extractArchive = (
 	}
 };
 
+const installBinaryCore = (
+	tc: Context.Tag.Service<typeof ActionsToolCache>,
+	name: string,
+	version: string,
+	downloadUrl: string,
+	options?: BinaryInstallOptions,
+): Effect.Effect<string, ToolInstallerError> =>
+	Effect.sync(() => tc.find(name, version)).pipe(
+		Effect.flatMap((cached) => {
+			if (cached) {
+				return Effect.succeed(cached);
+			}
+
+			const binaryName = options?.binaryName ?? name;
+
+			return Effect.tryPromise({
+				try: () => tc.downloadTool(downloadUrl),
+				catch: (error) =>
+					new ToolInstallerError({
+						tool: name,
+						version,
+						operation: "download",
+						reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
+					}),
+			}).pipe(
+				Effect.flatMap((downloadedPath) =>
+					Effect.tryPromise({
+						try: () => tc.cacheFile(downloadedPath, binaryName, name, version),
+						catch: (error) =>
+							new ToolInstallerError({
+								tool: name,
+								version,
+								operation: "cache",
+								reason: `Failed to cache tool: ${error instanceof Error ? error.message : String(error)}`,
+							}),
+					}),
+				),
+				Effect.flatMap((cachedPath) => {
+					if (options?.executable === false) {
+						return Effect.succeed(cachedPath);
+					}
+					const binaryPath = `${cachedPath}/${binaryName}`;
+					return Effect.tryPromise({
+						try: () => chmod(binaryPath, 0o755),
+						catch: (error) =>
+							new ToolInstallerError({
+								tool: name,
+								version,
+								operation: "chmod",
+								reason: `Failed to chmod binary: ${error instanceof Error ? error.message : String(error)}`,
+							}),
+					}).pipe(Effect.as(cachedPath));
+				}),
+			);
+		}),
+	);
+
 /**
  * Live implementation of ToolInstaller using `@actions/tool-cache`.
  *
@@ -162,105 +219,10 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller, never, ActionsCore | 
 				),
 
 			installBinary: (name: string, version: string, downloadUrl: string, options?: BinaryInstallOptions) =>
-				Effect.sync(() => tc.find(name, version)).pipe(
-					Effect.flatMap((cached) => {
-						if (cached) {
-							return Effect.succeed(cached);
-						}
-
-						const binaryName = options?.binaryName ?? name;
-
-						return Effect.tryPromise({
-							try: () => tc.downloadTool(downloadUrl),
-							catch: (error) =>
-								new ToolInstallerError({
-									tool: name,
-									version,
-									operation: "download",
-									reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
-								}),
-						}).pipe(
-							Effect.flatMap((downloadedPath) =>
-								Effect.tryPromise({
-									try: () => tc.cacheFile(downloadedPath, binaryName, name, version),
-									catch: (error) =>
-										new ToolInstallerError({
-											tool: name,
-											version,
-											operation: "cache",
-											reason: `Failed to cache tool: ${error instanceof Error ? error.message : String(error)}`,
-										}),
-								}),
-							),
-							Effect.flatMap((cachedPath) => {
-								if (options?.executable === false) {
-									return Effect.succeed(cachedPath);
-								}
-								const binaryPath = `${cachedPath}/${binaryName}`;
-								return Effect.tryPromise({
-									try: () => chmod(binaryPath, 0o755),
-									catch: (error) =>
-										new ToolInstallerError({
-											tool: name,
-											version,
-											operation: "chmod",
-											reason: `Failed to chmod binary: ${error instanceof Error ? error.message : String(error)}`,
-										}),
-								}).pipe(Effect.as(cachedPath));
-							}),
-						);
-					}),
-				),
+				installBinaryCore(tc, name, version, downloadUrl, options),
 
 			installBinaryAndAddToPath: (name: string, version: string, downloadUrl: string, options?: BinaryInstallOptions) =>
-				Effect.sync(() => tc.find(name, version)).pipe(
-					Effect.flatMap((cached) => {
-						if (cached) {
-							return Effect.succeed(cached);
-						}
-
-						const binaryName = options?.binaryName ?? name;
-
-						return Effect.tryPromise({
-							try: () => tc.downloadTool(downloadUrl),
-							catch: (error) =>
-								new ToolInstallerError({
-									tool: name,
-									version,
-									operation: "download",
-									reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
-								}),
-						}).pipe(
-							Effect.flatMap((downloadedPath) =>
-								Effect.tryPromise({
-									try: () => tc.cacheFile(downloadedPath, binaryName, name, version),
-									catch: (error) =>
-										new ToolInstallerError({
-											tool: name,
-											version,
-											operation: "cache",
-											reason: `Failed to cache tool: ${error instanceof Error ? error.message : String(error)}`,
-										}),
-								}),
-							),
-							Effect.flatMap((cachedPath) => {
-								if (options?.executable === false) {
-									return Effect.succeed(cachedPath);
-								}
-								const binaryPath = `${cachedPath}/${binaryName}`;
-								return Effect.tryPromise({
-									try: () => chmod(binaryPath, 0o755),
-									catch: (error) =>
-										new ToolInstallerError({
-											tool: name,
-											version,
-											operation: "chmod",
-											reason: `Failed to chmod binary: ${error instanceof Error ? error.message : String(error)}`,
-										}),
-								}).pipe(Effect.as(cachedPath));
-							}),
-						);
-					}),
+				installBinaryCore(tc, name, version, downloadUrl, options).pipe(
 					Effect.flatMap((cachedPath) =>
 						Effect.try({
 							try: () => {
