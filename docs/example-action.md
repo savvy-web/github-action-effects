@@ -8,7 +8,7 @@ and typed outputs.
 ## Prerequisites
 
 ```bash
-npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node
+npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
 ```
 
 If you use `@savvy-web/github-action-builder` for bundling, it compiles
