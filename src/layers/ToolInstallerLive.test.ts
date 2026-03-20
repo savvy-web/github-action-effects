@@ -74,9 +74,9 @@ describe("ToolInstallerLive", () => {
 		});
 
 		it("returns Option.some(path) when the tool directory exists in the default cache", async () => {
-			// Create the directory at the actual TOOL_CACHE_DIR path (baked in at module load
-			// to join(tmpdir(), "runner-tool-cache")) so that find returns Option.some.
-			const defaultCacheDir = join(tmpdir(), "runner-tool-cache");
+			// Use the same expression as TOOL_CACHE_DIR in ToolInstallerLive.ts so the test
+			// works both locally (falls back to tmpdir) and in CI (uses RUNNER_TOOL_CACHE).
+			const defaultCacheDir = process.env.RUNNER_TOOL_CACHE ?? join(tmpdir(), "runner-tool-cache");
 			const toolPath = join(defaultCacheDir, "cached-tool", "3.0.0", process.arch);
 			await mkdir(toolPath, { recursive: true });
 
