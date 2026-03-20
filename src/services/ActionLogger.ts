@@ -1,6 +1,5 @@
 import type { Effect } from "effect";
 import { Context } from "effect";
-import type { AnnotationProperties } from "./ActionsCore.js";
 
 /**
  * Service for action-specific logging operations beyond the Effect Logger.
@@ -26,20 +25,5 @@ export class ActionLogger extends Context.Tag("github-action-effects/ActionLogge
 		 * the buffer is flushed before the error is reported.
 		 */
 		readonly withBuffer: <A, E, R>(label: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
-
-		/**
-		 * Emit an error annotation (red, blocks PR checks).
-		 */
-		readonly annotationError: (message: string, properties?: AnnotationProperties) => Effect.Effect<void>;
-
-		/**
-		 * Emit a warning annotation (yellow, informational).
-		 */
-		readonly annotationWarning: (message: string, properties?: AnnotationProperties) => Effect.Effect<void>;
-
-		/**
-		 * Emit a notice annotation (blue, informational).
-		 */
-		readonly annotationNotice: (message: string, properties?: AnnotationProperties) => Effect.Effect<void>;
 	}
 >() {}

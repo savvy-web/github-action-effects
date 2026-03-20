@@ -1,209 +1,62 @@
 # Peer Dependencies
 
-`@savvy-web/github-action-effects` uses peer dependencies so that
-`@vercel/ncc` (via `@savvy-web/github-action-builder`) can resolve a single
-copy of each package from your action's `package.json`. This avoids version
-duplication and ensures compatibility between your action code and the library.
+`@savvy-web/github-action-effects` uses peer dependencies so that consumers
+can resolve a single copy of each package. This avoids version duplication
+and ensures compatibility between your action code and the library.
 
-## How @actions/* Packages Are Consumed
+## Zero @actions/* Dependencies
 
-`@actions/core`, `@actions/github`, `@actions/exec`, `@actions/cache`, and
-`@actions/tool-cache` are consumed through platform wrapper services rather
-than being imported directly by service Live layers.
+All `@actions/*` packages have been removed. The library implements the
+GitHub Actions runtime protocol natively using:
 
-Each `@actions/*` package is wrapped by a dedicated service and Live layer:
+- `WorkflowCommand` -- `::command::` protocol formatter
+- `RuntimeFile` -- Environment file appender (GITHUB_OUTPUT, GITHUB_ENV, etc.)
+- `ActionsConfigProvider` -- ConfigProvider reading `INPUT_*` env vars
+- `ActionsLogger` -- Effect Logger emitting workflow commands
 
-- `ActionsCore` / `ActionsCoreLive` wraps `@actions/core`
-- `ActionsGitHub` / `ActionsGitHubLive` wraps `@actions/github`
-- `ActionsExec` / `ActionsExecLive` wraps `@actions/exec`
-- `ActionsCache` / `ActionsCacheLive` wraps `@actions/cache`
-- `ActionsToolCache` / `ActionsToolCacheLive` wraps `@actions/tool-cache`
-- `OctokitAuthApp` / `OctokitAuthAppLive` wraps `@octokit/auth-app`
-
-The static `import` statements for these packages exist **only** in the six
-wrapper Live layers above. All other Live layers (`ActionInputsLive`,
-`CommandRunnerLive`, etc.) depend on the wrapper service interface, not the
-package directly.
-
-This means:
-
-- The `/testing` subpath can export all Live layers without triggering any
-  `@actions/*` imports -- wrapper Live layers are excluded from `/testing`
-- Tests that use in-memory test layers never load `@actions/core` or any
-  other `@actions/*` package
-- `@vercel/ncc` still bundles everything correctly because production entry
-  points import `Action` from the main package, which includes the wrapper
-  Live layers
+GitHub API operations use `@octokit/rest` directly (a regular dependency,
+not a peer).
 
 ## Required Peers
 
-These must be installed for the library to function. `Action.run` depends on
-all of them. The `@effect/platform-node` package requires several Effect
-ecosystem packages as transitive peers -- these are declared as required peer
-dependencies even if your action does not use them directly.
+These must be installed for the library to function:
 
-| Package | Range | Purpose |
-| --- | --- | --- |
-| `effect` | `^3.19.0` | Core dependency -- services, layers, schemas, errors, tracing |
-| `@actions/core` | `^3.0.0` | Input reading, output setting, logging, annotations, state, secrets |
-| `@effect/platform` | `>=0.94.0` | `FileSystem`, `Path`, and platform abstractions used by multiple services |
-| `@effect/platform-node` | `>=0.104.0` | `NodeContext.layer` provided by `Action.run` -- gives `FileSystem`, `Path`, `Terminal`, `CommandExecutor`, `WorkerManager` |
-| `@effect/cluster` | `>=0.19.0` | Required peer of `@effect/platform-node` |
-| `@effect/rpc` | `>=0.62.0` | Required peer of `@effect/platform-node` |
-| `@effect/sql` | `>=0.46.0` | Required peer of `@effect/platform-node` |
+| Package | Purpose |
+| --- | --- |
+| `effect` | Core dependency -- services, layers, schemas, errors, tracing |
+| `@effect/platform` | `FileSystem`, `Path`, and platform abstractions |
+| `@effect/platform-node` | Node.js platform implementation |
+| `@effect/cluster` | Required peer of `@effect/platform-node` |
+| `@effect/rpc` | Required peer of `@effect/platform-node` |
+| `@effect/sql` | Required peer of `@effect/platform-node` |
+
+The `@effect/cluster`, `@effect/rpc`, and `@effect/sql` packages are
+transitive peers required by `@effect/platform-node`. They are not used
+directly by your action code.
 
 Install all required peers at once:
 
 ```bash
-npm install effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
+npm install effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
 ```
 
-## Optional Peers
+## Direct Dependencies (Not Peers)
 
-Install only the packages needed by the services you use. Each optional peer
-is marked `optional: true` in `peerDependenciesMeta`, so package managers
-will not warn about missing ones.
-
-### @actions/github (`^9.0.0`)
-
-Provides an authenticated Octokit instance for GitHub API calls.
-
-**Services that require it:**
-
-- GitHubClient -- Octokit REST and GraphQL with pagination
-- GitHubGraphQL -- typed GraphQL queries and mutations
-- GitHubRelease -- release CRUD and asset upload
-- GitHubIssue -- issue management and PR linking
-- CheckRun -- check run CRUD with annotations
-- PullRequest -- PR lifecycle (get, list, create, update, merge, getOrCreate)
-- PullRequestComment -- sticky (upsert) PR comments
-- GitTag -- tag CRUD via Git Data API
-- GitBranch -- branch CRUD via Git Data API
-- GitCommit -- tree/commit creation, ref updates, file deletions
-- RateLimiter -- rate limit guard with exponential backoff
-- WorkflowDispatch -- trigger and poll workflows
-- TokenPermissionChecker -- check/assert token permissions
-
-**Install:**
-
-```bash
-npm install @actions/github
-```
-
-### @actions/exec (`^3.0.0`)
-
-Wraps child process execution with stdout/stderr capture.
-
-**Services that require it:**
-
-- CommandRunner -- structured shell execution with capture, JSON parsing, line splitting
-
-**Install:**
-
-```bash
-npm install @actions/exec
-```
-
-### @actions/cache (`^6.0.0`)
-
-GitHub Actions cache save and restore.
-
-**Services that require it:**
-
-- ActionCache -- save/restore with `withCache` bracket pattern
-
-**Install:**
-
-```bash
-npm install @actions/cache
-```
-
-### @actions/tool-cache (`^4.0.0`)
-
-Download, extract, and cache tool binaries.
-
-**Services that require it:**
-
-- ToolInstaller -- download, extract, cache, and add tool binaries to PATH
-
-**Install:**
-
-```bash
-npm install @actions/tool-cache
-```
-
-### @octokit/auth-app (`>=8.0.0`)
-
-GitHub App JWT authentication for installation tokens.
-
-**Services that require it:**
-
-- GitHubApp -- App token generation and revocation with bracket pattern
-
-**Install:**
-
-```bash
-npm install @octokit/auth-app
-```
-
-## Regular Dependencies (Not Peers)
-
-All imports throughout the library (including Live layers for optional peers
-like `@actions/tool-cache` and `@octokit/auth-app`) are static. This means
-`@vercel/ncc` can follow every import chain and bundle the correct packages
-automatically -- no manual bundling hints are required.
-
-Regular dependencies for config file parsing:
+These are regular dependencies bundled with the library:
 
 | Package | Purpose |
 | --- | --- |
+| `@octokit/rest` | GitHub REST API client (GitHubClient) |
+| `@octokit/auth-app` | GitHub App JWT authentication (GitHubApp) |
 | `jsonc-effect` | JSONC config file support (ConfigLoader) |
 | `yaml-effect` | YAML config file support (ConfigLoader) |
 | `semver-effect` | Semver comparison and resolution (SemverResolver) |
 
-## Service Dependency Tiers
-
-Services are organized into tiers based on what they depend on. This helps
-you understand which peer dependencies to install for a given set of services.
-
-```text
-Tier 0 -- No optional peer deps (only effect + @actions/core):
-  ActionInputs, ActionLogger, ActionOutputs, ActionState,
-  ActionEnvironment, DryRun, NpmRegistry
-
-Tier 1 -- Single optional peer:
-  CommandRunner             -> @actions/exec
-  ActionCache               -> @actions/cache
-  ToolInstaller             -> @actions/tool-cache
-  GitHubApp                 -> @octokit/auth-app
-
-Tier 2 -- @actions/github (all GitHub API services):
-  GitHubClient, GitHubGraphQL, GitHubRelease, GitHubIssue,
-  CheckRun, PullRequest, PullRequestComment, GitTag,
-  GitBranch, GitCommit, RateLimiter, WorkflowDispatch,
-  TokenPermissionChecker
-
-Services from @effect/platform (provided by Action.run via NodeContext.layer):
-  ConfigLoader, ChangesetAnalyzer, WorkspaceDetector,
-  PackagePublish, PackageManagerAdapter
-```
-
 ## Typical Installation
 
-A minimal action that reads inputs and writes outputs:
-
 ```bash
-npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
+npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
 ```
 
-An action that also creates GitHub releases and runs shell commands:
-
-```bash
-npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql @actions/github @actions/exec
-```
-
-A full-featured action with GitHub App auth, caching, and tool installation:
-
-```bash
-npm install @savvy-web/github-action-effects effect @actions/core @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql @actions/github @actions/exec @actions/cache @actions/tool-cache @octokit/auth-app
-```
+No optional peers are required -- the simplified architecture means all
+services work with the base installation.

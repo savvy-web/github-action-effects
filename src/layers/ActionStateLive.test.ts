@@ -1,43 +1,65 @@
-import type { Context } from "effect";
+import { FileSystem } from "@effect/platform";
 import { Effect, Layer, Option, Schema } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ActionState } from "../services/ActionState.js";
-import { ActionsCore } from "../services/ActionsCore.js";
 import { ActionStateLive } from "./ActionStateLive.js";
 
-const mockCore = (overrides: Partial<Context.Tag.Service<typeof ActionsCore>> = {}) =>
-	Layer.succeed(ActionsCore, {
-		getInput: () => "",
-		getMultilineInput: () => [],
-		getBooleanInput: () => false,
-		setOutput: () => {},
-		setFailed: () => {},
-		exportVariable: () => {},
-		addPath: () => {},
-		setSecret: () => {},
-		info: () => {},
-		debug: () => {},
-		warning: () => {},
-		error: () => {},
-		notice: () => {},
-		startGroup: () => {},
-		endGroup: () => {},
-		getState: () => "",
-		saveState: () => {},
-		summary: { write: () => Promise.resolve(), addRaw: () => ({ write: () => Promise.resolve() }) },
-		...overrides,
-	});
+// -- Mock FileSystem --
 
-const run = <A, E>(
-	effect: Effect.Effect<A, E, ActionState>,
-	coreOverrides: Partial<Context.Tag.Service<typeof ActionsCore>> = {},
-) => Effect.runPromise(Effect.provide(effect, ActionStateLive.pipe(Layer.provide(mockCore(coreOverrides)))));
+interface MockFsState {
+	files: Record<string, string>;
+}
 
-const runExit = <A, E>(
-	effect: Effect.Effect<A, E, ActionState>,
-	coreOverrides: Partial<Context.Tag.Service<typeof ActionsCore>> = {},
-) =>
-	Effect.runPromise(Effect.exit(Effect.provide(effect, ActionStateLive.pipe(Layer.provide(mockCore(coreOverrides))))));
+const makeMockFs = (state: MockFsState): FileSystem.FileSystem =>
+	({
+		writeFileString: (path: string, data: string, options?: { flag?: string }) => {
+			const flag = options?.flag ?? "w";
+			if (flag === "a") {
+				state.files[path] = (state.files[path] ?? "") + data;
+			} else {
+				state.files[path] = data;
+			}
+			return Effect.void;
+		},
+		readFileString: () => Effect.die("not implemented"),
+		access: () => Effect.void,
+		readDirectory: () => Effect.succeed([]),
+		chmod: () => Effect.void,
+		chown: () => Effect.void,
+		copy: () => Effect.void,
+		copyFile: () => Effect.void,
+		exists: () => Effect.succeed(true),
+		link: () => Effect.void,
+		makeDirectory: () => Effect.void,
+		makeTempDirectory: () => Effect.succeed("/tmp/test"),
+		makeTempDirectoryScoped: () => Effect.succeed("/tmp/test"),
+		makeTempFile: () => Effect.succeed("/tmp/test-file"),
+		makeTempFileScoped: () => Effect.succeed("/tmp/test-file"),
+		open: () => Effect.die("not implemented"),
+		readFile: () => Effect.die("not implemented"),
+		readLink: () => Effect.succeed("/tmp"),
+		realPath: () => Effect.succeed("/tmp"),
+		remove: () => Effect.void,
+		rename: () => Effect.void,
+		sink: () => Effect.die("not implemented") as never,
+		stat: () => Effect.die("not implemented"),
+		stream: () => Effect.die("not implemented") as never,
+		symlink: () => Effect.void,
+		truncate: () => Effect.void,
+		utimes: () => Effect.void,
+		watch: () => Effect.die("not implemented") as never,
+		writeFile: () => Effect.void,
+	}) as unknown as FileSystem.FileSystem;
+
+const makeTestLayer = (state: MockFsState) => Layer.succeed(FileSystem.FileSystem, makeMockFs(state));
+
+const run = <A, E>(state: MockFsState, effect: Effect.Effect<A, E, ActionState>) =>
+	Effect.runPromise(Effect.provide(effect, ActionStateLive.pipe(Layer.provide(makeTestLayer(state)))));
+
+const runExit = <A, E>(state: MockFsState, effect: Effect.Effect<A, E, ActionState>) =>
+	Effect.runPromise(Effect.exit(Effect.provide(effect, ActionStateLive.pipe(Layer.provide(makeTestLayer(state))))));
+
+// -- Tests --
 
 const TestSchema = Schema.Struct({
 	token: Schema.String,
@@ -45,79 +67,96 @@ const TestSchema = Schema.Struct({
 });
 
 describe("ActionStateLive", () => {
+	beforeEach(() => {
+		process.env.GITHUB_STATE = "/tmp/github-state";
+	});
+
+	afterEach(() => {
+		delete process.env.GITHUB_STATE;
+		delete process.env.STATE_auth;
+		delete process.env.STATE_started;
+		delete process.env.STATE_missing;
+		delete process.env.STATE_bad;
+	});
+
 	describe("save", () => {
-		it("encodes and calls core.saveState", async () => {
-			const saveState = vi.fn();
+		it("encodes and appends to GITHUB_STATE file", async () => {
+			const state: MockFsState = { files: {} };
 			await run(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.save("auth", { token: "abc", count: 1 }, TestSchema)),
-				{
-					saveState,
-				},
 			);
-			expect(saveState).toHaveBeenCalledWith("auth", JSON.stringify({ token: "abc", count: 1 }));
+			expect(state.files["/tmp/github-state"]).toBe(`auth=${JSON.stringify({ token: "abc", count: 1 })}\n`);
 		});
 
 		it("encodes Date via Schema.DateFromString", async () => {
-			const saveState = vi.fn();
+			const state: MockFsState = { files: {} };
 			const date = new Date("2026-01-15T00:00:00.000Z");
 			await run(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.save("started", date, Schema.DateFromString)),
-				{
-					saveState,
-				},
 			);
-			expect(saveState).toHaveBeenCalledWith("started", JSON.stringify("2026-01-15T00:00:00.000Z"));
+			expect(state.files["/tmp/github-state"]).toBe(`started=${JSON.stringify("2026-01-15T00:00:00.000Z")}\n`);
+		});
+
+		it("fails when GITHUB_STATE is not set", async () => {
+			delete process.env.GITHUB_STATE;
+			const state: MockFsState = { files: {} };
+			const exit = await runExit(
+				state,
+				Effect.flatMap(ActionState, (svc) => svc.save("auth", { token: "abc", count: 1 }, TestSchema)),
+			);
+			expect(exit._tag).toBe("Failure");
 		});
 	});
 
 	describe("get", () => {
-		it("reads and decodes state", async () => {
-			const getState = vi.fn().mockReturnValue(JSON.stringify({ token: "xyz", count: 42 }));
+		it("reads and decodes state from process.env", async () => {
+			process.env.STATE_auth = JSON.stringify({ token: "xyz", count: 42 });
+			const state: MockFsState = { files: {} };
 			const result = await run(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.get("auth", TestSchema)),
-				{ getState },
 			);
 			expect(result).toEqual({ token: "xyz", count: 42 });
-			expect(getState).toHaveBeenCalledWith("auth");
 		});
 
-		it("decodes DateFromString", async () => {
-			const getState = vi.fn().mockReturnValue(JSON.stringify("2026-01-15T00:00:00.000Z"));
+		it("decodes DateFromString from process.env", async () => {
+			process.env.STATE_started = JSON.stringify("2026-01-15T00:00:00.000Z");
+			const state: MockFsState = { files: {} };
 			const result = await run(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.get("started", Schema.DateFromString)),
-				{
-					getState,
-				},
 			);
 			expect(result).toBeInstanceOf(Date);
 			expect(result.toISOString()).toBe("2026-01-15T00:00:00.000Z");
 		});
 
-		it("fails on empty state (not set)", async () => {
-			const getState = vi.fn().mockReturnValue("");
+		it("fails on missing key (env var not set)", async () => {
+			const state: MockFsState = { files: {} };
 			const exit = await runExit(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.get("missing", TestSchema)),
-				{
-					getState,
-				},
 			);
 			expect(exit._tag).toBe("Failure");
 		});
 
 		it("fails on invalid JSON", async () => {
-			const getState = vi.fn().mockReturnValue("not-json");
+			process.env.STATE_bad = "not-json";
+			const state: MockFsState = { files: {} };
 			const exit = await runExit(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.get("bad", TestSchema)),
-				{ getState },
 			);
 			expect(exit._tag).toBe("Failure");
 		});
 
 		it("fails on schema mismatch", async () => {
-			const getState = vi.fn().mockReturnValue(JSON.stringify({ wrong: "shape" }));
+			process.env.STATE_auth = JSON.stringify({ wrong: "shape" });
+			const state: MockFsState = { files: {} };
 			const exit = await runExit(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.get("auth", TestSchema)),
-				{ getState },
 			);
 			expect(exit._tag).toBe("Failure");
 		});
@@ -125,12 +164,11 @@ describe("ActionStateLive", () => {
 
 	describe("getOptional", () => {
 		it("returns Some for present state", async () => {
-			const getState = vi.fn().mockReturnValue(JSON.stringify({ token: "abc", count: 1 }));
+			process.env.STATE_auth = JSON.stringify({ token: "abc", count: 1 });
+			const state: MockFsState = { files: {} };
 			const result = await run(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.getOptional("auth", TestSchema)),
-				{
-					getState,
-				},
 			);
 			expect(Option.isSome(result)).toBe(true);
 			if (Option.isSome(result)) {
@@ -138,24 +176,21 @@ describe("ActionStateLive", () => {
 			}
 		});
 
-		it("returns None for empty state", async () => {
-			const getState = vi.fn().mockReturnValue("");
+		it("returns None for missing key (env var not set)", async () => {
+			const state: MockFsState = { files: {} };
 			const result = await run(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.getOptional("missing", TestSchema)),
-				{
-					getState,
-				},
 			);
 			expect(Option.isNone(result)).toBe(true);
 		});
 
 		it("fails on invalid JSON", async () => {
-			const getState = vi.fn().mockReturnValue("bad-json");
+			process.env.STATE_bad = "bad-json";
+			const state: MockFsState = { files: {} };
 			const exit = await runExit(
+				state,
 				Effect.flatMap(ActionState, (svc) => svc.getOptional("bad", TestSchema)),
-				{
-					getState,
-				},
 			);
 			expect(exit._tag).toBe("Failure");
 		});

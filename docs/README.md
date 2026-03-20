@@ -1,42 +1,22 @@
 # github-action-effects Documentation
 
-Effect-based utility library for building GitHub Actions with schema-validated
-inputs, structured logging, typed outputs, GitHub API operations, package
-publishing, and composable test layers.
+Effect-based utility library for building GitHub Actions with structured
+logging, typed outputs, GitHub API operations, package publishing, and
+composable test layers. Zero `@actions/*` dependencies -- all platform
+interactions use native ESM implementations of the GitHub Actions runtime
+protocol.
 
 ## Installation
 
 ```bash
-npm install @savvy-web/github-action-effects
+npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node
 ```
 
 Required peer dependencies:
 
 ```bash
-npm install effect @actions/core @effect/platform @effect/platform-node
+npm install effect @effect/platform @effect/platform-node
 ```
-
-Optional peer dependencies (install as needed):
-
-```bash
-# GitHub API services (GitHubClient, GitHubRelease, CheckRun, etc.)
-npm install @actions/github
-
-# Shell command execution (CommandRunner)
-npm install @actions/exec
-
-# GitHub Actions cache (ActionCache)
-npm install @actions/cache
-
-# Tool binary installation (ToolInstaller)
-npm install @actions/tool-cache
-
-# GitHub App authentication (GitHubApp)
-npm install @octokit/auth-app
-```
-
-See [Peer Dependencies](./peer-dependencies.md) for a complete breakdown of
-which services require which packages.
 
 ## Table of Contents
 
@@ -46,34 +26,48 @@ which services require which packages.
   with GitHub App auth, state, and log levels
 - [Services Guide](./services.md) -- Detailed guide for each service with usage
   examples
-- [Architecture](./architecture.md) -- API reference, layer composition, and
+- [Architecture](./architecture.md) -- Runtime layer, layer composition, and
   logging pipeline
-- [Peer Dependencies](./peer-dependencies.md) -- Required and optional peer
-  dependencies with service mapping
+- [Peer Dependencies](./peer-dependencies.md) -- Required peer
+  dependencies
 - [Testing Guide](./testing.md) -- Testing with in-memory test layers
 - [Patterns](./patterns.md) -- Common patterns: dry-run, error accumulation,
   permission checking, workspace detection
 - [Error Handling](./error-handling.md) -- `Action.formatCause`, `Action.run`
   error handling, and the `[Tag] message` format
 
+## How Inputs Work
+
+Inputs use Effect's `Config` API, backed by `ActionsConfigProvider` which reads
+`INPUT_*` environment variables:
+
+```typescript
+import { Config, Effect } from "effect"
+
+const program = Effect.gen(function* () {
+  const name = yield* Config.string("package-name")  // reads INPUT_PACKAGE-NAME
+  const count = yield* Config.integer("count")        // reads INPUT_COUNT
+  const debug = yield* Config.boolean("debug").pipe(Config.withDefault(false))
+})
+```
+
 ## Services at a Glance
 
-### Core Services (provided by Action.run)
+### Core Services (provided by ActionsRuntime.Default / Action.run)
 
 | Service | Purpose |
 | --- | --- |
-| ActionInputs | Schema-validated input reading (get, getOptional, getSecret, getJson, getMultiline, getBoolean) |
 | ActionLogger | Structured logging with group, withBuffer, annotationError/Warning/Notice |
 | ActionOutputs | Typed outputs (set, setJson, summary, exportVariable, addPath, setFailed, setSecret) |
+| ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
+| ActionEnvironment | Typed access to GITHUB_*and RUNNER_* env vars |
 
 ### Extended Services (provide via additional layers)
 
 | Service | Purpose |
 | --- | --- |
-| ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
-| ActionEnvironment | Typed access to GITHUB_*and RUNNER_* env vars |
 | ActionCache | Save/restore with withCache bracket pattern |
-| GitHubClient | Octokit REST/GraphQL with pagination |
+| GitHubClient | Octokit REST/GraphQL with pagination (uses @octokit/rest directly) |
 | GitHubGraphQL | Typed GraphQL queries and mutations |
 | GitHubRelease | Create releases, upload assets, list/get by tag |
 | GitHubIssue | List, close, comment, get linked issues |
@@ -101,7 +95,7 @@ which services require which packages.
 
 | Namespace | Purpose |
 | --- | --- |
-| `Action` | Top-level helpers: `run`, `parseInputs`, `formatCause`, `makeLogger`, `setLogLevel`, `resolveLogLevel` |
+| `Action` | Top-level helpers: `run`, `formatCause`, `resolveLogLevel` |
 | `GithubMarkdown` | Pure GFM builder functions: `table`, `heading`, `bold`, `details`, `checklist`, etc. |
 | `AutoMerge` | Enable/disable PR auto-merge via GraphQL |
 | `SemverResolver` | Semver comparison, range satisfaction, increment, parse |

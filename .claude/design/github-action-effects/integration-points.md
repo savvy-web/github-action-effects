@@ -3,9 +3,9 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-19
-last-synced: 2026-03-19
-completeness: 90
+updated: 2026-03-20
+last-synced: 2026-03-20
+completeness: 95
 related:
   - ./index.md
   - ./services.md
@@ -17,7 +17,7 @@ dependencies: []
 
 ## Overview
 
-Peer dependencies, external integrations, and how services compose in
+Dependencies, external integrations, and how services compose in
 `@savvy-web/github-action-effects`.
 
 See [index.md](./index.md) for architecture overview.
@@ -25,123 +25,169 @@ See [layers.md](./layers.md) for layer dependency graph.
 
 ---
 
-## Peer Dependencies
+## Dependencies
 
 ### Required Peers
 
 **effect** -- Core dependency. Services use `Context.Tag`, `Layer`,
-`Schema`, `Data.TaggedError`, `FiberRef`, and `Logger`.
+`Schema`, `Data.TaggedError`, `FiberRef`, `Logger`, `Config`, and
+`ConfigProvider`.
 
-**@effect/platform and @effect/platform-node** -- `Action.run()` provides
-`NodeContext.layer` from `@effect/platform-node`, giving programs access to
-`FileSystem`, `Path`, `Terminal`, `CommandExecutor`, and `WorkerManager`.
-Several services (ConfigLoader, ChangesetAnalyzer, WorkspaceDetector,
+**@effect/platform and @effect/platform-node** -- `ActionsRuntime.Default`
+provides `NodeFileSystem.layer` from `@effect/platform-node`, giving
+programs access to `FileSystem`. Several services (ActionOutputs,
+ActionState, ConfigLoader, ChangesetAnalyzer, WorkspaceDetector,
 PackagePublish) depend on `FileSystem` from `@effect/platform`.
 
-**@actions/core** -- Primary integration for input reading, output setting,
-logging, annotations, state, and secrets. All interactions go through the
-`ActionsCore` wrapper service. Only `ActionsCoreLive` imports this package
-directly.
+### Direct Dependencies
 
-### Optional Peers
+| Package | Purpose | Used By |
+| --- | --- | --- |
+| `@octokit/rest` | GitHub REST + GraphQL API client | `GitHubClientLive` |
+| `@octokit/auth-app` | GitHub App JWT authentication | `OctokitAuthAppLive` |
+| `jsonc-effect` | JSONC parsing with Effect | `ConfigLoaderLive` |
+| `semver-effect` | Semver operations with Effect | `SemverResolver` |
+| `yaml-effect` | YAML parsing with Effect | `ConfigLoaderLive` |
 
-| Package | Wrapper Service | Live Layer | Purpose |
-| --- | --- | --- | --- |
-| `@actions/github` | `ActionsGitHub` | `ActionsGitHubLive` | Authenticated Octokit provider |
-| `@actions/exec` | `ActionsExec` | `ActionsExecLive` | Shell command execution |
-| `@actions/cache` | `ActionsCache` | `ActionsCacheLive` | Cache save/restore |
-| `@actions/tool-cache` | `ActionsToolCache` | `ActionsToolCacheLive` | Tool download, extract, cache |
-| `@octokit/auth-app` | `OctokitAuthApp` | `OctokitAuthAppLive` | GitHub App JWT authentication |
-| `semver` | (none) | SemverResolver | Semver comparison and resolution |
-| `jsonc-parser` | (none) | ConfigLoader.loadJsonc | JSONC config file support |
-| `yaml` | (none) | ConfigLoader.loadYaml | YAML config file support |
+These are direct dependencies (not peers), bundled with the library.
 
-All optional peers are marked `optional: true` in `peerDependenciesMeta`.
-The `@actions/*` and `@octokit/auth-app` packages are exclusively imported by
-their corresponding wrapper Live layers. All domain Live layers consume these
-packages through the wrapper services via `Layer.effect` and `yield*`.
+### No @actions/* Dependencies
 
-All Live layers use static imports exclusively. `@vercel/ncc` cannot follow
-dynamic `import()` calls, so static imports are required for reliable ncc
-bundling. The `@actions/*` packages are statically imported only by the 6
-platform wrapper Live layers; domain Live layers use `yield*` DI instead.
-Consumers do not need bare `import` hints in their entry points.
+All `@actions/*` packages have been removed. The library implements the
+GitHub Actions runtime protocol natively:
+
+| Previously | Now |
+| --- | --- |
+| `@actions/core` getInput | `ActionsConfigProvider` reading `INPUT_*` env vars |
+| `@actions/core` setOutput | `RuntimeFile.append("GITHUB_OUTPUT", ...)` |
+| `@actions/core` saveState | `RuntimeFile.append("GITHUB_STATE", ...)` |
+| `@actions/core` exportVariable | `RuntimeFile.append("GITHUB_ENV", ...)` |
+| `@actions/core` addPath | Append to `GITHUB_PATH` file |
+| `@actions/core` debug/warning/error | `WorkflowCommand.issue("debug"/"warning"/"error", ...)` |
+| `@actions/core` group/endgroup | `WorkflowCommand.issue("group"/"endgroup", ...)` |
+| `@actions/core` setSecret | `WorkflowCommand.issue("add-mask", ...)` |
+| `@actions/core` setFailed | `WorkflowCommand.issue("error", ...) + process.exitCode = 1` |
+| `@actions/core` summary | Direct write to `$GITHUB_STEP_SUMMARY` file |
+| `@actions/exec` | `node:child_process` spawn |
+| `@actions/github` getOctokit | Direct `@octokit/rest` instantiation |
+| `@actions/cache` | Native `fetch` with ACTIONS_CACHE_URL protocol |
+| `@actions/tool-cache` | Native `fetch` + `node:child_process` + `node:fs/promises` |
+
+---
+
+## GitHub Actions Runtime Protocol
+
+The library interacts with the GitHub Actions runtime through:
+
+### Workflow Commands (stdout)
+
+Format: `::command key=value,key=value::message`
+
+Used for: debug, warning, error, group/endgroup, add-mask, and other
+workflow commands. Implemented in `src/runtime/WorkflowCommand.ts`.
+
+### Environment Files
+
+Append key-value pairs to files specified by environment variables:
+
+| Env Var | Purpose |
+| --- | --- |
+| `GITHUB_OUTPUT` | Set step outputs |
+| `GITHUB_ENV` | Export environment variables |
+| `GITHUB_STATE` | Save state across phases |
+| `GITHUB_PATH` | Add to PATH |
+| `GITHUB_STEP_SUMMARY` | Write step summary markdown |
+
+Implemented in `src/runtime/RuntimeFile.ts`. Supports multiline values
+via the delimiter protocol (`key<<delimiter\nvalue\ndelimiter`).
+
+### Input Variables
+
+Action inputs are available as `INPUT_*` environment variables with the
+name uppercased and spaces replaced by underscores. Hyphens are preserved.
+
+Implemented in `src/runtime/ActionsConfigProvider.ts` as an Effect
+`ConfigProvider`.
+
+### Cache Protocol
+
+The internal cache API at `ACTIONS_CACHE_URL` with `ACTIONS_RUNTIME_TOKEN`
+authentication. Three-step save (reserve, upload chunks, commit) and
+lookup-based restore.
+
+Implemented in `src/layers/ActionCacheLive.ts` using native `fetch`.
 
 ---
 
 ## Service Dependency Graph
 
 ```text
-Tier 0 — Platform wrappers (import @actions/* directly, no service dependencies):
-  ActionsCore, ActionsGitHub, ActionsCache, ActionsExec,
-  ActionsToolCache, OctokitAuthApp
+Tier 0 — No service dependencies:
+  ActionLogger              (uses WorkflowCommand, Effect Logger)
+  ActionEnvironment         (reads process.env)
+  ActionCache               (native fetch + tar)
+  CommandRunner             (node:child_process spawn)
+  ToolInstaller             (native fetch + spawn + fs)
+  DryRun                    (pure logic)
+  OctokitAuthApp            (imports @octokit/auth-app)
+  GitHubClient              (imports @octokit/rest, reads GITHUB_TOKEN)
 
-Tier 1 — Depend on platform wrappers:
-  ActionInputs              -> ActionsCore
-  ActionLogger              -> ActionsCore
-  ActionOutputs             -> ActionsCore
-  ActionState               -> ActionsCore
-  ActionCache               -> ActionsCache
-  CommandRunner             -> ActionsExec
-  GitHubClient(token)       -> ActionsGitHub
+Tier 0.5 — Depends on FileSystem:
+  ActionOutputs             -> FileSystem
+  ActionState               -> FileSystem
+
+Tier 1 — Single service dependency:
   GitHubApp                 -> OctokitAuthApp
-  ToolInstaller             -> ActionsCore + ActionsToolCache
-
-Tier 1 — Independent (no service dependencies):
-  ActionEnvironment, DryRun,
-  GithubMarkdown, SemverResolver, ErrorAccumulator,
-  ReportBuilder
-
-Tier 2 — Single service dependency:
   NpmRegistry               -> CommandRunner
   ChangesetAnalyzer         -> FileSystem
   ConfigLoader              -> FileSystem
   TokenPermissionChecker    -> GitHubApp
 
-Tier 3 — GitHubClient dependents:
+Tier 2 — GitHubClient dependents:
   GitHubGraphQL             -> GitHubClient
   GitBranch                 -> GitHubClient
   GitCommit                 -> GitHubClient
   GitTag                    -> GitHubClient
   GitHubRelease             -> GitHubClient
-  GitHubIssue               -> GitHubClient + GitHubGraphQL
-  PullRequest               -> GitHubClient + GitHubGraphQL
   CheckRun                  -> GitHubClient
   PullRequestComment        -> GitHubClient
   RateLimiter               -> GitHubClient
   WorkflowDispatch          -> GitHubClient
+  GitHubIssue               -> GitHubClient + GitHubGraphQL
+  PullRequest               -> GitHubClient + GitHubGraphQL
+
+Tier 2 — Multi-service (non-GitHubClient):
   PackageManagerAdapter     -> CommandRunner + FileSystem
   WorkspaceDetector         -> FileSystem + CommandRunner
 
-Tier 4 — Multi-service dependencies:
+Tier 3 — Composed dependencies:
   PackagePublish            -> CommandRunner + NpmRegistry + FileSystem
   AutoMerge (utility)       -> GitHubGraphQL
 ```
 
-### ActionsPlatformLive as the Integration Point
+### ActionsRuntime.Default as the Integration Point
 
-`ActionsPlatformLive` is `Layer.mergeAll` of all 6 platform wrapper Live
-layers. It is the single integration point for wiring the real `@actions/*`
-packages into the domain Live layer stack:
+`ActionsRuntime.Default` is the single integration point for wiring the
+runtime layer into user programs. It provides everything needed for basic
+action I/O:
 
 ```text
-ActionsPlatformLive
-  ├── ActionsCoreLive    -> ActionInputsLive, ActionLoggerLive,
-  │                         ActionOutputsLive, ActionStateLive,
-  │                         ToolInstallerLive (partial)
-  ├── ActionsGitHubLive  -> GitHubClientLive(token)
-  ├── ActionsCacheLive   -> ActionCacheLive
-  ├── ActionsExecLive    -> CommandRunnerLive
-  ├── ActionsToolCacheLive -> ToolInstallerLive (partial)
-  └── OctokitAuthAppLive -> GitHubAppLive
+ActionsRuntime.Default
+  ├── ConfigProvider        (ActionsConfigProvider → INPUT_* env vars)
+  ├── Logger                (ActionsLogger → workflow commands)
+  ├── ActionLoggerLive      (group + withBuffer)
+  ├── ActionOutputsLive     (outputs, summaries, env vars, PATH, secrets)
+  ├── ActionStateLive       (state persistence across phases)
+  ├── ActionEnvironmentLive (GitHub/runner context)
+  └── NodeFileSystem.layer  (FileSystem for ActionOutputs + ActionState)
 ```
 
-### Layer Provision for Tier 3+
+### Layer Provision for Tier 2+
 
 ```text
-GitHubClientLive(token)   (requires ActionsGitHub)
+GitHubClientLive           (reads GITHUB_TOKEN from env)
   -> CheckRunLive              (requires GitHubClient in context)
-  -> PullRequestLive            (requires GitHubClient + GitHubGraphQL)
+  -> PullRequestLive           (requires GitHubClient + GitHubGraphQL)
   -> PullRequestCommentLive    (requires GitHubClient in context)
   -> GitHubGraphQLLive         (requires GitHubClient in context)
   -> GitBranchLive             (requires GitHubClient in context)
@@ -152,8 +198,59 @@ GitHubClientLive(token)   (requires ActionsGitHub)
   -> RateLimiterLive           (requires GitHubClient in context)
   -> WorkflowDispatchLive      (requires GitHubClient in context)
 
-Test layers for all Tier 3 services do NOT depend on GitHubClient --
+Test layers for all Tier 2 services do NOT depend on GitHubClient --
 they operate entirely in-memory.
+```
+
+---
+
+## Consumer Patterns
+
+### Basic Action (inputs + outputs)
+
+```typescript
+import { Effect, Config } from "effect"
+import { Action } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const name = yield* Config.string("name")
+  yield* Effect.log(`Hello, ${name}!`)
+})
+
+Action.run(program)
+```
+
+### Action with GitHub API
+
+```typescript
+import { Effect, Config, Layer } from "effect"
+import { Action, GitHubClientLive, CheckRunLive }
+  from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  // ...
+})
+
+Action.run(program, {
+  layer: Layer.mergeAll(CheckRunLive).pipe(
+    Layer.provideMerge(GitHubClientLive),
+  ),
+})
+```
+
+### Manual Layer Composition
+
+```typescript
+import { Effect, Layer } from "effect"
+import { ActionsRuntime, GitHubClientLive, CheckRunLive }
+  from "@savvy-web/github-action-effects"
+
+const MyLayer = Layer.mergeAll(
+  ActionsRuntime.Default,
+  CheckRunLive,
+).pipe(Layer.provideMerge(GitHubClientLive))
+
+Effect.runPromise(program.pipe(Effect.provide(MyLayer)))
 ```
 
 ---
@@ -163,19 +260,23 @@ they operate entirely in-memory.
 ### @savvy-web/github-action-builder
 
 Actions built with the builder benefit from this library but it is not
-required. Any Node.js 24 action can use these services.
+required. Any Node.js 24 action can use these services. The builder bundles
+with `@vercel/ncc`, which requires static imports (no dynamic `import()`).
 
 ## Current State
 
-All peer dependencies and service tiers are documented with a complete dependency
-graph. The platform wrapper services isolate all `@actions/*` imports behind
-Effect service interfaces. `ActionsPlatformLive` is the single integration point
-for wiring real platform packages into the layer stack. Optional integrations for the action builder are specified with their activation
-conditions.
+All dependencies and service tiers are documented with a complete dependency
+graph. The `@actions/*` packages have been fully replaced with native
+implementations. `ActionsRuntime.Default` is the single integration point
+for wiring the runtime layer. `@octokit/rest` and `@octokit/auth-app` are
+the only external runtime dependencies (besides Effect peers).
 
 ## Rationale
 
-Separating required from optional peer dependencies and organizing services into dependency tiers ensures consumers only install what they need, while the tiered graph makes layer composition predictable and testable at each level.
+Removing `@actions/*` packages eliminates CJS dependencies, simplifies the
+layer graph (no platform wrapper tier), and gives the library full control
+over the runtime protocol implementation. The tiered dependency graph makes
+layer composition predictable and testable at each level.
 
 ## Related Documentation
 

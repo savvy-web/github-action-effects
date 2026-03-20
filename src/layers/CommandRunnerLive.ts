@@ -1,56 +1,54 @@
-import type { Context } from "effect";
+import type { SpawnOptions } from "node:child_process";
+import { spawn } from "node:child_process";
 import { Effect, Layer, Schema } from "effect";
 import { CommandRunnerError } from "../errors/CommandRunnerError.js";
-import type { ActionsExecOptions } from "../services/ActionsExec.js";
-import { ActionsExec } from "../services/ActionsExec.js";
 import type { ExecOptions, ExecOutput } from "../services/CommandRunner.js";
 import { CommandRunner } from "../services/CommandRunner.js";
 
-type ActionsExecService = Context.Tag.Service<typeof ActionsExec>;
-
-const buildExecOpts = (options: ExecOptions | undefined): ActionsExecOptions => {
-	const opts: ActionsExecOptions = {
-		silent: options?.silent ?? true,
-		ignoreReturnCode: true,
-		...(options?.cwd !== undefined ? { cwd: options.cwd } : {}),
-		...(options?.env !== undefined ? { env: options.env } : {}),
-		...(options?.timeout !== undefined ? { delay: options.timeout } : {}),
-	};
-	return opts;
-};
-
-const runCapture = (
-	actionsExec: ActionsExecService,
+const spawnCapture = (
 	command: string,
 	args: ReadonlyArray<string>,
 	options: ExecOptions | undefined,
-): Effect.Effect<ExecOutput, CommandRunnerError> => {
-	let stdout = "";
-	let stderr = "";
-	const execOpts: ActionsExecOptions = {
-		...buildExecOpts(options),
-		listeners: {
-			stdout: (data: Buffer) => {
-				stdout += data.toString();
-			},
-			stderr: (data: Buffer) => {
-				stderr += data.toString();
-			},
-		},
-	};
+): Effect.Effect<ExecOutput, CommandRunnerError> =>
+	Effect.async<ExecOutput, CommandRunnerError>((resume) => {
+		const spawnOpts: SpawnOptions = {
+			stdio: "pipe",
+			...(options?.cwd !== undefined ? { cwd: options.cwd } : {}),
+			...(options?.env !== undefined ? { env: options.env as NodeJS.ProcessEnv } : {}),
+			...(options?.timeout !== undefined ? { timeout: options.timeout } : {}),
+		};
 
-	return Effect.tryPromise({
-		try: (): Promise<number> => actionsExec.exec(command, [...args], execOpts),
-		catch: (error) =>
-			new CommandRunnerError({
-				command,
-				args,
-				exitCode: undefined,
-				stderr: undefined,
-				reason: `Command execution failed: ${error instanceof Error ? error.message : String(error)}`,
-			}),
-	}).pipe(Effect.map((exitCode) => ({ exitCode, stdout, stderr })));
-};
+		const child = spawn(command, [...args], spawnOpts);
+
+		let stdout = "";
+		let stderr = "";
+
+		(child.stdout as NodeJS.ReadableStream).on("data", (chunk: Buffer) => {
+			stdout += chunk.toString();
+		});
+
+		(child.stderr as NodeJS.ReadableStream).on("data", (chunk: Buffer) => {
+			stderr += chunk.toString();
+		});
+
+		child.on("error", (err: Error) => {
+			resume(
+				Effect.fail(
+					new CommandRunnerError({
+						command,
+						args,
+						exitCode: undefined,
+						stderr: undefined,
+						reason: `Command execution failed: ${err.message}`,
+					}),
+				),
+			);
+		});
+
+		child.on("close", (code: number | null) => {
+			resume(Effect.succeed({ exitCode: code ?? 1, stdout, stderr }));
+		});
+	});
 
 const failOnNonZero = (
 	command: string,
@@ -69,66 +67,61 @@ const failOnNonZero = (
 				}),
 			);
 
-export const CommandRunnerLive: Layer.Layer<CommandRunner, never, ActionsExec> = Layer.effect(
+export const CommandRunnerLive: Layer.Layer<CommandRunner> = Layer.succeed(
 	CommandRunner,
-	Effect.gen(function* () {
-		const actionsExec = yield* ActionsExec;
-		return {
-			exec: (command, args = [], options?) =>
-				runCapture(actionsExec, command, args, options).pipe(
-					Effect.flatMap((output) => failOnNonZero(command, args, output)),
-					Effect.map((output) => output.exitCode),
-				),
+	CommandRunner.of({
+		exec: (command, args = [], options?) =>
+			spawnCapture(command, args, options).pipe(
+				Effect.flatMap((output) => failOnNonZero(command, args, output)),
+				Effect.map((output) => output.exitCode),
+			),
 
-			execCapture: (command, args = [], options?) =>
-				runCapture(actionsExec, command, args, options).pipe(
-					Effect.flatMap((output) => failOnNonZero(command, args, output)),
-				),
+		execCapture: (command, args = [], options?) =>
+			spawnCapture(command, args, options).pipe(Effect.flatMap((output) => failOnNonZero(command, args, output))),
 
-			execJson: (command, args, schema, options?) => {
-				const resolvedArgs = args ?? [];
-				return runCapture(actionsExec, command, resolvedArgs, options).pipe(
-					Effect.flatMap((output) => failOnNonZero(command, resolvedArgs, output)),
-					Effect.flatMap((output) =>
-						Effect.try({
-							try: () => JSON.parse(output.stdout) as unknown,
-							catch: () =>
+		execJson: (command, args, schema, options?) => {
+			const resolvedArgs = args ?? [];
+			return spawnCapture(command, resolvedArgs, options).pipe(
+				Effect.flatMap((output) => failOnNonZero(command, resolvedArgs, output)),
+				Effect.flatMap((output) =>
+					Effect.try({
+						try: () => JSON.parse(output.stdout) as unknown,
+						catch: () =>
+							new CommandRunnerError({
+								command,
+								args: resolvedArgs,
+								exitCode: output.exitCode,
+								stderr: output.stderr,
+								reason: `Failed to parse stdout as JSON: ${output.stdout.slice(0, 200)}`,
+							}),
+					}),
+				),
+				Effect.flatMap((parsed) =>
+					Schema.decodeUnknown(schema)(parsed).pipe(
+						Effect.mapError(
+							() =>
 								new CommandRunnerError({
 									command,
 									args: resolvedArgs,
-									exitCode: output.exitCode,
-									stderr: output.stderr,
-									reason: `Failed to parse stdout as JSON: ${output.stdout.slice(0, 200)}`,
+									exitCode: 0,
+									stderr: undefined,
+									reason: "Command output did not match expected schema",
 								}),
-						}),
-					),
-					Effect.flatMap((parsed) =>
-						Schema.decodeUnknown(schema)(parsed).pipe(
-							Effect.mapError(
-								() =>
-									new CommandRunnerError({
-										command,
-										args: resolvedArgs,
-										exitCode: 0,
-										stderr: undefined,
-										reason: "Command output did not match expected schema",
-									}),
-							),
 						),
 					),
-				);
-			},
-
-			execLines: (command, args = [], options?) =>
-				runCapture(actionsExec, command, args, options).pipe(
-					Effect.flatMap((output) => failOnNonZero(command, args, output)),
-					Effect.map((output) =>
-						output.stdout
-							.split("\n")
-							.map((line) => line.trim())
-							.filter((line) => line.length > 0),
-					),
 				),
-		};
+			);
+		},
+
+		execLines: (command, args = [], options?) =>
+			spawnCapture(command, args, options).pipe(
+				Effect.flatMap((output) => failOnNonZero(command, args, output)),
+				Effect.map((output) =>
+					output.stdout
+						.split("\n")
+						.map((line) => line.trim())
+						.filter((line) => line.length > 0),
+				),
+			),
 	}),
 );

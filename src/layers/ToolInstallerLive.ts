@@ -1,244 +1,194 @@
-import { chmod } from "node:fs/promises";
-import type { Context } from "effect";
-import { Effect, Layer } from "effect";
+import type { SpawnOptions } from "node:child_process";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { cp, mkdir, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { Effect, Layer, Option } from "effect";
 import { ToolInstallerError } from "../errors/ToolInstallerError.js";
-import { ActionsCore } from "../services/ActionsCore.js";
-import { ActionsToolCache } from "../services/ActionsToolCache.js";
-import type { BinaryInstallOptions, ToolInstallOptions } from "../services/ToolInstaller.js";
 import { ToolInstaller } from "../services/ToolInstaller.js";
 
-const extractArchive = (
-	tc: Context.Tag.Service<typeof ActionsToolCache>,
-	downloadedPath: string,
-	archiveType: "tar.gz" | "tar.xz" | "zip",
+const TOOL_CACHE_DIR = process.env.RUNNER_TOOL_CACHE ?? join(tmpdir(), "runner-tool-cache");
+
+const toolCachePath = (tool: string, version: string): string => join(TOOL_CACHE_DIR, tool, version, process.arch);
+
+const makeTempDir = (): Effect.Effect<string, ToolInstallerError> =>
+	Effect.tryPromise({
+		try: async () => {
+			const dir = join(tmpdir(), `tool-installer-${randomUUID()}`);
+			await mkdir(dir, { recursive: true });
+			return dir;
+		},
+		catch: (error) =>
+			new ToolInstallerError({
+				tool: "unknown",
+				version: "unknown",
+				operation: "extract",
+				reason: `Failed to create temp directory: ${error instanceof Error ? error.message : String(error)}`,
+			}),
+	});
+
+const spawnEffect = (
+	command: string,
+	args: ReadonlyArray<string>,
+	operation: "extract",
 	tool: string,
-	version: string,
-): Effect.Effect<string, ToolInstallerError> => {
-	switch (archiveType) {
-		case "tar.gz":
-			return Effect.tryPromise({
-				try: () => tc.extractTar(downloadedPath),
-				catch: (error) =>
+): Effect.Effect<void, ToolInstallerError> =>
+	Effect.async<void, ToolInstallerError>((resume) => {
+		const spawnOpts: SpawnOptions = { stdio: "pipe" };
+		const child = spawn(command, [...args], spawnOpts);
+
+		let stderr = "";
+
+		(child.stderr as NodeJS.ReadableStream).on("data", (chunk: Buffer) => {
+			stderr += chunk.toString();
+		});
+
+		child.on("error", (err: Error) => {
+			resume(
+				Effect.fail(
 					new ToolInstallerError({
 						tool,
-						version,
-						operation: "extract",
-						reason: `Failed to extract tar.gz: ${error instanceof Error ? error.message : String(error)}`,
-					}),
-			});
-		case "tar.xz":
-			return Effect.tryPromise({
-				try: () => tc.extractTar(downloadedPath, undefined, "xJ"),
-				catch: (error) =>
-					new ToolInstallerError({
-						tool,
-						version,
-						operation: "extract",
-						reason: `Failed to extract tar.xz: ${error instanceof Error ? error.message : String(error)}`,
-					}),
-			});
-		case "zip":
-			return Effect.tryPromise({
-				try: () => tc.extractZip(downloadedPath),
-				catch: (error) =>
-					new ToolInstallerError({
-						tool,
-						version,
-						operation: "extract",
-						reason: `Failed to extract zip: ${error instanceof Error ? error.message : String(error)}`,
-					}),
-			});
-	}
-};
-
-const installBinaryCore = (
-	tc: Context.Tag.Service<typeof ActionsToolCache>,
-	name: string,
-	version: string,
-	downloadUrl: string,
-	options?: BinaryInstallOptions,
-): Effect.Effect<string, ToolInstallerError> =>
-	Effect.sync(() => tc.find(name, version)).pipe(
-		Effect.flatMap((cached) => {
-			if (cached) {
-				return Effect.succeed(cached);
-			}
-
-			const binaryName = options?.binaryName ?? name;
-
-			return Effect.tryPromise({
-				try: () => tc.downloadTool(downloadUrl),
-				catch: (error) =>
-					new ToolInstallerError({
-						tool: name,
-						version,
-						operation: "download",
-						reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
-					}),
-			}).pipe(
-				Effect.flatMap((downloadedPath) =>
-					Effect.tryPromise({
-						try: () => tc.cacheFile(downloadedPath, binaryName, name, version),
-						catch: (error) =>
-							new ToolInstallerError({
-								tool: name,
-								version,
-								operation: "cache",
-								reason: `Failed to cache tool: ${error instanceof Error ? error.message : String(error)}`,
-							}),
+						version: "unknown",
+						operation,
+						reason: `${command} failed to spawn: ${err.message}`,
 					}),
 				),
-				Effect.flatMap((cachedPath) => {
-					if (options?.executable === false) {
-						return Effect.succeed(cachedPath);
-					}
-					const binaryPath = `${cachedPath}/${binaryName}`;
-					return Effect.tryPromise({
-						try: () => chmod(binaryPath, 0o755),
-						catch: (error) =>
-							new ToolInstallerError({
-								tool: name,
-								version,
-								operation: "chmod",
-								reason: `Failed to chmod binary: ${error instanceof Error ? error.message : String(error)}`,
-							}),
-					}).pipe(Effect.as(cachedPath));
-				}),
 			);
-		}),
-	);
+		});
+
+		child.on("close", (code: number | null) => {
+			if (code === 0) {
+				resume(Effect.void);
+			} else {
+				resume(
+					Effect.fail(
+						new ToolInstallerError({
+							tool,
+							version: "unknown",
+							operation,
+							reason: `${command} exited with code ${code ?? 1}: ${stderr}`.trim(),
+						}),
+					),
+				);
+			}
+		});
+	});
 
 /**
- * Live implementation of ToolInstaller using `@actions/tool-cache`.
+ * Live implementation of ToolInstaller using native `fetch`, `node:child_process`,
+ * and `node:fs/promises`. No `@actions/tool-cache` dependency.
  *
  * @public
  */
-export const ToolInstallerLive: Layer.Layer<ToolInstaller, never, ActionsCore | ActionsToolCache> = Layer.effect(
-	ToolInstaller,
-	Effect.gen(function* () {
-		const core = yield* ActionsCore;
-		const tc = yield* ActionsToolCache;
+export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolInstaller, {
+	find: (tool: string, version: string) =>
+		Effect.tryPromise({
+			try: () => stat(toolCachePath(tool, version)),
+			catch: () => null,
+		}).pipe(
+			Effect.map((s) => (s?.isDirectory() ? Option.some(toolCachePath(tool, version)) : Option.none())),
+			Effect.catchAll(() => Effect.succeed(Option.none())),
+		),
 
-		return {
-			install: (name: string, version: string, downloadUrl: string, options?: ToolInstallOptions) =>
-				Effect.sync(() => tc.find(name, version)).pipe(
-					Effect.flatMap((cached) => {
-						if (cached) {
-							const toolPath = options?.binSubPath ? `${cached}/${options.binSubPath}` : cached;
-							return Effect.succeed(toolPath);
-						}
+	download: (url: string) =>
+		Effect.tryPromise({
+			try: async () => {
+				const response = await fetch(url);
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status} ${response.statusText}`);
+				}
+				if (!response.body) {
+					throw new Error("Response body is empty");
+				}
+				const tempFile = join(tmpdir(), `download-${randomUUID()}`);
+				const writeStream = createWriteStream(tempFile);
+				await pipeline(Readable.fromWeb(response.body as import("node:stream/web").ReadableStream), writeStream);
+				return tempFile;
+			},
+			catch: (error) =>
+				new ToolInstallerError({
+					tool: "unknown",
+					version: "unknown",
+					operation: "download",
+					reason: `Failed to download ${url}: ${error instanceof Error ? error.message : String(error)}`,
+				}),
+		}),
 
-						const archiveType = options?.archiveType ?? "tar.gz";
-
-						return Effect.tryPromise({
-							try: () => tc.downloadTool(downloadUrl),
-							catch: (error) =>
-								new ToolInstallerError({
-									tool: name,
-									version,
-									operation: "download",
-									reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
-								}),
-						}).pipe(
-							Effect.flatMap((downloadedPath) => extractArchive(tc, downloadedPath, archiveType, name, version)),
-							Effect.flatMap((extractedPath) =>
-								Effect.tryPromise({
-									try: () => tc.cacheDir(extractedPath, name, version),
-									catch: (error) =>
-										new ToolInstallerError({
-											tool: name,
-											version,
-											operation: "cache",
-											reason: `Failed to cache tool: ${error instanceof Error ? error.message : String(error)}`,
-										}),
-								}),
-							),
-							Effect.map((cachedPath) => (options?.binSubPath ? `${cachedPath}/${options.binSubPath}` : cachedPath)),
-						);
-					}),
-				),
-
-			isCached: (name: string, version: string) =>
-				Effect.sync(() => tc.find(name, version)).pipe(
-					Effect.map((cached) => cached !== ""),
-					Effect.catchAll(() => Effect.succeed(false)),
-					Effect.catchAllDefect(() => Effect.succeed(false)),
-				),
-
-			installAndAddToPath: (name: string, version: string, downloadUrl: string, options?: ToolInstallOptions) =>
-				Effect.sync(() => tc.find(name, version)).pipe(
-					Effect.flatMap((cached) => {
-						if (cached) {
-							const toolPath = options?.binSubPath ? `${cached}/${options.binSubPath}` : cached;
-							return Effect.succeed(toolPath);
-						}
-
-						const archiveType = options?.archiveType ?? "tar.gz";
-
-						return Effect.tryPromise({
-							try: () => tc.downloadTool(downloadUrl),
-							catch: (error) =>
-								new ToolInstallerError({
-									tool: name,
-									version,
-									operation: "download",
-									reason: `Failed to download tool: ${error instanceof Error ? error.message : String(error)}`,
-								}),
-						}).pipe(
-							Effect.flatMap((downloadedPath) => extractArchive(tc, downloadedPath, archiveType, name, version)),
-							Effect.flatMap((extractedPath) =>
-								Effect.tryPromise({
-									try: () => tc.cacheDir(extractedPath, name, version),
-									catch: (error) =>
-										new ToolInstallerError({
-											tool: name,
-											version,
-											operation: "cache",
-											reason: `Failed to cache tool: ${error instanceof Error ? error.message : String(error)}`,
-										}),
-								}),
-							),
-							Effect.map((cachedPath) => (options?.binSubPath ? `${cachedPath}/${options.binSubPath}` : cachedPath)),
-						);
-					}),
-					Effect.flatMap((toolPath) =>
-						Effect.try({
-							try: () => {
-								core.addPath(toolPath);
-								return toolPath;
-							},
-							catch: (error) =>
-								new ToolInstallerError({
-									tool: name,
-									version,
-									operation: "path",
-									reason: `Failed to add to PATH: ${error instanceof Error ? error.message : String(error)}`,
-								}),
+	extractTar: (file: string, dest?: string, flags?: ReadonlyArray<string>) =>
+		Effect.gen(function* () {
+			const targetDir = dest ?? (yield* makeTempDir());
+			if (dest) {
+				yield* Effect.tryPromise({
+					try: () => mkdir(dest, { recursive: true }),
+					catch: (error) =>
+						new ToolInstallerError({
+							tool: "unknown",
+							version: "unknown",
+							operation: "extract",
+							reason: `Failed to create destination directory: ${error instanceof Error ? error.message : String(error)}`,
 						}),
-					),
-				),
+				});
+			}
+			const tarFlags = flags && flags.length > 0 ? [...flags] : ["xzf"];
+			const args = [...tarFlags, file, "-C", targetDir];
+			yield* spawnEffect("tar", args, "extract", "unknown");
+			return targetDir;
+		}),
 
-			installBinary: (name: string, version: string, downloadUrl: string, options?: BinaryInstallOptions) =>
-				installBinaryCore(tc, name, version, downloadUrl, options),
-
-			installBinaryAndAddToPath: (name: string, version: string, downloadUrl: string, options?: BinaryInstallOptions) =>
-				installBinaryCore(tc, name, version, downloadUrl, options).pipe(
-					Effect.flatMap((cachedPath) =>
-						Effect.try({
-							try: () => {
-								core.addPath(cachedPath);
-								return cachedPath;
-							},
-							catch: (error) =>
-								new ToolInstallerError({
-									tool: name,
-									version,
-									operation: "path",
-									reason: `Failed to add to PATH: ${error instanceof Error ? error.message : String(error)}`,
-								}),
+	extractZip: (file: string, dest?: string) =>
+		Effect.gen(function* () {
+			const targetDir = dest ?? (yield* makeTempDir());
+			if (dest) {
+				yield* Effect.tryPromise({
+					try: () => mkdir(dest, { recursive: true }),
+					catch: (error) =>
+						new ToolInstallerError({
+							tool: "unknown",
+							version: "unknown",
+							operation: "extract",
+							reason: `Failed to create destination directory: ${error instanceof Error ? error.message : String(error)}`,
 						}),
-					),
-				),
-		};
-	}),
-);
+				});
+			}
+			yield* spawnEffect("unzip", [file, "-d", targetDir], "extract", "unknown");
+			return targetDir;
+		}),
+
+	cacheDir: (sourceDir: string, tool: string, version: string) =>
+		Effect.tryPromise({
+			try: async () => {
+				const dest = toolCachePath(tool, version);
+				await mkdir(dest, { recursive: true });
+				await cp(sourceDir, dest, { recursive: true });
+				return dest;
+			},
+			catch: (error) =>
+				new ToolInstallerError({
+					tool,
+					version,
+					operation: "cache",
+					reason: `Failed to cache directory: ${error instanceof Error ? error.message : String(error)}`,
+				}),
+		}),
+
+	cacheFile: (sourceFile: string, targetFile: string, tool: string, version: string) =>
+		Effect.tryPromise({
+			try: async () => {
+				const dest = toolCachePath(tool, version);
+				await mkdir(dest, { recursive: true });
+				await cp(sourceFile, join(dest, targetFile));
+				return dest;
+			},
+			catch: (error) =>
+				new ToolInstallerError({
+					tool,
+					version,
+					operation: "cache",
+					reason: `Failed to cache file: ${error instanceof Error ? error.message : String(error)}`,
+				}),
+		}),
+});

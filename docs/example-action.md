@@ -2,15 +2,13 @@
 
 This tutorial walks through building a complete GitHub Action using
 `@savvy-web/github-action-effects`. By the end you will have a working
-action with schema-validated inputs, structured logging, a step summary,
+action with validated inputs, structured logging, a step summary,
 and typed outputs.
 
 ## Prerequisites
 
 ```bash
-# @effect/cluster, @effect/rpc, and @effect/sql are transitive peers required
-# by @effect/platform-node — they are not used directly by your action code.
-npm install @savvy-web/github-action-effects effect @actions/core \
+npm install @savvy-web/github-action-effects effect \
   @effect/platform @effect/platform-node \
   @effect/cluster @effect/rpc @effect/sql
 ```
@@ -30,13 +28,10 @@ inputs:
   package-name:
     description: 'Package to check'
     required: true
-  config:
-    description: 'JSON configuration'
+  threshold:
+    description: 'Pass threshold (number)'
     required: false
-  log-level:
-    description: 'Log level (info, verbose, debug, auto)'
-    required: false
-    default: 'auto'
+    default: '80'
   dry-run:
     description: 'Skip writes'
     required: false
@@ -56,22 +51,15 @@ runs:
 Here is the complete action. Each section is explained below.
 
 ```typescript
-import { Effect, Schema } from "effect"
+import { Config, Effect, Schema } from "effect"
 import {
   Action,
-  ActionInputs,
   ActionLogger,
   ActionOutputs,
   GithubMarkdown,
-  LogLevelInput,
 } from "@savvy-web/github-action-effects"
 
-// -- Schemas for structured inputs and outputs --
-
-const ConfigSchema = Schema.Struct({
-  threshold: Schema.Number,
-  packages: Schema.Array(Schema.String),
-})
+// -- Schemas for structured outputs --
 
 const ReportSchema = Schema.Struct({
   total: Schema.Number,
@@ -82,41 +70,34 @@ const ReportSchema = Schema.Struct({
 // -- The program --
 
 const program = Effect.gen(function* () {
-  const inputs = yield* ActionInputs
   const logger = yield* ActionLogger
   const outputs = yield* ActionOutputs
 
-  // 1. Configure log level from the standardized input
-  const logLevelInput = yield* inputs.get("log-level", LogLevelInput)
-  yield* Action.setLogLevel(Action.resolveLogLevel(logLevelInput))
-
-  // 2. Read inputs — individually or in batch
-  const packageName = yield* inputs.get("package-name", Schema.String)
-  const dryRun = yield* inputs.getBooleanOptional("dry-run", false)
-  const config = yield* inputs.getJson("config", ConfigSchema)
+  // 1. Read inputs via Config API (backed by ActionsConfigProvider)
+  const packageName = yield* Config.string("package-name")
+  const threshold = yield* Config.integer("threshold").pipe(Config.withDefault(80))
+  const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false))
 
   yield* Effect.log(`Checking ${packageName} (dry-run: ${dryRun})`)
 
-  // 3. Do work inside a collapsible log group
+  // 2. Do work inside a collapsible log group
   const results = yield* logger.group("Run checks", Effect.gen(function* () {
     yield* Effect.log("Resolving dependencies")
     yield* Effect.log("Running validation")
-    return config.packages.map((pkg) => ({
-      name: pkg,
-      passed: true,
-      version: "1.0.0",
-    }))
+    return [
+      { name: packageName, passed: true, version: "1.0.0" },
+    ]
   }))
 
-  // 4. Use buffer-on-failure for noisy operations
+  // 3. Use buffer-on-failure for noisy operations
   yield* logger.withBuffer("detailed-analysis", Effect.gen(function* () {
     for (const r of results) {
-      yield* Effect.log(`Analyzing ${r.name}...`)  // buffered at info level
+      yield* Effect.log(`Analyzing ${r.name}...`)  // buffered
     }
     // If this fails, all buffered lines flush to the log automatically
   }))
 
-  // 5. Set typed outputs
+  // 4. Set typed outputs
   yield* outputs.set("status", "success")
   yield* outputs.setJson("report", {
     total: results.length,
@@ -124,7 +105,7 @@ const program = Effect.gen(function* () {
     failed: results.filter((r) => !r.passed).length,
   }, ReportSchema)
 
-  // 6. Write a step summary with GFM builders
+  // 5. Write a step summary with GFM builders
   const summaryTable = GithubMarkdown.table(
     ["Package", "Status", "Version"],
     results.map((r) => [
@@ -137,13 +118,9 @@ const program = Effect.gen(function* () {
   yield* outputs.summary([
     GithubMarkdown.heading("Check Results"),
     summaryTable,
-    "",
-    GithubMarkdown.details("Configuration", GithubMarkdown.codeBlock(
-      JSON.stringify(config, null, 2), "json"
-    )),
   ].join("\n\n"))
 
-  // 7. Emit annotations for PR inline feedback
+  // 6. Emit annotations for PR inline feedback
   yield* logger.annotationWarning("Deprecated API usage", {
     file: "src/helpers.ts",
     startLine: 42,
@@ -152,65 +129,42 @@ const program = Effect.gen(function* () {
   yield* Effect.log("Action completed")
 })
 
-// 8. Run it — provides all core layers and catches errors automatically
+// 7. Run it -- provides ActionsRuntime.Default and catches errors automatically
 Action.run(program)
 ```
 
 ### What each section does
 
-1. **Log level** — Reads the `log-level` input, resolves `"auto"` based on
-   `RUNNER_DEBUG`, and sets the level for this fiber. All subsequent
-   `Effect.log` calls respect it.
+1. **Inputs** -- `Config.string("package-name")` reads `INPUT_PACKAGE-NAME`
+   from the environment. `Config.integer` and `Config.boolean` parse and
+   validate automatically. `Config.withDefault` provides fallback values.
 
-2. **Inputs** — `get` for required strings, `getBooleanOptional` for
-   optional booleans with defaults, `getJson` for parsed+validated JSON.
-   See [architecture.md](./architecture.md#actioninputs) for all methods.
-
-3. **Groups** — `logger.group` wraps the effect in a collapsible section in
+2. **Groups** -- `logger.group` wraps the effect in a collapsible section in
    the Actions UI. The return value passes through.
 
-4. **Buffer-on-failure** — `logger.withBuffer` captures verbose output at
-   `info` level. On success the buffer is silently discarded. On failure
-   it flushes before the error propagates, giving full context.
+3. **Buffer-on-failure** -- `logger.withBuffer` captures verbose output.
+   On success the buffer is silently discarded. On failure it flushes before
+   the error propagates, giving full context.
 
-5. **Outputs** — `set` for strings, `setJson` for schema-validated JSON.
+4. **Outputs** -- `set` for strings, `setJson` for schema-validated JSON.
    Values appear in `${{ steps.id.outputs.status }}` in downstream workflow
    steps.
 
-6. **Step summary** — `outputs.summary` writes markdown to the job summary.
+5. **Step summary** -- `outputs.summary` writes markdown to the job summary.
    `GithubMarkdown.*` helpers build tables, headings, details blocks, etc.
 
-7. **Annotations** — `annotationError`, `annotationWarning`, and
+6. **Annotations** -- `annotationError`, `annotationWarning`, and
    `annotationNotice` appear inline on PR diffs at the specified file and
    line.
 
-8. **Action.run** — Provides `ActionInputsLive`, `ActionLoggerLive`,
-   `ActionOutputsLive`, and `NodeContext.layer` (for `FileSystem`, `Path`,
-   `Terminal`, `CommandExecutor`, `WorkerManager` from `@effect/platform`),
-   installs the Effect logger, and catches all errors with `core.setFailed`.
-
-## Using Action.parseInputs
-
-For actions with many inputs, batch reading is cleaner than individual
-calls:
-
-```typescript
-const program = Effect.gen(function* () {
-  const { packageName, config, dryRun } = yield* Action.parseInputs({
-    packageName: { schema: Schema.String, required: true },
-    config: { schema: ConfigSchema, json: true },
-    dryRun: { schema: Schema.Boolean, default: false },
-  })
-  // ...
-})
-```
-
-An optional second argument accepts a cross-validation function. See
-[architecture.md](./architecture.md#actionparseinputs) for details.
+7. **Action.run** -- Provides `ActionsRuntime.Default` (ConfigProvider,
+   Logger, ActionOutputs, ActionState, ActionLogger, ActionEnvironment,
+   and Node.js FileSystem), wraps in `withBuffer`, and catches all errors
+   with `::error::` workflow commands.
 
 ## Adding Multi-Phase State
 
-Some actions run in multiple phases — `pre`, `main`, and `post`. The
+Some actions run in multiple phases -- `pre`, `main`, and `post`. The
 `ActionState` service transfers typed data between them using Schema
 encode/decode under the hood.
 
@@ -224,11 +178,11 @@ runs:
   post: 'dist/post.js'
 ```
 
-### pre.ts — save state
+### pre.ts -- save state
 
 ```typescript
 import { Effect, Schema } from "effect"
-import { Action, ActionState, ActionStateLive } from "@savvy-web/github-action-effects"
+import { Action, ActionState } from "@savvy-web/github-action-effects"
 
 const TimingSchema = Schema.Struct({ startedAt: Schema.Number })
 
@@ -237,14 +191,14 @@ const program = Effect.gen(function* () {
   yield* state.save("timing", { startedAt: Date.now() }, TimingSchema)
 })
 
-Action.run(program, ActionStateLive)
+Action.run(program)
 ```
 
-### post.ts — read state
+### post.ts -- read state
 
 ```typescript
 import { Effect, Schema } from "effect"
-import { Action, ActionState, ActionStateLive, ActionOutputs } from "@savvy-web/github-action-effects"
+import { Action, ActionState, ActionOutputs } from "@savvy-web/github-action-effects"
 
 const TimingSchema = Schema.Struct({ startedAt: Schema.Number })
 
@@ -256,41 +210,41 @@ const program = Effect.gen(function* () {
   yield* outputs.set("duration-ms", String(elapsed))
 })
 
-Action.run(program, ActionStateLive)
+Action.run(program)
 ```
 
-`ActionStateLive` is not included in `Action.run`'s core layers because
-not all actions need it. Pass it as the second argument when you do.
+`ActionState` is included in `ActionsRuntime.Default` (provided by
+`Action.run`), so no additional layers are needed.
 
 ## Error Handling
 
-`Action.run` catches all errors and calls `core.setFailed` automatically.
-For granular control, use `Effect.catchTag`:
+`Action.run` catches all errors and emits `::error::` workflow commands
+automatically. For granular control, use `Effect.catchTag`:
 
 ```typescript
-const packageName = yield* inputs.get("package-name", Schema.String).pipe(
-  Effect.catchTag("ActionInputError", (error) =>
+const result = yield* someEffect.pipe(
+  Effect.catchTag("GitHubClientError", (error) =>
     Effect.gen(function* () {
-      yield* Effect.logError(`Invalid input "${error.inputName}": ${error.reason}`)
+      yield* Effect.logError(`API call failed: ${error.reason}`)
       return yield* Effect.fail(error)
     })
   )
 )
 ```
 
-The three error types -- `ActionInputError`, `ActionOutputError`, and
-`ActionStateError` -- are all `Data.TaggedError` instances. See
+The error types -- `ActionOutputError`, `ActionStateError`,
+`GitHubClientError`, etc. -- are all `Data.TaggedError` instances. See
 [architecture.md](./architecture.md#error-types) for their fields.
 
 For custom error handlers that extract a human-readable message from an
 Effect `Cause`, use `Action.formatCause(cause)`. It returns a `[Tag] message`
 string that is parseable by both humans and AI. See
-[patterns.md](./patterns.md#actionformatcause) for details.
+[error-handling.md](./error-handling.md) for details.
 
 ## Testing
 
 Test your action's `program` function using test layers from the `/testing`
-subpath. No mocks, no real `@actions/core` calls -- just in-memory service
+subpath. No mocks, no real runner calls -- just in-memory service
 implementations.
 
 ```typescript
@@ -298,79 +252,34 @@ implementations.
 import { Effect, Layer, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import {
-  ActionInputs,
-  ActionInputsTest,
   ActionLogger,
   ActionLoggerTest,
   ActionOutputs,
   ActionOutputsTest,
+  ActionState,
+  ActionStateTest,
 } from "@savvy-web/github-action-effects/testing"
 
-// Import the program from your action source
-// import { program } from "./main.js"
-
-// For this example, define a simplified version inline
-const ConfigSchema = Schema.Struct({
-  threshold: Schema.Number,
-  packages: Schema.Array(Schema.String),
-})
-
 const program = Effect.gen(function* () {
-  const inputs = yield* ActionInputs
   const outputs = yield* ActionOutputs
-
-  const packageName = yield* inputs.get("package-name", Schema.String)
-  const config = yield* inputs.getJson("config", ConfigSchema)
-
   yield* outputs.set("status", "success")
-  yield* outputs.setJson("report", {
-    total: config.packages.length,
-    passed: config.packages.length,
-    failed: 0,
-  }, Schema.Struct({
-    total: Schema.Number,
-    passed: Schema.Number,
-    failed: Schema.Number,
-  }))
-
-  return packageName
 })
 
 describe("package checker action", () => {
-  it("reads inputs and sets outputs", async () => {
+  it("sets status output", async () => {
     const outputState = ActionOutputsTest.empty()
     const logState = ActionLoggerTest.empty()
+    const stateState = ActionStateTest.empty()
 
     const layer = Layer.mergeAll(
-      ActionInputsTest({
-        "package-name": "my-pkg",
-        "config": JSON.stringify({ threshold: 80, packages: ["pkg-a", "pkg-b"] }),
-        "log-level": "info",
-        "dry-run": "false",
-      }),
       ActionOutputsTest.layer(outputState),
       ActionLoggerTest.layer(logState),
+      ActionStateTest.layer(stateState),
     )
 
     await program.pipe(Effect.provide(layer), Effect.runPromise)
 
     expect(outputState.outputs).toContainEqual({ name: "status", value: "success" })
-  })
-
-  it("fails when package-name input is missing", async () => {
-    const layer = Layer.mergeAll(
-      ActionInputsTest({}),
-      ActionOutputsTest.layer(ActionOutputsTest.empty()),
-      ActionLoggerTest.layer(ActionLoggerTest.empty()),
-    )
-
-    const exit = await program.pipe(
-      Effect.provide(layer),
-      Effect.runPromise,
-      (p) => Effect.runPromise(Effect.exit(program.pipe(Effect.provide(layer)))),
-    )
-
-    expect(exit._tag).toBe("Failure")
   })
 })
 ```
@@ -380,9 +289,9 @@ patterns for testing logging, state, and annotations.
 
 ## Next Steps
 
-* [Services Guide](./services.md) -- detailed guide for every service
-* [Testing Guide](./testing.md) -- test every service with in-memory layers
-* [Architecture](./architecture.md) -- API reference, layer composition, and
+- [Services Guide](./services.md) -- detailed guide for every service
+- [Testing Guide](./testing.md) -- test every service with in-memory layers
+- [Architecture](./architecture.md) -- runtime layer, layer composition, and
   logging pipeline
-* [Patterns](./patterns.md) -- dry-run mode, error accumulation, permission
+- [Patterns](./patterns.md) -- dry-run mode, error accumulation, permission
   checking, and more

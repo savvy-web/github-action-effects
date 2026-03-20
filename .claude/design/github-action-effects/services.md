@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-19
-last-synced: 2026-03-19
+updated: 2026-03-20
+last-synced: 2026-03-20
 completeness: 95
 related:
   - ./index.md
@@ -26,29 +26,32 @@ See [layers.md](./layers.md) for live and test layer implementations.
 
 ## Overview
 
-Thirty-five service modules plus five namespace/utility objects, each
+Twenty-nine service modules plus five namespace/utility objects, each
 independently usable. `Action.run()` automatically provides
-`NodeContext.layer` from `@effect/platform-node`, so programs also have
-access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
-`CommandExecutor`, `WorkerManager`) without needing to provide them manually.
+`ActionsRuntime.Default`, which includes `NodeFileSystem.layer` from
+`@effect/platform-node`. Programs also have access to Node.js platform
+services (`FileSystem`, `Path`, etc.) without needing to provide them
+manually.
+
+Inputs are read via Effect's `Config` API backed by `ActionsConfigProvider`
+(not a dedicated service). Logging is handled by the Effect Logger backed
+by `ActionsLogger`.
 
 ```text
 @savvy-web/github-action-effects
-├── Platform Wrapper Services  (new — abstract @actions/* and @octokit/*)
-│   ├── ActionsCore         — Wrapper for @actions/core
-│   ├── ActionsGitHub       — Wrapper for @actions/github
-│   ├── ActionsCache        — Wrapper for @actions/cache
-│   ├── ActionsExec         — Wrapper for @actions/exec
-│   ├── ActionsToolCache    — Wrapper for @actions/tool-cache
-│   └── OctokitAuthApp      — Wrapper for @octokit/auth-app
+├── Runtime Layer (replaces @actions/*)
+│   ├── WorkflowCommand     — ::command:: protocol formatter with escaping
+│   ├── RuntimeFile          — Env file appender (GITHUB_OUTPUT, GITHUB_ENV, etc.)
+│   ├── ActionsConfigProvider — ConfigProvider reading INPUT_* env vars
+│   ├── ActionsLogger        — Effect Logger emitting workflow commands
+│   └── ActionsRuntime       — Single convenience Layer wiring everything
 │
 ├── Core Action I/O
-│   ├── ActionInputs        — Schema-validated input reading
-│   ├── ActionLogger        — Structured logging with buffering
+│   ├── ActionLogger        — Log groups + buffered output
 │   ├── ActionOutputs       — Typed output setting and step summaries
 │   ├── ActionState         — Schema-serialized state for multi-phase actions
 │   ├── ActionEnvironment   — Schema-validated GitHub/Runner context variables
-│   └── ActionCache         — Effect wrapper for @actions/cache save/restore
+│   └── ActionCache         — Cache save/restore via native fetch (ACTIONS_CACHE_URL)
 │
 ├── Git Operations
 │   ├── GitBranch           — Branch management via Git Data API
@@ -56,11 +59,12 @@ access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
 │   └── GitTag              — Tag management via Git refs API
 │
 ├── GitHub API
-│   ├── GitHubClient        — Authenticated Octokit provider with pagination
+│   ├── GitHubClient        — Direct @octokit/rest, self-contained Layer
 │   ├── GitHubGraphQL       — GitHub GraphQL API operations
 │   ├── GitHubRelease       — Create/manage GitHub releases
 │   ├── GitHubIssue         — Issue management + linked issues
 │   ├── GitHubApp           — GitHub App authentication lifecycle
+│   ├── OctokitAuthApp      — Wrapper for @octokit/auth-app createAppAuth
 │   ├── CheckRun            — Check runs with bracket pattern
 │   ├── PullRequest         — PR lifecycle (CRUD, merge, labels, reviewers)
 │   ├── PullRequestComment  — Sticky (upsert) PR comments
@@ -68,18 +72,19 @@ access to Node.js platform services (`FileSystem`, `Path`, `Terminal`,
 │   └── WorkflowDispatch    — Trigger and monitor workflow runs
 │
 ├── Build Tooling
-│   ├── CommandRunner       — Structured shell command execution
+│   ├── CommandRunner       — Structured shell execution (node:child_process)
 │   ├── NpmRegistry         — npm registry queries
 │   ├── PackagePublish      — Multi-registry package publishing
 │   ├── PackageManagerAdapter — Unified PM operations (npm/pnpm/yarn/bun)
 │   ├── WorkspaceDetector   — Monorepo workspace detection
-│   ├── ToolInstaller       — Binary download, cache, PATH management
+│   ├── ToolInstaller       — Low-level tool binary management (native fetch + child_process)
 │   ├── ChangesetAnalyzer   — Changeset file parsing and generation
 │   ├── ConfigLoader        — JSON/JSONC/YAML config loading with schema validation
+│   ├── TokenPermissionChecker — Token permission validation + enforcement
 │   └── DryRun              — Mutation interception for dry-run mode
 │
 ├── Namespace Objects
-│   ├── Action.*            — run, parseInputs, makeLogger, setLogLevel, resolveLogLevel
+│   ├── Action.*            — run, resolveLogLevel, formatCause
 │   └── GithubMarkdown.*    — table, heading, details, bold, code, etc.
 │
 └── Utility Namespaces
@@ -99,16 +104,13 @@ single export, reducing barrel clutter and improving discoverability.
 **`Action`** (from `src/Action.ts`) groups top-level action helpers:
 
 - `Action.run(program)` / `Action.run(program, options?)` -- Run a GitHub
-  Action program with standard boilerplate (provides core layers, catches
-  errors). `options` is an `ActionRunOptions` object with two optional fields:
-  - `layer` -- additional layer to merge with core services
-  - `platform` -- platform layer providing `ActionsCore` (defaults to
-    `ActionsCoreLive`; pass `ActionsPlatformLive` to include all wrapper
-    services). Uses `ActionsCore` via DI for `getInput`/`setFailed`/`debug`.
-- `Action.parseInputs(config, crossValidate?)` -- Read and validate all inputs
-  at once from a config record
-- `Action.makeLogger()` -- Create the Effect Logger for GitHub Actions
-- `Action.setLogLevel(level)` -- Set action log level for current scope
+  Action program with standard boilerplate. Provides `ActionsRuntime.Default`
+  (ConfigProvider, Logger, ActionLogger, ActionOutputs, ActionState,
+  ActionEnvironment, FileSystem). Wraps the program in
+  `ActionLogger.withBuffer` for buffered output. Catches all errors via
+  `Effect.catchAllCause` and emits `::error::` workflow commands using
+  `WorkflowCommand.issue`. `options` accepts a `layer` field for additional
+  services to merge.
 - `Action.resolveLogLevel(input)` -- Resolve LogLevelInput to ActionLogLevel
 - `Action.formatCause(cause)` -- Extract human-readable error message from an
   Effect `Cause` using a `[Tag] message` fallback chain
@@ -126,156 +128,55 @@ objects are exported.
 
 ---
 
-## Platform Wrapper Services
-
-Six services that wrap the `@actions/*` and `@octokit/auth-app` packages as
-Effect services. These are the **only** files in the library that import those
-packages directly. All other Live layers depend on these wrapper services via
-`Layer.effect` and `yield*`, never importing the packages themselves.
-
-This design enables full DI for platform calls, making it possible to mock
-`@actions/core`, `@actions/exec`, etc. in tests without rewriting Live layer
-logic.
-
-| Service | Wraps | Context Tag |
-| --- | --- | --- |
-| `ActionsCore` | `@actions/core` | `github-action-effects/ActionsCore` |
-| `ActionsGitHub` | `@actions/github` | `github-action-effects/ActionsGitHub` |
-| `ActionsCache` | `@actions/cache` | `github-action-effects/ActionsCache` |
-| `ActionsExec` | `@actions/exec` | `github-action-effects/ActionsExec` |
-| `ActionsToolCache` | `@actions/tool-cache` | `github-action-effects/ActionsToolCache` |
-| `OctokitAuthApp` | `@octokit/auth-app` | `github-action-effects/OctokitAuthApp` |
-
-### ActionsCore Service
-
-Mirrors the `@actions/core` API as an Effect service. Provides:
-`getInput`, `getMultilineInput`, `getBooleanInput`, `setOutput`, `setFailed`,
-`exportVariable`, `addPath`, `setSecret`, `info`, `debug`, `warning`, `error`,
-`notice`, `startGroup`, `endGroup`, `getState`, `saveState`, `summary`.
-
-Also defines `AnnotationProperties` (previously local to `ActionLogger.ts`).
-
-### ActionsGitHub Service
-
-Wraps `@actions/github.getOctokit()`. Returns a `GitHubOctokit` instance.
-Defines the `GitHubOctokit` interface with `graphql`, `rest`, and `request`
-members.
-
-### ActionsCache Service
-
-Wraps `@actions/cache`. Provides `saveCache` and `restoreCache`.
-
-### ActionsExec Service
-
-Wraps `@actions/exec`. Provides a single `exec` method. Defines the
-`ActionsExecOptions` interface (subset of `@actions/exec` `ExecOptions`).
-
-### ActionsToolCache Service
-
-Wraps `@actions/tool-cache`. Provides `find`, `downloadTool`, `extractTar`,
-`extractZip`, `cacheDir`, and `cacheFile`.
-
-### OctokitAuthApp Service
-
-Wraps `@octokit/auth-app`. Provides `createAppAuth`. Defines the `AppAuth`
-callable interface for app and installation authentication.
-
-### ActionsPlatformLive
-
-A convenience bundle: `Layer.mergeAll` of all 6 wrapper Live layers. Type
-alias `ActionsPlatform` is a union of the 6 service types. Pass
-`ActionsPlatformLive` as the `platform` option to `Action.run()` when
-downstream Live layers need `ActionsGitHub`, `ActionsCache`, `ActionsExec`,
-`ActionsToolCache`, or `OctokitAuthApp` in addition to `ActionsCore`.
-
----
-
 ## Module Details
-
-### ActionInputs Service
-
-Reads and validates GitHub Action inputs using Effect Schema.
-
-**Interface:**
-
-- `get(name, schema)` -- Read a single input, validate against schema
-- `getOptional(name, schema)` -- Read optional input, return Option
-- `getSecret(name, schema)` -- Read input, mark as secret (masked in logs)
-- `getJson(name, schema)` -- Read input as JSON string, parse and validate
-- `getMultiline(name, itemSchema)` -- Read multiline input, split on newlines,
-  trim each line, filter blanks and comment lines (starting with `#`), validate
-  each item against `itemSchema`. Live layer uses `core.getMultilineInput()`,
-  test layer splits from string. Returns `Effect<Array<A>, ActionInputError>`
-- `getBoolean(name)` -- Read boolean input. Live layer uses
-  `core.getBooleanInput()`. Returns `Effect<boolean, ActionInputError>`
-- `getBooleanOptional(name, defaultValue)` -- Read boolean input or return
-  default if not provided. Returns `Effect<boolean, ActionInputError>`
-
-**Batch helper:** `Action.parseInputs(config, crossValidate?)` -- Read all
-inputs at once from a config object (`Record<string, InputConfig>`). Each
-`InputConfig` specifies `{ schema, required?, default?, multiline?, secret?,
-json? }`. After reading all inputs, passes the parsed object to an optional
-cross-validation function. Returns the fully typed parsed object. Errors from
-individual inputs and cross-validation unified under `ActionInputError`.
-Requires `ActionInputs` in the Effect context. Implementation is inlined in
-`Action.ts`.
-
-**Shared decode helpers:** `decodeInput` and `decodeJsonInput` are extracted
-to `layers/internal/decodeInput.ts` and shared by both `ActionInputsLive`
-and `ActionInputsTest`, eliminating duplication of schema validation logic.
-
-**Error type:** `ActionInputError`
 
 ### ActionLogger Service
 
-Custom Effect Logger with three log levels and a standardized `log-level`
-action input. Separates user-facing output (always visible via `core.info()`)
-from internal diagnostics (GitHub-gated via `core.debug()`).
-
-**Log Levels:**
-
-| Level | Behavior | Use Case |
-| --------- | ------------------------------------------------ | --------------------------------- |
-| `info` | Buffered. Shows only outcome summaries. On failure, flushes captured verbose buffer at the failure point. | Default. Clean, LLM-friendly. |
-| `verbose` | Unbuffered milestones. Start/finish markers for operations. | CI debugging, progress tracking. |
-| `debug` | Everything. Full command output, input/output values, internal state. | Deep debugging. |
+Service for action-specific logging operations beyond the Effect Logger.
+The core log-level routing is handled by the Effect Logger installed via
+`ActionsRuntime.Default` (the `ActionsLogger` module). This service provides
+additional GitHub Actions-specific operations.
 
 **Interface:**
 
-- Implements `Effect.Logger` -- plugs into Effect's logging system
 - `group(name, effect)` -- Wraps an effect in a collapsible log group
-- `withBuffer(label, effect)` -- Captures verbose output in memory; flushes on failure
-- `annotationError(message, properties?)` -- Error annotation via `core.error()`
-- `annotationWarning(message, properties?)` -- Warning annotation via `core.warning()`
-- `annotationNotice(message, properties?)` -- Notice annotation via `core.notice()`
+  (`::group::` / `::endgroup::`)
+- `withBuffer(label, effect)` -- Captures verbose output in memory; on
+  success the buffer is discarded; on failure the buffer is flushed before
+  the error is reported. At Debug log level, passes through without buffering.
 
 **Error type:** (none -- logger never fails)
 
 ### ActionOutputs Service
 
-Sets action outputs and writes step summaries.
+Sets action outputs and writes step summaries via RuntimeFile and
+WorkflowCommand.
 
 **Interface:**
 
-- `set(name, value)` -- Set an output value
+- `set(name, value)` -- Set an output value (appends to `GITHUB_OUTPUT` file)
 - `setJson(name, value, schema)` -- Serialize and set a JSON output
 - `summary(content)` -- Write to `$GITHUB_STEP_SUMMARY`
-- `exportVariable(name, value)` -- Export an environment variable
-- `addPath(path)` -- Add to PATH
-- `setFailed(message)` -- Mark the action as failed via `core.setFailed()`
-- `setSecret(value)` -- Mask a runtime value in logs via `core.setSecret()`
+- `exportVariable(name, value)` -- Export an environment variable (appends to
+  `GITHUB_ENV` file)
+- `addPath(path)` -- Add to PATH (appends to `GITHUB_PATH` file)
+- `setFailed(message)` -- Mark the action as failed via `::error::` command
+  and `process.exitCode = 1`
+- `setSecret(value)` -- Mask a runtime value in logs via `::add-mask::` command
 
 **Error type:** `ActionOutputError`
 
 ### ActionState Service
 
 Schema-serialized state passing for multi-phase GitHub Actions (pre/main/post).
+Persists via `GITHUB_STATE` file, reads from `STATE_*` environment variables.
 
 **Interface:**
 
-- `save(key, value, schema)` -- Serialize via `Schema.encode`, persist with
-  `core.saveState()`
-- `get(key, schema)` -- Read, parse, and decode via `Schema.decode`
+- `save(key, value, schema)` -- Serialize via `Schema.encode`, persist to
+  `GITHUB_STATE` file via RuntimeFile
+- `get(key, schema)` -- Read `STATE_*` env var, parse, and decode via
+  `Schema.decode`
 - `getOptional(key, schema)` -- Like `get` but returns `Option<A>` when empty
 
 **Error type:** `ActionStateError`
@@ -295,13 +196,16 @@ Read-only, schema-validated access to GitHub Actions context variables.
 
 ### ActionCache Service
 
-Effect wrapper around `@actions/cache` for save/restore.
+Cache save/restore using the internal GitHub Actions cache protocol directly
+via native `fetch`. Reads `ACTIONS_CACHE_URL` and `ACTIONS_RUNTIME_TOKEN`
+from the environment. No dependency on `@actions/cache`.
 
 **Interface:**
 
-- `save(key, paths)` -- Save paths to cache under key
-- `restore(key, restoreKeys?, paths?)` -- Restore from cache, returns `CacheHit`
-- `withCache(key, paths, effect)` -- Bracket: restore, run effect, save if miss
+- `save(paths, key)` -- Create tar.gz archive of paths, upload via chunked
+  protocol (reserve, upload chunks, commit)
+- `restore(paths, primaryKey, restoreKeys?)` -- Look up cache entry, download
+  archive, extract. Returns `Option<string>` (matched key or none on miss)
 
 **Error type:** `ActionCacheError`
 
@@ -326,10 +230,8 @@ additions/updates and file deletions.
 
 **Interface:**
 
-- `createTree(entries, baseTree?)` -- Create a tree object, return SHA.
-  Each entry is a `TreeEntry` (union of `TreeEntryContent` for add/update
-  and `TreeEntryDeletion` with `sha: null` for deletion)
-- `createCommit(message, treeSha, parentShas)` -- Create a commit object, return SHA
+- `createTree(entries, baseTree?)` -- Create a tree object, return SHA
+- `createCommit(message, treeSha, parentShas)` -- Create a commit object
 - `updateRef(ref, sha, force?)` -- Update a ref to point at a new SHA
 - `commitFiles(branch, message, files)` -- Convenience: commit files to a
   branch. Each file is a `FileChange` (union of `FileChangeContent` for
@@ -355,6 +257,8 @@ Tag management via the GitHub Git refs API.
 ### GitHubClient Service
 
 Authenticated Octokit provider for GitHub REST and GraphQL API operations.
+Uses `@octokit/rest` directly. Self-contained Layer that reads `GITHUB_TOKEN`
+from `process.env` (not a factory function).
 
 **Interface:**
 
@@ -362,7 +266,8 @@ Authenticated Octokit provider for GitHub REST and GraphQL API operations.
 - `graphql(query, variables?)` -- Execute a GraphQL query
 - `paginate(operation, fn, options?)` -- Paginate a REST API call, collecting
   all results. Options: `{ perPage?, maxPages? }`
-- `repo` -- Get the repository context (`{ owner, repo }`)
+- `repo` -- Get the repository context (`{ owner, repo }`) from
+  `GITHUB_REPOSITORY` env var
 
 **Error type:** `GitHubClientError` -- includes `retryable` flag for 429/5xx
 
@@ -383,18 +288,13 @@ Create and manage GitHub releases via the REST API.
 
 **Interface:**
 
-- `create(options)` -- Create a new release. Options: `{ tag, name, body,
-  draft?, prerelease?, generateReleaseNotes? }`. Returns `ReleaseData`
+- `create(options)` -- Create a new release. Returns `ReleaseData`
 - `uploadAsset(releaseId, name, data, contentType)` -- Upload an asset.
   Returns `ReleaseAsset`
 - `getByTag(tag)` -- Get a release by tag name. Returns `ReleaseData`
-- `list(options?)` -- List releases. Options: `{ perPage?, maxPages? }`.
-  Returns `Array<ReleaseData>`
+- `list(options?)` -- List releases. Returns `Array<ReleaseData>`
 
-**Types:**
-
-- `ReleaseData` -- `{ id, tag, name, body, draft, prerelease, uploadUrl }`
-- `ReleaseAsset` -- `{ id, name, url, size }`
+**Types:** `ReleaseData`, `ReleaseAsset`
 
 **Error type:** `GitHubReleaseError`
 
@@ -404,13 +304,10 @@ Issue management and linked issue queries.
 
 **Interface:**
 
-- `list(options?)` -- List issues filtered by state, labels, milestone.
-  Returns `Array<IssueData>`
-- `close(issueNumber, reason?)` -- Close an issue with optional reason
-  (`"completed"` | `"not_planned"`)
-- `comment(issueNumber, body)` -- Add a comment. Returns `{ id: number }`
-- `getLinkedIssues(prNumber)` -- Get issues linked to a PR via closing
-  references. Returns `Array<{ number, title }>`
+- `list(options?)` -- List issues filtered by state, labels, milestone
+- `close(issueNumber, reason?)` -- Close an issue
+- `comment(issueNumber, body)` -- Add a comment
+- `getLinkedIssues(prNumber)` -- Get issues linked to a PR via closing references
 
 **Types:** `IssueData` -- `{ number, title, state, labels }`
 
@@ -418,18 +315,34 @@ Issue management and linked issue queries.
 
 ### GitHubApp Service
 
-GitHub App authentication lifecycle.
+GitHub App authentication lifecycle. Uses `OctokitAuthApp` for JWT-based
+app auth and native `fetch` for installation resolution and token revocation.
 
 **Interface:**
 
 - `generateToken(appId, privateKey, installationId?)` -- Generate an
-  installation token. Returns `InstallationToken`
-- `revokeToken(token)` -- Revoke a previously generated token
+  installation token. Auto-resolves installation ID from `GITHUB_REPOSITORY`
+  if not provided. Returns `InstallationToken`
+- `revokeToken(token)` -- Revoke a previously generated token via REST API
+- `botIdentity(appSlug?)` -- Get bot identity for commit attribution. Returns
+  `BotIdentity` (`{ name, email }`)
 - `withToken(appId, privateKey, effect)` -- Bracket: generate, run, revoke
 
-**Types:** `InstallationToken` -- `{ token, expiresAt, installationId, permissions }`
+**Types:** `InstallationToken` (Schema), `BotIdentity` (interface)
 
 **Error type:** `GitHubAppError`
+
+### OctokitAuthApp Service
+
+Wrapper service for `@octokit/auth-app`. This is the only service that
+imports `@octokit/auth-app` directly (via `OctokitAuthAppLive`).
+
+**Interface:**
+
+- `createAppAuth(options)` -- Create an `AppAuth` callable for JWT-based
+  app and installation authentication
+
+**Types:** `AppAuth` -- callable interface for app/installation auth
 
 ### CheckRun Service
 
@@ -449,31 +362,20 @@ Create, update, and complete GitHub check runs with bracket pattern.
 
 ### PullRequest Service
 
-Full pull request lifecycle management: CRUD, merge, labels, reviewers, and
-auto-merge via GraphQL.
+Full pull request lifecycle management.
 
 **Interface:**
 
-- `get(number)` -- Get a single PR by number. Returns `PullRequestInfo`
-- `list(options?)` -- List PRs matching filters. Options: `{ head?, base?,
-  state?, perPage?, paginate? }`. Returns `ReadonlyArray<PullRequestInfo>`
-- `create(options)` -- Create a new PR. Options: `{ title, body, head, base,
-  draft?, autoMerge? }`. Returns `PullRequestInfo`
-- `update(number, options)` -- Update an existing PR. Options: `{ title?,
-  body?, state?, autoMerge? }`. Returns `PullRequestInfo`
-- `getOrCreate(options)` -- Find existing PR for head->base or create one;
-  updates title/body if found. Returns `PullRequestInfo & { created: boolean }`
-- `merge(number, options?)` -- Immediately merge a PR. Options: `{ method?,
-  commitTitle?, commitMessage? }`
+- `get(number)` -- Get a single PR by number
+- `list(options?)` -- List PRs matching filters
+- `create(options)` -- Create a new PR
+- `update(number, options)` -- Update an existing PR
+- `getOrCreate(options)` -- Find existing PR for head->base or create one
+- `merge(number, options?)` -- Immediately merge a PR
 - `addLabels(number, labels)` -- Add labels to a PR
-- `requestReviewers(number, options)` -- Request reviewers. Options:
-  `{ reviewers?, teamReviewers? }`
+- `requestReviewers(number, options)` -- Request reviewers
 
-**Types:**
-
-- `PullRequestInfo` -- `{ number, url, nodeId, title, state, head, base,
-  draft, merged }`
-- `PullRequestListOptions` -- `{ head?, base?, state?, perPage?, paginate? }`
+**Types:** `PullRequestInfo`, `PullRequestListOptions`
 
 **Error type:** `PullRequestError`
 
@@ -483,9 +385,9 @@ Sticky (upsert) PR comments with marker-based idempotency.
 
 **Interface:**
 
-- `create(prNumber, body)` -- Create a new comment. Returns comment ID
+- `create(prNumber, body)` -- Create a new comment
 - `upsert(prNumber, markerKey, body)` -- Create or update sticky comment
-- `find(prNumber, markerKey)` -- Find comment by marker. Returns `Option<CommentRecord>`
+- `find(prNumber, markerKey)` -- Find comment by marker
 - `delete(prNumber, commentId)` -- Delete a comment by ID
 
 **Types:** `CommentRecord` -- `{ id: number; body: string }`
@@ -513,23 +415,21 @@ Trigger and monitor GitHub Actions workflow runs.
 
 - `dispatch(workflow, ref, inputs?)` -- Trigger a workflow run
 - `dispatchAndWait(workflow, ref, inputs?, pollOptions?)` -- Trigger and poll
-  until completion. Returns the run conclusion
+  until completion
 - `getRunStatus(runId)` -- Get status of a workflow run
 
-**Types:** `WorkflowRunStatus` -- `{ status, conclusion }`,
-`PollOptions` -- `{ intervalMs?, timeoutMs? }`
+**Types:** `WorkflowRunStatus`, `PollOptions`
 
 **Error type:** `WorkflowDispatchError`
 
 ### CommandRunner Service
 
-Structured shell command execution with stdout/stderr capture.
+Structured shell command execution via `node:child_process` `spawn`.
 
 **Interface:**
 
 - `exec(command, args?, options?)` -- Run a command, return exit code
-- `execCapture(command, args?, options?)` -- Run and capture stdout/stderr.
-  Returns `ExecOutput`
+- `execCapture(command, args?, options?)` -- Run and capture stdout/stderr
 - `execJson(command, args?, schema?)` -- Run, parse stdout as JSON, validate
 - `execLines(command, args?, options?)` -- Run and return stdout split into lines
 
@@ -546,7 +446,7 @@ Query npm registry for package metadata.
 
 - `getLatestVersion(pkg)` -- Get latest version string
 - `getDistTags(pkg)` -- Get dist-tags record
-- `getPackageInfo(pkg, version?)` -- Get package info. Returns `NpmPackageInfo`
+- `getPackageInfo(pkg, version?)` -- Get package info
 - `getVersions(pkg)` -- Get all version strings
 
 **Error type:** `NpmRegistryError`
@@ -557,17 +457,13 @@ Multi-registry npm package publishing workflow.
 
 **Interface:**
 
-- `setupAuth(registry, token)` -- Configure npm authentication for a registry
-- `pack(packageDir)` -- Pack into tarball and compute digest. Returns `PackResult`
-- `publish(packageDir, options?)` -- Publish to a registry. Options:
-  `{ registry?, tag?, access?, provenance? }`
-- `verifyIntegrity(packageName, version, expectedDigest)` -- Verify published
-  package integrity hash
-- `publishToRegistries(packageDir, registries)` -- Publish to multiple
-  registries in sequence
+- `setupAuth(registry, token)` -- Configure npm authentication
+- `pack(packageDir)` -- Pack into tarball and compute digest
+- `publish(packageDir, options?)` -- Publish to a registry
+- `verifyIntegrity(packageName, version, expectedDigest)` -- Verify integrity
+- `publishToRegistries(packageDir, registries)` -- Publish to multiple registries
 
-**Types:** `PackResult` -- `{ tarball, digest }`,
-`RegistryTarget` -- `{ registry, token, tag?, access? }`
+**Types:** `PackResult`, `RegistryTarget`
 
 **Error type:** `PackagePublishError`
 
@@ -577,13 +473,11 @@ Unified package manager operations supporting npm, pnpm, yarn, bun, and deno.
 
 **Interface:**
 
-- `detect()` -- Detect the package manager. Returns `PackageManagerInfo`
-- `install(options?)` -- Install dependencies. Options: `{ frozen?, cwd? }`
+- `detect()` -- Detect the package manager
+- `install(options?)` -- Install dependencies
 - `getCachePaths()` -- Get cache directory paths
 - `getLockfilePaths()` -- Get lockfile paths
 - `exec(args, options?)` -- Execute a command via the detected PM
-
-**Types:** `InstallOptions` -- `{ frozen?, cwd? }`
 
 **Error type:** `PackageManagerError`
 
@@ -593,35 +487,27 @@ Monorepo workspace detection.
 
 **Interface:**
 
-- `detect()` -- Detect workspace type and patterns. Returns `WorkspaceInfo`
-- `listPackages()` -- List all workspace packages. Returns `Array<WorkspacePackage>`
-- `getPackage(nameOrPath)` -- Get a specific package by name or path
+- `detect()` -- Detect workspace type and patterns
+- `listPackages()` -- List all workspace packages
+- `getPackage(nameOrPath)` -- Get a specific package
 
 **Error type:** `WorkspaceDetectorError`
 
 ### ToolInstaller Service
 
-Download, extract, cache, and add tool binaries to PATH. Supports both
-archive-based installation (download, extract, cache directory) and single
-binary installation (download, cache file, optional chmod).
+Low-level primitives for downloading, extracting, and caching tool binaries.
+Uses native `fetch` for downloads and `node:child_process` for extraction
+(tar/unzip). Tool cache lives at `RUNNER_TOOL_CACHE` (or a temp directory
+fallback). No dependency on `@actions/tool-cache`.
 
 **Interface:**
 
-- `install(name, version, downloadUrl, options?)` -- Download archive, extract,
-  and cache a tool. Returns cached tool path
-- `isCached(name, version)` -- Check if tool is already cached
-- `installAndAddToPath(name, version, downloadUrl, options?)` -- Install
-  archive-based tool and add to PATH
-- `installBinary(name, version, downloadUrl, options?)` -- Download, cache, and
-  optionally chmod a single binary file. Returns the cached directory path
-- `installBinaryAndAddToPath(name, version, downloadUrl, options?)` -- Install
-  a single binary and add it to the system PATH. Returns the cached directory
-  path
-
-**Types:**
-
-- `ToolInstallOptions` -- `{ archiveType?, binSubPath?, platform?, arch? }`
-- `BinaryInstallOptions` -- `{ binaryName?, executable? }`
+- `find(tool, version)` -- Look up a cached tool. Returns `Option<string>`
+- `download(url)` -- Download a URL to a temporary file via native `fetch`
+- `extractTar(file, dest?, flags?)` -- Extract a tar archive via `tar` command
+- `extractZip(file, dest?)` -- Extract a zip archive via `unzip` command
+- `cacheDir(sourceDir, tool, version)` -- Cache a directory as a tool
+- `cacheFile(sourceFile, targetFile, tool, version)` -- Cache a single file
 
 **Error type:** `ToolInstallerError`
 
@@ -631,10 +517,9 @@ Changeset file parsing and generation.
 
 **Interface:**
 
-- `parseAll(dir?)` -- Parse all changeset files. Returns `Array<Changeset>`
+- `parseAll(dir?)` -- Parse all changeset files
 - `hasChangesets(dir?)` -- Check if any changeset files exist
-- `generate(packages, summary, dir?)` -- Generate a changeset file. Returns
-  `ChangesetFile`
+- `generate(packages, summary, dir?)` -- Generate a changeset file
 
 **Error type:** `ChangesetError`
 
@@ -645,8 +530,8 @@ Load and validate configuration files with Effect Schema.
 **Interface:**
 
 - `loadJson(path, schema)` -- Load and validate a JSON config file
-- `loadJsonc(path, schema)` -- Load JSONC (requires `jsonc-parser` peer)
-- `loadYaml(path, schema)` -- Load YAML (requires `yaml` peer)
+- `loadJsonc(path, schema)` -- Load JSONC
+- `loadYaml(path, schema)` -- Load YAML
 - `exists(path)` -- Check if a config file exists
 
 **Error type:** `ConfigLoaderError`
@@ -658,26 +543,21 @@ Cross-cutting mutation interception for dry-run mode.
 **Interface:**
 
 - `isDryRun` -- Check if dry-run mode is active
-- `guard(label, effect, fallback)` -- If dry-run: log `[DRY-RUN] {label}`,
-  return fallback. Otherwise: execute the effect.
+- `guard(label, effect, fallback)` -- If dry-run: log, return fallback.
+  Otherwise: execute the effect.
 
 **Error type:** (none)
 
 ### TokenPermissionChecker Service
 
-Check GitHub token permissions against requirements with three enforcement
-modes.
+Check GitHub token permissions against requirements.
 
 **Interface:**
 
-- `check(requirements)` -- Compare granted vs required. Returns
-  `PermissionCheckResult`
+- `check(requirements)` -- Compare granted vs required
 - `assertSufficient(requirements)` -- Fail if missing permissions
 - `assertExact(requirements)` -- Fail if missing OR extra permissions
-- `warnOverPermissioned(requirements)` -- Log warnings for extras; never fails
-
-Permission levels are hierarchical: `admin > write > read`. A token with
-`write` satisfies a `read` requirement.
+- `warnOverPermissioned(requirements)` -- Log warnings for extras
 
 **Error type:** `TokenPermissionError`
 
@@ -689,27 +569,16 @@ Permission levels are hierarchical: `admin > write > read`. A token with
 
 Standalone GFM builders -- no Effect service, just pure functions.
 
-- `table(headers, rows)` -- Build a GFM table
-- `heading(text, level)` -- Heading with optional level
-- `details(summary, content)` -- Collapsible `<details>` block
-- `rule()` -- Horizontal rule
-- `statusIcon(status)` -- Map status to emoji
-- `link(text, url)` -- Markdown link
-- `list(items)` -- Bulleted list
-- `checklist(items)` -- Checkbox list
-- `bold(text)` -- Bold text
-- `code(text)` -- Inline code
-- `codeBlock(text, language)` -- Fenced code block
+- `table(headers, rows)`, `heading(text, level)`, `details(summary, content)`,
+  `rule()`, `statusIcon(status)`, `link(text, url)`, `list(items)`,
+  `checklist(items)`, `bold(text)`, `code(text)`, `codeBlock(text, language)`
 
 ### SemverResolver (Pure Effects)
 
-Wraps the `semver` npm package with Effect error handling.
+Wraps the `semver-effect` package with Effect error handling.
 
-- `compare(a, b)` -- Compare two semver versions. Returns `-1 | 0 | 1`
-- `satisfies(version, range)` -- Check if version satisfies a range
-- `latestInRange(versions, range)` -- Find highest version satisfying range
-- `increment(version, bump)` -- Increment by `"major" | "minor" | "patch" | "prerelease"`
-- `parse(version)` -- Parse into `{ major, minor, patch, prerelease?, build? }`
+- `compare(a, b)`, `satisfies(version, range)`, `latestInRange(versions, range)`,
+  `increment(version, bump)`, `parse(version)`
 
 **Error type:** `SemverResolverError`
 
@@ -717,20 +586,13 @@ Wraps the `semver` npm package with Effect error handling.
 
 PR auto-merge operations via GitHub GraphQL API. Depends on `GitHubGraphQL`.
 
-- `enable(prNodeId, mergeMethod?)` -- Enable auto-merge. Default method: `"SQUASH"`
-- `disable(prNodeId)` -- Disable auto-merge
-
-**Error type:** `GitHubGraphQLError` (from underlying service)
+- `enable(prNodeId, mergeMethod?)`, `disable(prNodeId)`
 
 ### ErrorAccumulator (Pure Effects)
 
-Process-all-collect-failures pattern. Error channel is `never` -- all errors
-captured in the failures array.
+Process-all-collect-failures pattern.
 
-- `forEachAccumulate(items, fn)` -- Process sequentially. Returns
-  `AccumulateResult<A, B, E>`
-- `forEachAccumulateConcurrent(items, fn, concurrency)` -- Process with
-  concurrency control
+- `forEachAccumulate(items, fn)`, `forEachAccumulateConcurrent(items, fn, concurrency)`
 
 **Types:** `AccumulateResult` -- `{ successes, failures }`
 
@@ -738,16 +600,10 @@ captured in the failures array.
 
 Composable markdown report builder with multiple output targets.
 
-- `ReportBuilder.create(title)` -- Create a new `Report` instance
-- `report.stat(label, value)` -- Add a key-value summary row
-- `report.section(title, content)` -- Add a titled section
-- `report.details(summary, content)` -- Add a collapsible block
-- `report.toMarkdown()` -- Render to markdown string
-- `report.toSummary()` -- Write to step summary via `ActionOutputs`
-- `report.toComment(prNumber, markerKey)` -- Upsert as PR comment
-- `report.toCheckRun(checkRunId)` -- Set as check run output
-
-**Types:** `Report` (interface)
+- `ReportBuilder.create(title)`, `report.stat(label, value)`,
+  `report.section(title, content)`, `report.details(summary, content)`,
+  `report.toMarkdown()`, `report.toSummary()`, `report.toComment(prNumber, markerKey)`,
+  `report.toCheckRun(checkRunId)`
 
 ---
 
@@ -768,44 +624,39 @@ Action.run(program, options: ActionRunOptions): Promise<void>
 ```typescript
 interface ActionRunOptions<R = never> {
   layer?: Layer.Layer<R, never, never>    // additional services to merge
-  platform?: Layer.Layer<ActionsCore, never, never>  // defaults to ActionsCoreLive
 }
 ```
 
-Pass `ActionsPlatformLive` as `platform` to provide all 6 wrapper services.
-
 **Behavior:**
 
-1. Resolves `ActionsCore` from the platform layer (defaults to
-   `ActionsCoreLive`). All `setFailed` calls and `debug` calls go through
-   this injected `core` reference — `Action.run()` does not import
-   `@actions/core` directly.
-2. Provides core Live layers (ActionInputsLive, ActionLoggerLive,
-   ActionOutputsLive, NodeContext.layer) plus ActionLoggerLayer (the
-   Effect Logger integration). All core layers depend on `ActionsCore` from
-   the platform layer. NodeContext.layer provides Node.js platform services
-   from `@effect/platform-node`.
-3. Catches all errors (via `Effect.catchAllCause`) and routes them to
-   `core.setFailed()` using `Action.formatCause` for structured
-   `[Tag] message` output, plus JS stack trace and Effect span trace via
-   `core.debug()`.
-4. Runs the program with `Effect.runPromise()`
-5. Merges any user-supplied `layer` with the core layers
-6. Last-resort catch on the promise sets `process.exitCode = 1` if even
-   `setFailed` fails
-
-**Note:** `ActionStateLive` is not included in the core layers because not
-all actions need multi-phase state; users who need it pass it as the `layer`
-option.
+1. Provides `ActionsRuntime.Default` which includes:
+   - `ActionsConfigProvider` -- reads `INPUT_*` env vars via Effect `Config` API
+   - `ActionsLogger` -- Effect Logger emitting workflow commands
+   - `ActionLoggerLive` -- group + withBuffer service
+   - `ActionOutputsLive` -- output setting via RuntimeFile + WorkflowCommand
+   - `ActionStateLive` -- state via RuntimeFile + `STATE_*` env vars
+   - `ActionEnvironmentLive` -- validated GitHub/runner context
+   - `NodeFileSystem.layer` -- Node.js filesystem from `@effect/platform-node`
+2. Wraps the program in `ActionLogger.withBuffer("action", program)` for
+   buffered output
+3. Catches all errors (via `Effect.catchAllCause`) and emits `::error::`
+   workflow commands using `WorkflowCommand.issue`, plus JS stack trace and
+   Effect span trace via `::debug::`
+4. Sets `process.exitCode = 1` on failure
+5. Runs the program with `Effect.runPromise()`
+6. Merges any user-supplied `layer` with the core layers
+7. Last-resort catch on the promise sets `process.exitCode = 1` if even
+   the error handler fails
 
 ---
 
 ## Current State
 
-All 35 service modules (29 domain + 6 platform wrapper) and 5 namespace/utility
-objects are fully defined with interfaces, error types, and live layer
-implementations. The 29 domain services also have test layer implementations.
-The service catalog is stable and actively used by downstream actions.
+All 29 service modules and 5 namespace/utility objects are fully defined with
+interfaces, error types, and live layer implementations. All services also have
+test layer implementations. The runtime layer (`src/runtime/`) provides native
+implementations of the GitHub Actions protocol, eliminating all `@actions/*`
+dependencies.
 
 ## Rationale
 

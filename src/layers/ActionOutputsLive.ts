@@ -1,46 +1,105 @@
+import { FileSystem } from "@effect/platform";
 import { Effect, Layer, Schema } from "effect";
 import { ActionOutputError } from "../errors/ActionOutputError.js";
+import type { RuntimeEnvironmentError } from "../errors/RuntimeEnvironmentError.js";
+import * as RuntimeFile from "../runtime/RuntimeFile.js";
+import * as WorkflowCommand from "../runtime/WorkflowCommand.js";
 import { ActionOutputs } from "../services/ActionOutputs.js";
-import { ActionsCore } from "../services/ActionsCore.js";
 
-export const ActionOutputsLive: Layer.Layer<ActionOutputs, never, ActionsCore> = Layer.effect(
+export const ActionOutputsLive: Layer.Layer<ActionOutputs, never, FileSystem.FileSystem> = Layer.effect(
 	ActionOutputs,
 	Effect.gen(function* () {
-		const core = yield* ActionsCore;
+		const fs = yield* FileSystem.FileSystem;
+		const fsLayer = Layer.succeed(FileSystem.FileSystem, fs);
+
+		const appendToFile = (envVar: string, name: string, value: string) =>
+			RuntimeFile.append(envVar, name, value).pipe(Effect.provide(fsLayer));
 
 		return {
-			set: (name, value) => Effect.sync(() => core.setOutput(name, value)),
+			set: (name, value) =>
+				appendToFile("GITHUB_OUTPUT", name, value).pipe(
+					Effect.mapError(
+						(error: RuntimeEnvironmentError) =>
+							new ActionOutputError({
+								outputName: name,
+								reason: error.message,
+							}),
+					),
+					Effect.catchTag("ActionOutputError", (e) => Effect.die(e)),
+				),
 
 			setJson: <A, I>(name: string, value: A, schema: Schema.Schema<A, I, never>) =>
 				Schema.encode(schema)(value).pipe(
-					Effect.tap((encoded) => Effect.sync(() => core.setOutput(name, JSON.stringify(encoded)))),
+					Effect.flatMap((encoded) => appendToFile("GITHUB_OUTPUT", name, JSON.stringify(encoded))),
 					Effect.asVoid,
 					Effect.mapError(
-						(parseError) =>
+						(error) =>
 							new ActionOutputError({
 								outputName: name,
-								reason: `Output "${name}" validation failed: ${parseError.message}`,
+								reason:
+									error._tag === "RuntimeEnvironmentError"
+										? error.message
+										: `Output "${name}" validation failed: ${error.message}`,
 							}),
 					),
 				),
 
-			summary: (content) =>
-				Effect.tryPromise({
-					try: () => core.summary.addRaw(content).write(),
-					catch: (error) =>
+			summary: (content) => {
+				const filePath = process.env.GITHUB_STEP_SUMMARY;
+				if (filePath === undefined) {
+					return Effect.fail(
 						new ActionOutputError({
 							outputName: "summary",
-							reason: `Failed to write step summary: ${error instanceof Error ? error.message : String(error)}`,
+							reason: "Environment variable GITHUB_STEP_SUMMARY is not set",
 						}),
-				}).pipe(Effect.asVoid),
+					);
+				}
+				return fs.writeFileString(filePath, content, { flag: "a" }).pipe(
+					Effect.asVoid,
+					Effect.mapError(
+						(error) =>
+							new ActionOutputError({
+								outputName: "summary",
+								reason: `Failed to write step summary: ${error.description ?? String(error)}`,
+							}),
+					),
+				);
+			},
 
-			exportVariable: (name, value) => Effect.sync(() => core.exportVariable(name, value)),
+			exportVariable: (name, value) =>
+				appendToFile("GITHUB_ENV", name, value).pipe(
+					Effect.tap(() => Effect.sync(() => (process.env[name] = value))),
+					Effect.orDie,
+				),
 
-			addPath: (path) => Effect.sync(() => core.addPath(path)),
+			addPath: (path) => {
+				const filePath = process.env.GITHUB_PATH;
+				if (filePath === undefined) {
+					return Effect.sync(() => {
+						process.env.PATH = `${path}:${process.env.PATH ?? ""}`;
+					});
+				}
+				return fs.writeFileString(filePath, `${path}\n`, { flag: "a" }).pipe(
+					Effect.tap(() =>
+						Effect.sync(() => {
+							process.env.PATH = `${path}:${process.env.PATH ?? ""}`;
+						}),
+					),
+					Effect.asVoid,
+					Effect.orDie,
+				);
+			},
 
-			setFailed: (message) => Effect.sync(() => core.setFailed(message)),
+			setFailed: (message) =>
+				Effect.sync(() => {
+					WorkflowCommand.issue("error", {}, message);
+					process.exitCode = 1;
+				}),
 
-			setSecret: (value) => Effect.sync(() => core.setSecret(value)),
+			setSecret: (value) =>
+				Effect.sync(() => {
+					WorkflowCommand.issue("add-mask", {}, value);
+				}),
 		};
 	}),
 );

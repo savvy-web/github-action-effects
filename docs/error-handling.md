@@ -10,20 +10,19 @@ All service errors use `Data.TaggedError` with a `_tag` field for pattern
 matching via `Effect.catchTag`:
 
 ```typescript
-import { Effect, Schema } from "effect";
-import { ActionInputs } from "@savvy-web/github-action-effects";
+import { Effect } from "effect"
 
 const program = Effect.gen(function* () {
-  const inputs = yield* ActionInputs;
-  const name = yield* inputs.get("package-name", Schema.String);
+  const outputs = yield* ActionOutputs
+  yield* outputs.set("status", "success")
 }).pipe(
-  Effect.catchTag("ActionInputError", (e) =>
-    Effect.logError(`Bad input "${e.inputName}": ${e.reason}`),
+  Effect.catchTag("ActionOutputError", (e) =>
+    Effect.logError(`Output error "${e.outputName}": ${e.reason}`),
   ),
-);
+)
 ```
 
-Each error type carries structured fields (e.g., `inputName`, `reason`,
+Each error type carries structured fields (e.g., `outputName`, `reason`,
 `operation`) that provide context about what went wrong. See
 [architecture.md](./architecture.md#error-types) for the full error catalog.
 
@@ -34,16 +33,16 @@ Each error type carries structured fields (e.g., `inputName`, `reason`,
 error handlers.
 
 ```typescript
-import { Effect, Cause } from "effect";
-import { Action } from "@savvy-web/github-action-effects";
+import { Effect, Cause } from "effect"
+import { Action } from "@savvy-web/github-action-effects"
 
 const program = myEffect.pipe(
   Effect.catchAllCause((cause) => {
-    const message = Action.formatCause(cause);
-    // => "[ActionInputError] Missing required input: token"
-    return Effect.logError(message);
+    const message = Action.formatCause(cause)
+    // => "[ActionOutputError] Failed to write summary"
+    return Effect.logError(message)
   }),
-);
+)
 ```
 
 ### Fallback Chain
@@ -74,7 +73,7 @@ The output format `[Tag] message` is designed for consistent parseability:
 Examples:
 
 ```text
-[ActionInputError] Missing required input: token
+[ActionOutputError] Failed to write step summary
 [GitHubClientError] 404 Not Found
 [CommandRunnerError] Process exited with code 1
 [Error] ENOENT: no such file or directory
@@ -87,9 +86,14 @@ Examples:
 no error goes unhandled:
 
 1. **`catchAllCause`** catches all failures, defects, and interrupts.
-2. The cause is formatted via `Cause.pretty` and passed to `core.setFailed()`.
-3. A last-resort `.catch()` on the promise sets `process.exitCode = 1` if
-   even `setFailed` fails.
+2. The cause is formatted via `Action.formatCause` and emitted as an
+   `::error::` workflow command.
+3. A JS stack trace is included if available.
+4. The Effect span trace is emitted via `::debug::` (visible with
+   `RUNNER_DEBUG=1`).
+5. `process.exitCode` is set to `1`.
+6. A last-resort `.catch()` on the promise sets `process.exitCode = 1` if
+   even the error handler fails.
 
 This means action authors do not need to handle errors at the top level --
 `Action.run` ensures the action always exits cleanly with a failure message
@@ -99,29 +103,29 @@ For custom error handling, use `Effect.catchTag` or `Effect.catchAllCause`
 within your program before `Action.run` catches it:
 
 ```typescript
-import { Effect, Layer } from "effect";
+import { Effect, Layer } from "effect"
 import {
   Action,
   ActionOutputs,
   GithubMarkdown,
-} from "@savvy-web/github-action-effects";
+} from "@savvy-web/github-action-effects"
 
 const program = Effect.gen(function* () {
   // ... your logic
 }).pipe(
   Effect.catchAllCause((cause) =>
     Effect.gen(function* () {
-      const outputs = yield* ActionOutputs;
-      const message = Action.formatCause(cause);
+      const outputs = yield* ActionOutputs
+      const message = Action.formatCause(cause)
       yield* outputs.summary(
         GithubMarkdown.codeBlock(message, "text"),
-      );
-      yield* Effect.fail(cause);
+      )
+      yield* Effect.fail(cause)
     }),
   ),
-);
+)
 
-Action.run(program);
+Action.run(program)
 ```
 
 ## Using formatCause in Custom Error Handlers
@@ -130,27 +134,27 @@ Action.run(program);
 catches an Effect `Cause` can use it:
 
 ```typescript
-import { Effect } from "effect";
-import { Action, CheckRun } from "@savvy-web/github-action-effects";
+import { Effect } from "effect"
+import { Action, CheckRun } from "@savvy-web/github-action-effects"
 
 const program = Effect.gen(function* () {
-  const checkRun = yield* CheckRun;
+  const checkRun = yield* CheckRun
 
   yield* checkRun.withCheckRun("my-check", headSha, (id) =>
     myAnalysis.pipe(
       Effect.catchAllCause((cause) =>
         Effect.gen(function* () {
-          const message = Action.formatCause(cause);
+          const message = Action.formatCause(cause)
           yield* checkRun.complete(id, "failure", {
             title: "Analysis Failed",
             summary: message,
-          });
-          yield* Effect.failCause(cause);
+          })
+          yield* Effect.failCause(cause)
         }),
       ),
     ),
-  );
-});
+  )
+})
 ```
 
 ## Error Accumulation
