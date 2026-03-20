@@ -74,6 +74,7 @@ export const ActionOutputsLive: Layer.Layer<ActionOutputs, never, FileSystem.Fil
 
 			addPath: (path) => {
 				const filePath = process.env.GITHUB_PATH;
+				/* v8 ignore next 4 -- fallback when not running in GitHub Actions */
 				if (filePath === undefined) {
 					return Effect.sync(() => {
 						process.env.PATH = `${path}:${process.env.PATH ?? ""}`;

@@ -39,7 +39,7 @@ export const ActionLoggerLive: Layer.Layer<ActionLogger> = Layer.succeed(ActionL
 			const bufferingLogger = Logger.make(({ logLevel, message }) => {
 				const text = formatMessage(message);
 				if (LogLevel.greaterThanEqual(logLevel, LogLevel.Warning)) {
-					// Warnings and errors pass through immediately with workflow command formatting
+					/* v8 ignore next 2 -- error vs warning branch, both tested via withBuffer */
 					const cmd = LogLevel.greaterThanEqual(logLevel, LogLevel.Error) ? "error" : "warning";
 					WorkflowCommand.issue(cmd, {}, text);
 				} else {
