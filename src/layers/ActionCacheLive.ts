@@ -1,47 +1,70 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, createWriteStream, statSync, unlinkSync } from "node:fs";
+import { statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import { Effect, Layer, Option } from "effect";
+import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
+import { Effect, Layer, Option, Schedule } from "effect";
 import { ActionCacheError } from "../errors/ActionCacheError.js";
 import { ActionCache } from "../services/ActionCache.js";
 
-/** Maximum chunk size for upload (32 MB). */
-const MAX_CHUNK_SIZE = 32 * 1024 * 1024;
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-/** Common headers for cache API requests. */
-const apiHeaders = (token: string) => ({
-	Authorization: `Bearer ${token}`,
-	Accept: "application/json;api-version=6.0-preview.1",
-});
+const TWIRP_PREFIX = "twirp/github.actions.results.api.v1.CacheService";
+const COMPRESSION_METHOD = "gzip";
+const VERSION_SALT = "1.0";
+
+// Azure upload config (matches actions/cache)
+const UPLOAD_CHUNK_SIZE = 64 * 1024 * 1024; // 64 MiB
+const UPLOAD_CONCURRENCY = 8;
+const UPLOAD_MAX_SINGLE_SHOT = 128 * 1024 * 1024; // 128 MiB
+
+// Retry config for Twirp RPC
+const RETRY_SCHEDULE = Schedule.intersect(Schedule.exponential("3 seconds", 1.5), Schedule.recurs(4)).pipe(
+	Schedule.whileInput((error: ActionCacheError) => {
+		const reason = error.reason;
+		return (
+			reason.includes("HTTP 500") ||
+			reason.includes("HTTP 502") ||
+			reason.includes("HTTP 503") ||
+			reason.includes("HTTP 504") ||
+			reason.includes("ECONNRESET") ||
+			reason.includes("ECONNREFUSED") ||
+			reason.includes("ETIMEDOUT")
+		);
+	}),
+);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 /**
- * Compute the version hash for a set of paths.
- * SHA256 of paths sorted and joined with `|`.
+ * Compute the cache version hash to match the actions/cache format.
+ * Hash of: paths joined with "|", then "|gzip|1.0"
+ * Does NOT sort paths (matches upstream behavior).
  */
 const computeVersion = (paths: ReadonlyArray<string>): string => {
-	const sorted = [...paths].sort();
-	return createHash("sha256").update(sorted.join("|")).digest("hex");
+	const components = [...paths, COMPRESSION_METHOD, VERSION_SALT];
+	return createHash("sha256").update(components.join("|")).digest("hex");
 };
 
 /**
- * Read cache protocol env vars, failing with ActionCacheError if missing.
+ * Read cache protocol env vars. Uses ACTIONS_RESULTS_URL for V2.
  */
 const getCacheEnv = (operation: "save" | "restore", key: string) =>
 	Effect.try({
 		try: () => {
-			const cacheUrl = process.env.ACTIONS_CACHE_URL;
+			const resultsUrl = process.env.ACTIONS_RESULTS_URL;
 			const token = process.env.ACTIONS_RUNTIME_TOKEN;
-			if (!cacheUrl || !token) {
+			if (!resultsUrl || !token) {
 				throw new Error(
-					`Missing required env vars: ${[!cacheUrl && "ACTIONS_CACHE_URL", !token && "ACTIONS_RUNTIME_TOKEN"].filter(Boolean).join(", ")}`,
+					`Missing required env vars: ${[!resultsUrl && "ACTIONS_RESULTS_URL", !token && "ACTIONS_RUNTIME_TOKEN"].filter(Boolean).join(", ")}`,
 				);
 			}
-			// Ensure trailing slash
-			const baseUrl = cacheUrl.endsWith("/") ? cacheUrl : `${cacheUrl}/`;
+			const baseUrl = resultsUrl.endsWith("/") ? resultsUrl : `${resultsUrl}/`;
 			return { baseUrl, token };
 		},
 		catch: (error) =>
@@ -53,8 +76,42 @@ const getCacheEnv = (operation: "save" | "restore", key: string) =>
 	});
 
 /**
+ * Make a Twirp RPC call (POST with JSON body/response).
+ */
+const twirpCall = <T>(
+	baseUrl: string,
+	token: string,
+	method: string,
+	body: Record<string, unknown>,
+	operation: "save" | "restore",
+	key: string,
+): Effect.Effect<T, ActionCacheError> =>
+	Effect.tryPromise({
+		try: async () => {
+			const url = `${baseUrl}${TWIRP_PREFIX}/${method}`;
+			const response = await fetch(url, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${token}`,
+				},
+				body: JSON.stringify(body),
+			});
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status} from ${method}`);
+			}
+			return (await response.json()) as T;
+		},
+		catch: (error) =>
+			new ActionCacheError({
+				key,
+				operation,
+				reason: `${method} failed: ${error instanceof Error ? error.message : String(error)}`,
+			}),
+	});
+
+/**
  * Create a tar.gz archive of the given paths.
- * Returns the path to the temporary archive file.
  */
 const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 	Effect.try({
@@ -99,169 +156,102 @@ const cleanupFile = (filePath: string) =>
 		}
 	});
 
-/**
- * Read a chunk from a file using a stream, avoiding loading the entire
- * file into memory. Returns a Buffer of the requested range.
- */
-const readChunk = (filePath: string, start: number, length: number): Promise<Buffer> =>
-	new Promise((resolve, reject) => {
-		const chunks: Buffer[] = [];
-		const stream = createReadStream(filePath, { start, end: start + length - 1 });
-		stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-		stream.on("end", () => resolve(Buffer.concat(chunks)));
-		stream.on("error", reject);
-	});
+// ---------------------------------------------------------------------------
+// Twirp response types
+// ---------------------------------------------------------------------------
+
+interface GetCacheEntryResponse {
+	readonly ok: boolean;
+	readonly signedDownloadUrl?: string;
+	readonly matchedKey?: string;
+}
+
+interface CreateCacheEntryResponse {
+	readonly ok: boolean;
+	readonly signedUploadUrl?: string;
+}
+
+interface FinalizeCacheEntryResponse {
+	readonly ok: boolean;
+	readonly entryId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Live layer
+// ---------------------------------------------------------------------------
 
 /**
- * Upload the archive in chunks, streaming each chunk from disk.
+ * Live implementation of ActionCache using the V2 Twirp cache protocol
+ * and Azure Blob Storage for uploads/downloads.
+ *
+ * @public
  */
-const uploadChunks = (
-	baseUrl: string,
-	token: string,
-	cacheId: number,
-	archivePath: string,
-	archiveSize: number,
-	key: string,
-): Effect.Effect<void, ActionCacheError> =>
-	Effect.gen(function* () {
-		let offset = 0;
-
-		while (offset < archiveSize) {
-			const chunkEnd = Math.min(offset + MAX_CHUNK_SIZE, archiveSize);
-			const chunkLength = chunkEnd - offset;
-
-			const chunk = yield* Effect.tryPromise({
-				try: () => readChunk(archivePath, offset, chunkLength),
-				catch: (error) =>
-					new ActionCacheError({
-						key,
-						operation: "save",
-						reason: `Failed to read archive chunk: ${error instanceof Error ? error.message : String(error)}`,
-					}),
-			});
-
-			const uploadResponse = yield* Effect.tryPromise({
-				try: () =>
-					fetch(`${baseUrl}_apis/artifactcache/caches/${cacheId}`, {
-						method: "PATCH",
-						headers: {
-							...apiHeaders(token),
-							"Content-Type": "application/octet-stream",
-							"Content-Range": `bytes ${offset}-${chunkEnd - 1}/*`,
-						},
-						body: chunk,
-					}),
-				catch: (error) =>
-					new ActionCacheError({
-						key,
-						operation: "save",
-						reason: `Chunk upload failed: ${error instanceof Error ? error.message : String(error)}`,
-					}),
-			});
-
-			if (!uploadResponse.ok) {
-				return yield* Effect.fail(
-					new ActionCacheError({
-						key,
-						operation: "save",
-						reason: `Chunk upload failed with status ${uploadResponse.status}`,
-					}),
-				);
-			}
-
-			offset = chunkEnd;
-		}
-	});
-
 export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCache, {
 	save: (paths, key) =>
 		Effect.gen(function* () {
 			const { baseUrl, token } = yield* getCacheEnv("save", key);
 			const version = computeVersion(paths);
 
-			// acquireUseRelease guarantees cleanup even on fiber interruption
 			yield* Effect.acquireUseRelease(
 				createArchive(paths, key),
 				(archivePath) =>
 					Effect.gen(function* () {
 						const archiveSize = statSync(archivePath).size;
 
-						// Step 1: Reserve cache
-						const reserveResponse = yield* Effect.tryPromise({
-							try: () =>
-								fetch(`${baseUrl}_apis/artifactcache/caches`, {
-									method: "POST",
-									headers: {
-										...apiHeaders(token),
-										"Content-Type": "application/json",
-									},
-									body: JSON.stringify({ key, version, cacheSize: archiveSize }),
-								}),
-							catch: (error) =>
-								new ActionCacheError({
-									key,
-									operation: "save",
-									reason: `Cache reserve request failed: ${error instanceof Error ? error.message : String(error)}`,
-								}),
-						});
+						// Step 1: Create cache entry
+						const createResponse = yield* twirpCall<CreateCacheEntryResponse>(
+							baseUrl,
+							token,
+							"CreateCacheEntry",
+							{ key, version },
+							"save",
+							key,
+						).pipe(Effect.retry(RETRY_SCHEDULE));
 
-						if (!reserveResponse.ok) {
-							const body = yield* Effect.tryPromise({
-								try: () => reserveResponse.text(),
-								catch: () =>
-									new ActionCacheError({
-										key,
-										operation: "save",
-										reason: `Cache reserve failed with status ${reserveResponse.status}`,
-									}),
-							});
+						if (!createResponse.ok || !createResponse.signedUploadUrl) {
 							return yield* Effect.fail(
 								new ActionCacheError({
 									key,
 									operation: "save",
-									reason: `Cache reserve failed (${reserveResponse.status}): ${body}`,
+									reason: "CreateCacheEntry did not return a signed upload URL",
 								}),
 							);
 						}
 
-						const reserveData = (yield* Effect.tryPromise({
-							try: () => reserveResponse.json() as Promise<{ cacheId: number }>,
+						// Step 2: Upload archive to signed URL via Azure SDK
+						yield* Effect.tryPromise({
+							try: async () => {
+								const client = new BlockBlobClient(createResponse.signedUploadUrl as string);
+								await client.uploadFile(archivePath, {
+									blockSize: UPLOAD_CHUNK_SIZE,
+									concurrency: UPLOAD_CONCURRENCY,
+									maxSingleShotSize: UPLOAD_MAX_SINGLE_SHOT,
+								});
+							},
 							catch: (error) =>
 								new ActionCacheError({
 									key,
 									operation: "save",
-									reason: `Failed to parse reserve response: ${error instanceof Error ? error.message : String(error)}`,
-								}),
-						})) as { cacheId: number };
-
-						// Step 2: Upload chunks (streamed from disk)
-						yield* uploadChunks(baseUrl, token, reserveData.cacheId, archivePath, archiveSize, key);
-
-						// Step 3: Commit cache
-						const commitResponse = yield* Effect.tryPromise({
-							try: () =>
-								fetch(`${baseUrl}_apis/artifactcache/caches/${reserveData.cacheId}`, {
-									method: "POST",
-									headers: {
-										...apiHeaders(token),
-										"Content-Type": "application/json",
-									},
-									body: JSON.stringify({ size: archiveSize }),
-								}),
-							catch: (error) =>
-								new ActionCacheError({
-									key,
-									operation: "save",
-									reason: `Cache commit failed: ${error instanceof Error ? error.message : String(error)}`,
+									reason: `Archive upload failed: ${error instanceof Error ? error.message : String(error)}`,
 								}),
 						});
 
-						if (!commitResponse.ok) {
+						// Step 3: Finalize cache entry
+						const finalizeResponse = yield* twirpCall<FinalizeCacheEntryResponse>(
+							baseUrl,
+							token,
+							"FinalizeCacheEntryUpload",
+							{ key, version, sizeBytes: String(archiveSize) },
+							"save",
+							key,
+						).pipe(Effect.retry(RETRY_SCHEDULE));
+
+						if (!finalizeResponse.ok) {
 							return yield* Effect.fail(
 								new ActionCacheError({
 									key,
 									operation: "save",
-									reason: `Cache commit failed with status ${commitResponse.status}`,
+									reason: "FinalizeCacheEntryUpload did not confirm success",
 								}),
 							);
 						}
@@ -274,66 +264,29 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 		Effect.gen(function* () {
 			const { baseUrl, token } = yield* getCacheEnv("restore", primaryKey);
 			const version = computeVersion(paths);
-			const keys = [primaryKey, ...restoreKeys].join(",");
 
-			const response = yield* Effect.tryPromise({
-				try: () =>
-					fetch(
-						`${baseUrl}_apis/artifactcache/cache?keys=${encodeURIComponent(keys)}&version=${encodeURIComponent(version)}`,
-						{
-							method: "GET",
-							headers: apiHeaders(token),
-						},
-					),
-				catch: (error) =>
-					new ActionCacheError({
-						key: primaryKey,
-						operation: "restore",
-						reason: `Cache lookup request failed: ${error instanceof Error ? error.message : String(error)}`,
-					}),
-			});
+			// Step 1: Look up cache entry
+			const lookupResponse = yield* twirpCall<GetCacheEntryResponse>(
+				baseUrl,
+				token,
+				"GetCacheEntryDownloadURL",
+				{ key: primaryKey, restoreKeys: [...restoreKeys], version },
+				"restore",
+				primaryKey,
+			).pipe(Effect.retry(RETRY_SCHEDULE));
 
-			// 204 or non-200 → cache miss
-			if (response.status === 204) {
+			if (!lookupResponse.ok || !lookupResponse.signedDownloadUrl) {
 				return Option.none<string>();
 			}
 
-			if (!response.ok) {
-				return yield* Effect.fail(
-					new ActionCacheError({
-						key: primaryKey,
-						operation: "restore",
-						reason: `Cache lookup failed with status ${response.status}`,
-					}),
-				);
-			}
-
-			const data = (yield* Effect.tryPromise({
-				try: () => response.json() as Promise<{ archiveLocation?: string; cacheKey?: string }>,
-				catch: (error) =>
-					new ActionCacheError({
-						key: primaryKey,
-						operation: "restore",
-						reason: `Failed to parse cache response: ${error instanceof Error ? error.message : String(error)}`,
-					}),
-			})) as { archiveLocation?: string; cacheKey?: string };
-
-			if (!data.archiveLocation) {
-				return Option.none<string>();
-			}
-
-			// Download archive to temp file, extract, clean up
+			// Step 2: Download archive from signed URL via Azure SDK
 			const archivePath = join(tmpdir(), `cache-restore-${randomUUID()}.tar.gz`);
 
 			yield* Effect.acquireUseRelease(
 				Effect.tryPromise({
 					try: async () => {
-						const downloadResponse = await fetch(data.archiveLocation as string);
-						if (!downloadResponse.ok || !downloadResponse.body) {
-							throw new Error(`Archive download failed with status ${downloadResponse.status}`);
-						}
-						const writer = createWriteStream(archivePath);
-						await pipeline(Readable.fromWeb(downloadResponse.body as import("node:stream/web").ReadableStream), writer);
+						const client = new BlobClient(lookupResponse.signedDownloadUrl as string);
+						await client.downloadToFile(archivePath);
 						return archivePath;
 					},
 					catch: (error) =>
@@ -347,6 +300,6 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 				(downloadedPath) => cleanupFile(downloadedPath),
 			);
 
-			return Option.some(data.cacheKey ?? primaryKey);
+			return Option.some(lookupResponse.matchedKey ?? primaryKey);
 		}),
 });
