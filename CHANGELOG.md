@@ -1,5 +1,19 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.1
+
+### Bug Fixes
+
+* [`7105768`](https://github.com/savvy-web/github-action-effects/commit/7105768c494c16e0aba7c9ea463a0b671e7ec85a) Fix ToolInstaller.download() hanging on Windows GitHub Actions runners by replacing fetch/undici with node:https direct streaming. Add Windows PowerShell zip extraction support for extractZip().
+
+- Replace `globalThis.fetch` + `Readable.fromWeb()` with `node:https`/`node:http` and `stream.pipeline()` for reliable cross-platform binary downloads
+- Add 3-minute socket timeout matching `@actions/tool-cache` behavior
+- Add manual HTTP redirect following (up to 10 hops)
+- Add retry with exponential backoff for transient errors (5xx, 408, 429, socket timeout, network errors)
+- Add `User-Agent: github-action-effects` header
+- Add Windows zip extraction via PowerShell `System.IO.Compression.ZipFile` (pwsh → powershell fallback)
+- Add `-oq` flags to `unzip` on non-Windows for quiet overwrite behavior
+
 ## 0.11.0
 
 ### Features
