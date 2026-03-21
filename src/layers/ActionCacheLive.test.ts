@@ -488,7 +488,12 @@ describe("ActionCacheLive", () => {
 				expect(mockDownloadToFile).toHaveBeenCalled();
 
 				// tar extraction should have been invoked
-				expect(mockedExecFileSync).toHaveBeenCalledWith("tar", expect.arrayContaining(["xzkf"]), expect.any(Object));
+				const expectedFlags = process.platform === "win32" ? "xzkf" : "xzf";
+				expect(mockedExecFileSync).toHaveBeenCalledWith(
+					"tar",
+					expect.arrayContaining([expectedFlags]),
+					expect.any(Object),
+				);
 
 				fetchSpy.mockRestore();
 			});

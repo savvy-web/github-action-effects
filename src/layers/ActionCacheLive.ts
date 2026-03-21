@@ -201,7 +201,10 @@ const extractArchive = (archivePath: string, key: string) =>
 	Effect.try({
 		try: () => {
 			try {
-				execFileSync("tar", ["xzkf", archivePath], { stdio: "pipe" });
+				// Windows: use -k to skip locked files instead of failing with "Permission denied"
+				// Linux/macOS: no -k, overwrite existing files (default behavior)
+				const flags = process.platform === "win32" ? "xzkf" : "xzf";
+				execFileSync("tar", [flags, archivePath], { stdio: "pipe" });
 			} catch (err: unknown) {
 				const code = (err as { status?: number }).status;
 				// Exit code 1 = non-fatal (e.g. "file exists, not overwritten")
