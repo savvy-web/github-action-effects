@@ -316,10 +316,24 @@ describe("ActionCacheLive", () => {
 				expect(error?.reason).toContain("tar not found");
 			});
 
+			it("treats HTTP 409 on CreateCacheEntry as silent success (cache already exists)", async () => {
+				const fetchSpy = vi.spyOn(globalThis, "fetch");
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(409));
+
+				const exit = await runLiveExit(Effect.flatMap(ActionCache, (svc) => svc.save(["node_modules"], "test-key")));
+
+				expect(Exit.isSuccess(exit)).toBe(true);
+				// Should not attempt upload or finalize
+				expect(mockUploadFile).not.toHaveBeenCalled();
+				expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+				fetchSpy.mockRestore();
+			});
+
 			it("fails when CreateCacheEntry returns non-ok HTTP status", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
-				// Use 409 (non-retryable) to avoid 3s+ retry delays
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(409));
+				// Use 400 (non-retryable) to avoid 3s+ retry delays
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(400));
 
 				const exit = await runLiveExit(Effect.flatMap(ActionCache, (svc) => svc.save(["node_modules"], "test-key")));
 
@@ -328,7 +342,7 @@ describe("ActionCacheLive", () => {
 				expect(error?._tag).toBe("ActionCacheError");
 				expect(error?.operation).toBe("save");
 				expect(error?.reason).toContain("CreateCacheEntry failed");
-				expect(error?.reason).toContain("HTTP 409");
+				expect(error?.reason).toContain("HTTP 400");
 
 				fetchSpy.mockRestore();
 			});
@@ -373,8 +387,8 @@ describe("ActionCacheLive", () => {
 				fetchSpy.mockResolvedValueOnce(
 					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
-				// Use 409 (non-retryable) to avoid retry delays
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(409));
+				// Use 400 (non-retryable) to avoid retry delays
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(400));
 
 				const exit = await runLiveExit(Effect.flatMap(ActionCache, (svc) => svc.save(["node_modules"], "test-key")));
 
@@ -383,7 +397,7 @@ describe("ActionCacheLive", () => {
 				expect(error?._tag).toBe("ActionCacheError");
 				expect(error?.operation).toBe("save");
 				expect(error?.reason).toContain("FinalizeCacheEntryUpload failed");
-				expect(error?.reason).toContain("HTTP 409");
+				expect(error?.reason).toContain("HTTP 400");
 
 				fetchSpy.mockRestore();
 			});
@@ -473,8 +487,12 @@ describe("ActionCacheLive", () => {
 				// Verify Azure BlobClient was used for download
 				expect(mockDownloadToFile).toHaveBeenCalled();
 
-				// tar extraction should have been invoked
-				expect(mockedExecFileSync).toHaveBeenCalledWith("tar", expect.arrayContaining(["xzf"]), expect.any(Object));
+				// tar extraction should have been invoked with --overwrite
+				expect(mockedExecFileSync).toHaveBeenCalledWith(
+					"tar",
+					expect.arrayContaining(["xzf", "--overwrite"]),
+					expect.any(Object),
+				);
 
 				fetchSpy.mockRestore();
 			});
@@ -507,8 +525,8 @@ describe("ActionCacheLive", () => {
 
 			it("fails when GetCacheEntryDownloadURL returns non-ok HTTP status", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
-				// Use 409 (non-retryable) to avoid retry delays
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(409));
+				// Use 400 (non-retryable) to avoid retry delays
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(400));
 
 				const exit = await runLiveExit(Effect.flatMap(ActionCache, (svc) => svc.restore(["node_modules"], "my-key")));
 
@@ -517,7 +535,7 @@ describe("ActionCacheLive", () => {
 				expect(error?._tag).toBe("ActionCacheError");
 				expect(error?.operation).toBe("restore");
 				expect(error?.reason).toContain("GetCacheEntryDownloadURL failed");
-				expect(error?.reason).toContain("HTTP 409");
+				expect(error?.reason).toContain("HTTP 400");
 
 				fetchSpy.mockRestore();
 			});

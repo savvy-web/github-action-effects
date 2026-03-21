@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, globSync, statSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { platform } from "node:process";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import { Effect, Layer, Option, Schedule } from "effect";
 import { ActionCacheError } from "../errors/ActionCacheError.js";
@@ -76,7 +77,16 @@ const getCacheEnv = (operation: "save" | "restore", key: string) =>
 	});
 
 /**
+ * Sentinel value returned by twirpCall when the server responds with
+ * HTTP 409 (Conflict), indicating the resource already exists.
+ */
+const CONFLICT = Symbol.for("twirp/conflict");
+type TwirpResult<T> = T | typeof CONFLICT;
+
+/**
  * Make a Twirp RPC call (POST with JSON body/response).
+ * Returns the CONFLICT sentinel on HTTP 409 instead of failing,
+ * allowing callers to treat "already exists" as a success.
  */
 const twirpCall = <T>(
 	baseUrl: string,
@@ -85,7 +95,7 @@ const twirpCall = <T>(
 	body: Record<string, unknown>,
 	operation: "save" | "restore",
 	key: string,
-): Effect.Effect<T, ActionCacheError> =>
+): Effect.Effect<TwirpResult<T>, ActionCacheError> =>
 	Effect.tryPromise({
 		try: async () => {
 			const url = `${baseUrl}${TWIRP_PREFIX}/${method}`;
@@ -97,6 +107,9 @@ const twirpCall = <T>(
 				},
 				body: JSON.stringify(body),
 			});
+			if (response.status === 409) {
+				return CONFLICT;
+			}
 			if (!response.ok) {
 				throw new Error(`HTTP ${response.status} from ${method}`);
 			}
@@ -156,6 +169,13 @@ const resolvePaths = (paths: ReadonlyArray<string>): ReadonlyArray<string> => {
 };
 
 /**
+ * Extra tar flags needed on Windows:
+ * - `--force-local` prevents colons in paths (e.g. `C:\...`) from being
+ *    interpreted as remote host indicators.
+ */
+const windowsTarFlags = (): string[] => (platform === "win32" ? ["--force-local"] : []);
+
+/**
  * Create a tar.gz archive of the given paths.
  * Glob patterns are expanded to real paths before invoking tar.
  */
@@ -167,7 +187,7 @@ const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 				throw new Error("No files matched the provided cache paths");
 			}
 			const archivePath = join(tmpdir(), `cache-${randomUUID()}.tar.gz`);
-			execFileSync("tar", ["czf", archivePath, ...resolved], { stdio: "pipe" });
+			execFileSync("tar", ["czf", archivePath, ...windowsTarFlags(), ...resolved], { stdio: "pipe" });
 			return archivePath;
 		},
 		catch: (error) =>
@@ -180,11 +200,12 @@ const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 
 /**
  * Extract a tar.gz archive.
+ * Uses `--overwrite` to handle extracting over existing files (e.g. node_modules).
  */
 const extractArchive = (archivePath: string, key: string) =>
 	Effect.try({
 		try: () => {
-			execFileSync("tar", ["xzf", archivePath], { stdio: "pipe" });
+			execFileSync("tar", ["xzf", archivePath, "--overwrite", ...windowsTarFlags()], { stdio: "pipe" });
 		},
 		catch: (error) =>
 			new ActionCacheError({
@@ -257,7 +278,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 						});
 
 						// Step 1: Create cache entry
-						const createResponse = yield* twirpCall<CreateCacheEntryResponse>(
+						const createResult = yield* twirpCall<CreateCacheEntryResponse>(
 							baseUrl,
 							token,
 							"CreateCacheEntry",
@@ -266,7 +287,12 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 							key,
 						).pipe(Effect.retry(RETRY_SCHEDULE));
 
-						if (!createResponse.ok || !createResponse.signed_upload_url) {
+						// HTTP 409 = cache already exists for this key — treat as success
+						if (createResult === CONFLICT) {
+							return;
+						}
+
+						if (!createResult.ok || !createResult.signed_upload_url) {
 							return yield* Effect.fail(
 								new ActionCacheError({
 									key,
@@ -279,7 +305,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 						// Step 2: Upload archive to signed URL via Azure SDK
 						yield* Effect.tryPromise({
 							try: async () => {
-								const client = new BlockBlobClient(createResponse.signed_upload_url as string);
+								const client = new BlockBlobClient(createResult.signed_upload_url as string);
 								await client.uploadFile(archivePath, {
 									blockSize: UPLOAD_CHUNK_SIZE,
 									concurrency: UPLOAD_CONCURRENCY,
@@ -295,7 +321,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 						});
 
 						// Step 3: Finalize cache entry
-						const finalizeResponse = yield* twirpCall<FinalizeCacheEntryResponse>(
+						const finalizeResult = yield* twirpCall<FinalizeCacheEntryResponse>(
 							baseUrl,
 							token,
 							"FinalizeCacheEntryUpload",
@@ -304,7 +330,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 							key,
 						).pipe(Effect.retry(RETRY_SCHEDULE));
 
-						if (!finalizeResponse.ok) {
+						if (finalizeResult === CONFLICT || !finalizeResult.ok) {
 							return yield* Effect.fail(
 								new ActionCacheError({
 									key,
@@ -324,7 +350,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 			const version = computeVersion(paths);
 
 			// Step 1: Look up cache entry
-			const lookupResponse = yield* twirpCall<GetCacheEntryResponse>(
+			const lookupResult = yield* twirpCall<GetCacheEntryResponse>(
 				baseUrl,
 				token,
 				"GetCacheEntryDownloadURL",
@@ -333,7 +359,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 				primaryKey,
 			).pipe(Effect.retry(RETRY_SCHEDULE));
 
-			if (!lookupResponse.ok || !lookupResponse.signed_download_url) {
+			if (lookupResult === CONFLICT || !lookupResult.ok || !lookupResult.signed_download_url) {
 				return Option.none<string>();
 			}
 
@@ -343,7 +369,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 			yield* Effect.acquireUseRelease(
 				Effect.tryPromise({
 					try: async () => {
-						const client = new BlobClient(lookupResponse.signed_download_url as string);
+						const client = new BlobClient(lookupResult.signed_download_url as string);
 						await client.downloadToFile(archivePath);
 						return archivePath;
 					},
@@ -358,6 +384,6 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 				(downloadedPath) => cleanupFile(downloadedPath),
 			);
 
-			return Option.some(lookupResponse.matched_key ?? primaryKey);
+			return Option.some(lookupResult.matched_key ?? primaryKey);
 		}),
 });
