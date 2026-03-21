@@ -487,12 +487,8 @@ describe("ActionCacheLive", () => {
 				// Verify Azure BlobClient was used for download
 				expect(mockDownloadToFile).toHaveBeenCalled();
 
-				// tar extraction should have been invoked with --overwrite
-				expect(mockedExecFileSync).toHaveBeenCalledWith(
-					"tar",
-					expect.arrayContaining(["xzf", "--overwrite"]),
-					expect.any(Object),
-				);
+				// tar extraction should have been invoked
+				expect(mockedExecFileSync).toHaveBeenCalledWith("tar", expect.arrayContaining(["xzf"]), expect.any(Object));
 
 				fetchSpy.mockRestore();
 			});

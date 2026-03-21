@@ -200,12 +200,12 @@ const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 
 /**
  * Extract a tar.gz archive.
- * Uses `--overwrite` to handle extracting over existing files (e.g. node_modules).
+ * Both GNU tar and bsdtar overwrite existing files by default.
  */
 const extractArchive = (archivePath: string, key: string) =>
 	Effect.try({
 		try: () => {
-			execFileSync("tar", ["xzf", archivePath, "--overwrite", ...windowsTarFlags()], { stdio: "pipe" });
+			execFileSync("tar", ["xzf", archivePath, ...windowsTarFlags()], { stdio: "pipe" });
 		},
 		catch: (error) =>
 			new ActionCacheError({
