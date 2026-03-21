@@ -294,7 +294,7 @@ See [services.md](./services.md) for usage examples of each service.
 | Service | Live Layer | Description |
 | --- | --- | --- |
 | ActionEnvironment | ActionEnvironmentLive | Typed env var access |
-| ActionCache | ActionCacheLive | GitHub Actions cache (native fetch + cache protocol) |
+| ActionCache | ActionCacheLive | GitHub Actions cache (V2 Twirp + @azure/storage-blob) |
 | CommandRunner | CommandRunnerLive | Shell execution with capture (node:child_process) |
 | ConfigLoader | ConfigLoaderLive | JSON/JSONC/YAML config loading |
 | DryRun | DryRunLive | Mutation interception |

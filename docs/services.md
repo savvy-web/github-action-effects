@@ -572,7 +572,8 @@ const program = Effect.gen(function* () {
 
 ### ActionCache
 
-GitHub Actions cache using native fetch and the cache protocol.
+GitHub Actions cache using V2 Twirp RPC protocol at ACTIONS_RESULTS_URL
+with Azure Blob Storage (`@azure/storage-blob`) for uploads/downloads.
 
 ```typescript
 import { Effect } from "effect"
