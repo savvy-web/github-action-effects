@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-20
-last-synced: 2026-03-20
+updated: 2026-03-21
+last-synced: 2026-03-21
 completeness: 95
 related:
   - ./services.md
@@ -85,7 +85,7 @@ GitHub Actions development suffers from four recurring pain points:
   `RuntimeFile` for environment file appending, `ActionsConfigProvider` for
   reading `INPUT_*` env vars, and `ActionsLogger` for the Effect Logger.
   Direct dependencies on `@octokit/rest` and `@octokit/auth-app` replace
-  `@actions/github`.
+  `@actions/github`. `@azure/storage-blob` is used for cache transfers.
 - **Peer dependencies** -- `effect`, `@effect/platform`, and
   `@effect/platform-node` are required peers. Users bring their own versions.
 - **Single entry point** -- One barrel export at `@savvy-web/github-action-effects`
