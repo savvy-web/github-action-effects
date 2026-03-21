@@ -196,7 +196,15 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 				createArchive(paths, key),
 				(archivePath) =>
 					Effect.gen(function* () {
-						const archiveSize = statSync(archivePath).size;
+						const archiveSize = yield* Effect.try({
+							try: () => statSync(archivePath).size,
+							catch: (error) =>
+								new ActionCacheError({
+									key,
+									operation: "save",
+									reason: `Failed to stat archive: ${error instanceof Error ? error.message : String(error)}`,
+								}),
+						});
 
 						// Step 1: Create cache entry
 						const createResponse = yield* twirpCall<CreateCacheEntryResponse>(
