@@ -1,5 +1,12 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.6
+
+### Bug Fixes
+
+* [`283add4`](https://github.com/savvy-web/github-action-effects/commit/283add4e2f72da6e5e8761bfbbff5e6a59ebcb84) Fix Windows tar extraction by adding `--force-local` flag to prevent colons in paths from being interpreted as remote hosts, and `--overwrite` to handle extracting over existing files. Fixes #71.
+* Treat HTTP 409 (Conflict) on `CreateCacheEntry` as silent success since the cache already exists for that key. Fixes #72.
+
 ## 0.11.5
 
 ### Bug Fixes
