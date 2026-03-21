@@ -488,7 +488,7 @@ describe("ActionCacheLive", () => {
 				expect(mockDownloadToFile).toHaveBeenCalled();
 
 				// tar extraction should have been invoked
-				expect(mockedExecFileSync).toHaveBeenCalledWith("tar", expect.arrayContaining(["xzf"]), expect.any(Object));
+				expect(mockedExecFileSync).toHaveBeenCalledWith("tar", expect.arrayContaining(["xzkf"]), expect.any(Object));
 
 				fetchSpy.mockRestore();
 			});
@@ -560,7 +560,7 @@ describe("ActionCacheLive", () => {
 				fetchSpy.mockRestore();
 			});
 
-			it("fails when tar extraction fails", async () => {
+			it("tolerates tar exit code 1 (non-fatal file-exists warnings)", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
 					makeTwirpResponse(200, {
@@ -571,7 +571,32 @@ describe("ActionCacheLive", () => {
 				);
 
 				mockedExecFileSync.mockImplementation(() => {
-					throw new Error("tar extraction error");
+					const err = new Error("tar: file exists, not overwritten") as Error & { status: number };
+					err.status = 1;
+					throw err;
+				});
+
+				const exit = await runLiveExit(Effect.flatMap(ActionCache, (svc) => svc.restore(["node_modules"], "my-key")));
+
+				expect(Exit.isSuccess(exit)).toBe(true);
+
+				fetchSpy.mockRestore();
+			});
+
+			it("fails when tar extraction exits with code 2 (fatal error)", async () => {
+				const fetchSpy = vi.spyOn(globalThis, "fetch");
+				fetchSpy.mockResolvedValueOnce(
+					makeTwirpResponse(200, {
+						ok: true,
+						signed_download_url: "https://azure.example.com/download",
+						matched_key: "my-key",
+					}),
+				);
+
+				mockedExecFileSync.mockImplementation(() => {
+					const err = new Error("tar: fatal error") as Error & { status: number };
+					err.status = 2;
+					throw err;
 				});
 
 				const exit = await runLiveExit(Effect.flatMap(ActionCache, (svc) => svc.restore(["node_modules"], "my-key")));
@@ -581,7 +606,6 @@ describe("ActionCacheLive", () => {
 				expect(error?._tag).toBe("ActionCacheError");
 				expect(error?.operation).toBe("restore");
 				expect(error?.reason).toContain("Failed to extract archive");
-				expect(error?.reason).toContain("tar extraction error");
 
 				fetchSpy.mockRestore();
 			});

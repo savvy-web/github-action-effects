@@ -192,12 +192,24 @@ const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 
 /**
  * Extract a tar.gz archive.
- * Both GNU tar and bsdtar overwrite existing files by default.
+ * Uses `-k` (keep old files) to skip over existing files rather than fail
+ * with "Permission denied" on Windows where file handles may be held.
+ * The `-k` flag causes tar to exit non-zero when files are skipped, so
+ * we tolerate exit code 1 (non-fatal warnings) but fail on exit code 2+.
  */
 const extractArchive = (archivePath: string, key: string) =>
 	Effect.try({
 		try: () => {
-			execFileSync("tar", ["xzf", archivePath], { stdio: "pipe" });
+			try {
+				execFileSync("tar", ["xzkf", archivePath], { stdio: "pipe" });
+			} catch (err: unknown) {
+				const code = (err as { status?: number }).status;
+				// Exit code 1 = non-fatal (e.g. "file exists, not overwritten")
+				// Exit code 2+ = fatal error
+				if (code !== undefined && code >= 2) {
+					throw err;
+				}
+			}
 		},
 		catch: (error) =>
 			new ActionCacheError({
