@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { get as httpsGet } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Option } from "effect";
@@ -7,6 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolInstallerError } from "../errors/ToolInstallerError.js";
 import { ToolInstaller } from "../services/ToolInstaller.js";
 import { ToolInstallerLive } from "./ToolInstallerLive.js";
+
+vi.mock("node:https", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:https")>();
+	return { ...actual, default: actual, get: vi.fn(actual.get) };
+});
 
 const run = <A, E>(effect: Effect.Effect<A, E, ToolInstaller>) =>
 	Effect.runPromise(Effect.provide(effect, ToolInstallerLive));
@@ -103,15 +109,23 @@ describe("ToolInstallerLive", () => {
 		});
 
 		it("fails with ToolInstallerError when HTTP response is not ok", async () => {
-			vi.stubGlobal(
-				"fetch",
-				vi.fn().mockResolvedValue({
-					ok: false,
-					status: 404,
-					statusText: "Not Found",
-					body: null,
-				}),
-			);
+			const { PassThrough } = await import("node:stream");
+
+			const mockResponse = new PassThrough();
+			Object.assign(mockResponse, { statusCode: 404, headers: {} });
+
+			const mockedGet = vi.mocked(httpsGet);
+			mockedGet.mockImplementation((...args: unknown[]) => {
+				const cb = args.find((a) => typeof a === "function") as (res: InstanceType<typeof PassThrough>) => void;
+				process.nextTick(() => cb(mockResponse));
+				const req = new PassThrough();
+				Object.assign(req, {
+					setTimeout: vi.fn(),
+					on: vi.fn().mockReturnThis(),
+					destroy: vi.fn(),
+				});
+				return req as unknown as import("node:http").ClientRequest;
+			});
 
 			const error = await runFail(
 				Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")),
@@ -119,48 +133,111 @@ describe("ToolInstallerLive", () => {
 
 			expect(error.operation).toBe("download");
 			expect(error.reason).toContain("HTTP 404");
+			expect(error.statusCode).toBe(404);
 		});
 
-		it("fails with ToolInstallerError when response body is empty", async () => {
-			vi.stubGlobal(
-				"fetch",
-				vi.fn().mockResolvedValue({
-					ok: true,
-					status: 200,
-					statusText: "OK",
-					body: null,
-				}),
-			);
+		it("follows HTTP redirects", async () => {
+			const { PassThrough } = await import("node:stream");
+
+			let callCount = 0;
+
+			const mockedGet = vi.mocked(httpsGet);
+			mockedGet.mockImplementation((...args: unknown[]) => {
+				const cb = args.find((a) => typeof a === "function") as (res: InstanceType<typeof PassThrough>) => void;
+				callCount++;
+
+				if (callCount === 1) {
+					// First call: redirect
+					const redirectResponse = new PassThrough();
+					Object.assign(redirectResponse, {
+						statusCode: 302,
+						headers: { location: "https://cdn.example.com/tool.tar.gz" },
+					});
+					process.nextTick(() => {
+						cb(redirectResponse);
+						redirectResponse.end();
+					});
+				} else {
+					// Second call: actual content
+					const dataResponse = new PassThrough();
+					Object.assign(dataResponse, { statusCode: 200, headers: {} });
+					process.nextTick(() => {
+						cb(dataResponse);
+						dataResponse.end("binary content");
+					});
+				}
+
+				const req = new PassThrough();
+				Object.assign(req, {
+					setTimeout: vi.fn(),
+					on: vi.fn().mockReturnThis(),
+					destroy: vi.fn(),
+				});
+				return req as unknown as import("node:http").ClientRequest;
+			});
+
+			const result = await run(Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")));
+
+			expect(result).toBeTruthy();
+			expect(callCount).toBe(2);
+		});
+
+		it("fails with ToolInstallerError on socket timeout", async () => {
+			const { PassThrough } = await import("node:stream");
+
+			const mockedGet = vi.mocked(httpsGet);
+			mockedGet.mockImplementation((..._args: unknown[]) => {
+				// Never call the callback — simulate a hanging connection
+				const req = new PassThrough();
+				let timeoutHandler: (() => void) | undefined;
+				const onMock = vi.fn().mockReturnThis();
+				Object.assign(req, {
+					setTimeout: vi.fn((_ms: number, handler: () => void) => {
+						timeoutHandler = handler;
+					}),
+					on: onMock,
+					destroy: vi.fn((error: Error) => {
+						// When destroy is called with an error, emit the error event
+						const onCalls = onMock.mock.calls as Array<[string, (err: Error) => void]>;
+						for (const [event, handler] of onCalls) {
+							if (event === "error") handler(error);
+						}
+					}),
+				});
+				// Trigger the timeout immediately
+				process.nextTick(() => timeoutHandler?.());
+				return req as unknown as import("node:http").ClientRequest;
+			});
 
 			const error = await runFail(
 				Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")),
 			);
 
 			expect(error.operation).toBe("download");
-			expect(error.reason).toContain("Response body is empty");
-		});
+			expect(error.reason).toContain("Socket timeout");
+		}, 10_000);
 
 		it("downloads a file successfully to a temp path", async () => {
-			// Create a small in-memory ReadableStream to mock a real response body
-			const content = "binary content data";
-			const encoder = new TextEncoder();
-			const bytes = encoder.encode(content);
-			const stream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(bytes);
-					controller.close();
-				},
-			});
+			const { PassThrough } = await import("node:stream");
 
-			vi.stubGlobal(
-				"fetch",
-				vi.fn().mockResolvedValue({
-					ok: true,
-					status: 200,
-					statusText: "OK",
-					body: stream,
-				}),
-			);
+			const mockResponse = new PassThrough();
+			Object.assign(mockResponse, { statusCode: 200, headers: {} });
+
+			const mockedGet = vi.mocked(httpsGet);
+			mockedGet.mockImplementation((...args: unknown[]) => {
+				const cb = args.find((a) => typeof a === "function") as (res: InstanceType<typeof PassThrough>) => void;
+				process.nextTick(() => cb(mockResponse));
+				process.nextTick(() => {
+					mockResponse.end("binary content data");
+				});
+				const req = new PassThrough();
+				Object.assign(req, {
+					setTimeout: vi.fn(),
+					on: vi.fn().mockReturnThis(),
+					destroy: vi.fn(),
+				});
+				return req as unknown as import("node:http").ClientRequest;
+			});
 
 			const result = await run(Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")));
 
@@ -363,6 +440,34 @@ describe("ToolInstallerLive", () => {
 
 			expect(error.operation).toBe("extract");
 		});
+
+		it("uses PowerShell extraction on Windows platform", async () => {
+			// Create the zip archive BEFORE mocking platform, since execSync uses
+			// cmd.exe as the shell when process.platform is "win32".
+			const sourceDir = join(tempDir, "source");
+			await mkdir(sourceDir, { recursive: true });
+			await writeFile(join(sourceDir, "hello.txt"), "hello world");
+			const archivePath = join(tempDir, "test.zip");
+			execSync(`cd "${sourceDir}" && zip -r "${archivePath}" .`);
+			const destDir = join(tempDir, "win-extracted");
+
+			const originalPlatform = process.platform;
+			const originalPath = process.env.PATH;
+			Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+			// Restrict PATH so pwsh/powershell can't be found (pwsh IS installed
+			// on ubuntu-latest runners and would run slowly instead of failing fast)
+			process.env.PATH = "/nonexistent-path-for-testing";
+
+			try {
+				const error = await runFail(Effect.flatMap(ToolInstaller, (svc) => svc.extractZip(archivePath, destDir)));
+
+				expect(error.operation).toBe("extract");
+				expect(error.reason).toMatch(/powershell/i);
+			} finally {
+				Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+				process.env.PATH = originalPath;
+			}
+		}, 15_000);
 
 		it("fails with ToolInstallerError when zip dest mkdir fails", async () => {
 			const sourceDir = join(tempDir, "source");

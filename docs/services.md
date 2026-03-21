@@ -711,9 +711,11 @@ const program = Effect.gen(function* () {
 
 ### ToolInstaller
 
-Download, cache, and install tool binaries using native fetch and
+Download, cache, and install tool binaries using node:https/http and
 child_process. Supports both archived tools (tar.gz, tar.xz, zip) and
-standalone binary files.
+standalone binary files. Includes socket timeout, redirect following,
+retry with exponential backoff, and cross-platform zip extraction
+(PowerShell on Windows, unzip on other platforms).
 
 ```typescript
 import { Effect } from "effect"

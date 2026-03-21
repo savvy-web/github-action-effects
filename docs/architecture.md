@@ -301,7 +301,7 @@ See [services.md](./services.md) for usage examples of each service.
 | TokenPermissionChecker | TokenPermissionCheckerLive | Token permission checks |
 | RateLimiter | RateLimiterLive | Rate limit guard and retry |
 | WorkflowDispatch | WorkflowDispatchLive | Workflow trigger and poll |
-| ToolInstaller | ToolInstallerLive | Tool installation (native fetch + child_process) |
+| ToolInstaller | ToolInstallerLive | Tool installation (node:https/http + child_process) |
 
 ## Test Layers
 

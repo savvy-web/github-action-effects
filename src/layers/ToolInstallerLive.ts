@@ -2,12 +2,14 @@ import type { SpawnOptions } from "node:child_process";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { cp, mkdir, stat } from "node:fs/promises";
+import { cp, mkdir, stat, unlink } from "node:fs/promises";
+import type { IncomingMessage } from "node:http";
+import { get as httpGet } from "node:http";
+import { get as httpsGet } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Schedule } from "effect";
 import { ToolInstallerError } from "../errors/ToolInstallerError.js";
 import { ToolInstaller } from "../services/ToolInstaller.js";
 
@@ -78,9 +80,96 @@ const spawnEffect = (
 		});
 	});
 
+const SOCKET_TIMEOUT_MS = 180_000; // 3 minutes, matches @actions/tool-cache
+const MAX_REDIRECTS = 10;
+const USER_AGENT = "github-action-effects";
+
+const httpRequest = (url: string, redirectCount = 0): Effect.Effect<string, ToolInstallerError> =>
+	Effect.async<string, ToolInstallerError>((resume) => {
+		if (redirectCount > MAX_REDIRECTS) {
+			resume(
+				Effect.fail(
+					new ToolInstallerError({
+						tool: "unknown",
+						version: "unknown",
+						operation: "download",
+						reason: `Too many redirects (>${MAX_REDIRECTS}) for ${url}`,
+					}),
+				),
+			);
+			return;
+		}
+
+		const parsedUrl = new URL(url);
+		const get = parsedUrl.protocol === "https:" ? httpsGet : httpGet;
+
+		const req = get(url, { headers: { "User-Agent": USER_AGENT } }, (response: IncomingMessage) => {
+			const statusCode = response.statusCode ?? 0;
+
+			if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
+				response.resume();
+				req.removeAllListeners("error");
+				const resolvedLocation = new URL(response.headers.location as string, url).toString();
+				resume(Effect.suspend(() => httpRequest(resolvedLocation, redirectCount + 1)));
+				return;
+			}
+
+			if (statusCode < 200 || statusCode >= 300) {
+				response.resume();
+				resume(
+					Effect.fail(
+						new ToolInstallerError({
+							tool: "unknown",
+							version: "unknown",
+							operation: "download",
+							reason: `Failed to download ${url}: HTTP ${statusCode}`,
+							statusCode,
+						}),
+					),
+				);
+				return;
+			}
+
+			const tempFile = join(tmpdir(), `download-${randomUUID()}`);
+			const writeStream = createWriteStream(tempFile);
+			pipeline(response, writeStream)
+				.then(() => resume(Effect.succeed(tempFile)))
+				.catch((error: unknown) => {
+					unlink(tempFile).catch(() => {});
+					resume(
+						Effect.fail(
+							new ToolInstallerError({
+								tool: "unknown",
+								version: "unknown",
+								operation: "download",
+								reason: `Failed to download ${url}: ${error instanceof Error ? error.message : String(error)}`,
+							}),
+						),
+					);
+				});
+		});
+
+		req.setTimeout(SOCKET_TIMEOUT_MS, () => {
+			req.destroy(new Error(`Socket timeout after ${SOCKET_TIMEOUT_MS}ms`));
+		});
+
+		req.on("error", (error: Error) => {
+			resume(
+				Effect.fail(
+					new ToolInstallerError({
+						tool: "unknown",
+						version: "unknown",
+						operation: "download",
+						reason: `Failed to download ${url}: ${error.message}`,
+					}),
+				),
+			);
+		});
+	});
+
 /**
- * Live implementation of ToolInstaller using native `fetch`, `node:child_process`,
- * and `node:fs/promises`. No `@actions/tool-cache` dependency.
+ * Live implementation of ToolInstaller using `node:https`/`node:http`,
+ * `node:child_process`, and `node:fs/promises`. No `@actions/tool-cache` dependency.
  *
  * @public
  */
@@ -95,28 +184,23 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 		),
 
 	download: (url: string) =>
-		Effect.tryPromise({
-			try: async () => {
-				const response = await fetch(url);
-				if (!response.ok) {
-					throw new Error(`HTTP ${response.status} ${response.statusText}`);
-				}
-				if (!response.body) {
-					throw new Error("Response body is empty");
-				}
-				const tempFile = join(tmpdir(), `download-${randomUUID()}`);
-				const writeStream = createWriteStream(tempFile);
-				await pipeline(Readable.fromWeb(response.body as import("node:stream/web").ReadableStream), writeStream);
-				return tempFile;
-			},
-			catch: (error) =>
-				new ToolInstallerError({
-					tool: "unknown",
-					version: "unknown",
-					operation: "download",
-					reason: `Failed to download ${url}: ${error instanceof Error ? error.message : String(error)}`,
-				}),
-		}),
+		httpRequest(url).pipe(
+			Effect.retry(
+				Schedule.intersect(Schedule.exponential("1 second"), Schedule.recurs(2)).pipe(
+					Schedule.whileInput((error: ToolInstallerError) => {
+						if (error.statusCode !== undefined) {
+							return error.statusCode >= 500 || error.statusCode === 408 || error.statusCode === 429;
+						}
+						return (
+							error.reason.includes("Socket timeout") ||
+							error.reason.includes("ECONNRESET") ||
+							error.reason.includes("ECONNREFUSED") ||
+							error.reason.includes("ETIMEDOUT")
+						);
+					}),
+				),
+			),
+		),
 
 	extractTar: (file: string, dest?: string, flags?: ReadonlyArray<string>) =>
 		Effect.gen(function* () {
@@ -154,7 +238,18 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 						}),
 				});
 			}
-			yield* spawnEffect("unzip", [file, "-d", targetDir], "extract", "unknown");
+
+			if (process.platform === "win32") {
+				const psCommand = `Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('${file.replace(/'/g, "''")}', '${targetDir.replace(/'/g, "''")}')`;
+				yield* spawnEffect("pwsh", ["-NoProfile", "-NonInteractive", "-Command", psCommand], "extract", "unknown").pipe(
+					Effect.catchAll(() =>
+						spawnEffect("powershell", ["-NoProfile", "-NonInteractive", "-Command", psCommand], "extract", "unknown"),
+					),
+				);
+			} else {
+				yield* spawnEffect("unzip", ["-oq", file, "-d", targetDir], "extract", "unknown");
+			}
+
 			return targetDir;
 		}),
 

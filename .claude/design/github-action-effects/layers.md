@@ -133,8 +133,10 @@ Build Tooling:
   WorkspaceDetectorLive    — depends on FileSystem + CommandRunner
   WorkspaceDetectorTest    — in-memory workspace state
 
-  ToolInstallerLive        — Layer.succeed; uses native fetch for downloads,
-                             node:child_process spawn for tar/unzip extraction,
+  ToolInstallerLive        — Layer.succeed; uses node:https/node:http for downloads
+                             (with redirect following, socket timeout, and exponential
+                             backoff retry), node:child_process spawn for tar/unzip
+                             extraction (PowerShell on Windows for zip),
                              node:fs/promises for caching. Reads RUNNER_TOOL_CACHE
                              env var. No service dependencies.
   ToolInstallerTest        — in-memory tool cache state
@@ -176,7 +178,7 @@ interact directly with process environment, stdout, or Node.js built-ins:
 - `ActionLoggerLive` -- uses `WorkflowCommand` and Effect Logger API
 - `ActionEnvironmentLive` -- reads from `process.env`
 - `CommandRunnerLive` -- uses `node:child_process` spawn
-- `ToolInstallerLive` -- uses native fetch + `node:child_process` + `node:fs/promises`
+- `ToolInstallerLive` -- uses `node:https`/`node:http` + `node:child_process` + `node:fs/promises`
 - `ActionCacheLive` -- uses native fetch + `node:child_process` execFileSync
 
 ---
@@ -253,11 +255,15 @@ listeners.
 
 ### ToolInstallerLive
 
-`Layer.Layer<ToolInstaller>`. No service dependencies. Uses native `fetch` for
-downloads (streaming to temp files via `node:stream/promises` pipeline),
-`node:child_process` `spawn` for tar/unzip extraction, and `node:fs/promises`
-for cache directory management. Tool cache path is `RUNNER_TOOL_CACHE` env var
-with fallback to `os.tmpdir()`.
+`Layer.Layer<ToolInstaller>`. No service dependencies. Uses `node:https`/`node:http`
+for downloads (streaming to temp files via `node:stream/promises` pipeline) with
+redirect following (up to 10 hops), 3-minute socket timeout, User-Agent header,
+and `Effect.retry` with exponential backoff for transient errors (5xx, 408, 429,
+socket timeout, network errors). Best-effort cleanup of partial downloads on failure.
+Uses `node:child_process` `spawn` for extraction: `tar` for tar archives, `unzip`
+on non-Windows for zip, PowerShell `System.IO.Compression.ZipFile` on Windows (pwsh
+→ powershell fallback). Uses `node:fs/promises` for cache directory management. Tool
+cache path is `RUNNER_TOOL_CACHE` env var with fallback to `os.tmpdir()`.
 
 ### CheckRunLive
 

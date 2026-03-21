@@ -496,16 +496,16 @@ Monorepo workspace detection.
 ### ToolInstaller Service
 
 Low-level primitives for downloading, extracting, and caching tool binaries.
-Uses native `fetch` for downloads and `node:child_process` for extraction
-(tar/unzip). Tool cache lives at `RUNNER_TOOL_CACHE` (or a temp directory
-fallback). No dependency on `@actions/tool-cache`.
+Uses `node:https`/`node:http` for downloads and `node:child_process` for
+extraction (tar/unzip/PowerShell). Tool cache lives at `RUNNER_TOOL_CACHE`
+(or a temp directory fallback). No dependency on `@actions/tool-cache`.
 
 **Interface:**
 
 - `find(tool, version)` -- Look up a cached tool. Returns `Option<string>`
-- `download(url)` -- Download a URL to a temporary file via native `fetch`
+- `download(url)` -- Download a URL to a temporary file via `node:https`/`node:http` with redirect following (up to 10 hops), 3-minute socket timeout, User-Agent header, and `Effect.retry` with exponential backoff for transient errors
 - `extractTar(file, dest?, flags?)` -- Extract a tar archive via `tar` command
-- `extractZip(file, dest?)` -- Extract a zip archive via `unzip` command
+- `extractZip(file, dest?)` -- Extract a zip archive via `unzip` (non-Windows) or PowerShell `System.IO.Compression.ZipFile` (Windows, pwsh → powershell fallback)
 - `cacheDir(sourceDir, tool, version)` -- Cache a directory as a tool
 - `cacheFile(sourceFile, targetFile, tool, version)` -- Cache a single file
 
