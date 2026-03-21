@@ -1,5 +1,12 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.2
+
+### Bug Fixes
+
+* [`3192780`](https://github.com/savvy-web/github-action-effects/commit/31927803cb5cd21511d6a295ef63806e18cd9098) Use `path.delimiter` instead of hardcoded `:` in `ActionOutputs.addPath()` so Windows PATH entries use `;`
+* Add `shell: true` to `spawn()` on Windows in `CommandRunner` so `.cmd`/`.bat` files like `corepack.cmd` are resolved
+
 ## 0.11.1
 
 ### Bug Fixes
