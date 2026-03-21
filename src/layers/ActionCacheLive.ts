@@ -212,18 +212,18 @@ const cleanupFile = (filePath: string) =>
 
 interface GetCacheEntryResponse {
 	readonly ok: boolean;
-	readonly signedDownloadUrl?: string;
-	readonly matchedKey?: string;
+	readonly signed_download_url?: string;
+	readonly matched_key?: string;
 }
 
 interface CreateCacheEntryResponse {
 	readonly ok: boolean;
-	readonly signedUploadUrl?: string;
+	readonly signed_upload_url?: string;
 }
 
 interface FinalizeCacheEntryResponse {
 	readonly ok: boolean;
-	readonly entryId?: string;
+	readonly entry_id?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,7 +266,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 							key,
 						).pipe(Effect.retry(RETRY_SCHEDULE));
 
-						if (!createResponse.ok || !createResponse.signedUploadUrl) {
+						if (!createResponse.ok || !createResponse.signed_upload_url) {
 							return yield* Effect.fail(
 								new ActionCacheError({
 									key,
@@ -279,7 +279,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 						// Step 2: Upload archive to signed URL via Azure SDK
 						yield* Effect.tryPromise({
 							try: async () => {
-								const client = new BlockBlobClient(createResponse.signedUploadUrl as string);
+								const client = new BlockBlobClient(createResponse.signed_upload_url as string);
 								await client.uploadFile(archivePath, {
 									blockSize: UPLOAD_CHUNK_SIZE,
 									concurrency: UPLOAD_CONCURRENCY,
@@ -299,7 +299,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 							baseUrl,
 							token,
 							"FinalizeCacheEntryUpload",
-							{ key, version, sizeBytes: String(archiveSize) },
+							{ key, version, size_bytes: String(archiveSize) },
 							"save",
 							key,
 						).pipe(Effect.retry(RETRY_SCHEDULE));
@@ -328,12 +328,12 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 				baseUrl,
 				token,
 				"GetCacheEntryDownloadURL",
-				{ key: primaryKey, restoreKeys: [...restoreKeys], version },
+				{ key: primaryKey, restore_keys: [...restoreKeys], version },
 				"restore",
 				primaryKey,
 			).pipe(Effect.retry(RETRY_SCHEDULE));
 
-			if (!lookupResponse.ok || !lookupResponse.signedDownloadUrl) {
+			if (!lookupResponse.ok || !lookupResponse.signed_download_url) {
 				return Option.none<string>();
 			}
 
@@ -343,7 +343,7 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 			yield* Effect.acquireUseRelease(
 				Effect.tryPromise({
 					try: async () => {
-						const client = new BlobClient(lookupResponse.signedDownloadUrl as string);
+						const client = new BlobClient(lookupResponse.signed_download_url as string);
 						await client.downloadToFile(archivePath);
 						return archivePath;
 					},
@@ -358,6 +358,6 @@ export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCac
 				(downloadedPath) => cleanupFile(downloadedPath),
 			);
 
-			return Option.some(lookupResponse.matchedKey ?? primaryKey);
+			return Option.some(lookupResponse.matched_key ?? primaryKey);
 		}),
 });

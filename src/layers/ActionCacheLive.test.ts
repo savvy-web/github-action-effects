@@ -116,9 +116,9 @@ describe("ActionCacheLive", () => {
 			it("expands relative glob patterns before passing to tar", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entry_id: "entry-1" }));
 
 				mockedGlobSync.mockReturnValueOnce(["project/.yarn/cache"] as unknown as string[]);
 				mockedGlobSync.mockReturnValueOnce(["project/node_modules"] as unknown as string[]);
@@ -150,9 +150,9 @@ describe("ActionCacheLive", () => {
 			it("expands absolute paths containing glob wildcards", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entry_id: "entry-1" }));
 
 				mockedGlobSync.mockReturnValueOnce(["/opt/hostedtoolcache/bun/1.3.3/x64"] as unknown as string[]);
 
@@ -173,9 +173,9 @@ describe("ActionCacheLive", () => {
 			it("resolves tilde paths to HOME before passing to tar", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entry_id: "entry-1" }));
 
 				const exit = await runLiveExit(
 					Effect.flatMap(ActionCache, (svc) => svc.save(["~/.bun/install/cache", "~/.cache/deno"], "tilde-key")),
@@ -195,9 +195,9 @@ describe("ActionCacheLive", () => {
 			it("filters out non-existent paths", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entry_id: "entry-1" }));
 
 				mockedExistsSync.mockImplementation((p) => p !== "/home/runner/.bun/install/cache");
 
@@ -217,9 +217,9 @@ describe("ActionCacheLive", () => {
 			it("deduplicates paths where parent already covers child", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entry_id: "entry-1" }));
 
 				mockedGlobSync.mockReturnValueOnce(["/opt/hostedtoolcache/bun/1.3.3/x64"] as unknown as string[]);
 
@@ -259,10 +259,10 @@ describe("ActionCacheLive", () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				// CreateCacheEntry
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
 				// FinalizeCacheEntryUpload
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entry_id: "entry-1" }));
 
 				const exit = await runLiveExit(Effect.flatMap(ActionCache, (svc) => svc.save(["node_modules"], "test-key")));
 
@@ -279,7 +279,7 @@ describe("ActionCacheLive", () => {
 				const [finalizeUrl, finalizeInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
 				expect(finalizeUrl).toContain("twirp/github.actions.results.api.v1.CacheService/FinalizeCacheEntryUpload");
 				expect(finalizeInit.method).toBe("POST");
-				expect(JSON.parse(finalizeInit.body as string)).toMatchObject({ key: "test-key", sizeBytes: "100" });
+				expect(JSON.parse(finalizeInit.body as string)).toMatchObject({ key: "test-key", size_bytes: "100" });
 
 				// Verify Azure BlockBlobClient was used for upload
 				expect(mockUploadFile).toHaveBeenCalled();
@@ -290,9 +290,9 @@ describe("ActionCacheLive", () => {
 			it("cleans up temp archive on successful save", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
-				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entry_id: "entry-1" }));
 
 				await runLiveExit(Effect.flatMap(ActionCache, (svc) => svc.save(["node_modules"], "test-key")));
 
@@ -351,7 +351,7 @@ describe("ActionCacheLive", () => {
 			it("fails when Azure upload rejects", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
 
 				mockUploadFile.mockRejectedValueOnce(new Error("Azure upload timeout"));
@@ -371,7 +371,7 @@ describe("ActionCacheLive", () => {
 			it("fails when FinalizeCacheEntryUpload returns non-ok HTTP status", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
 				// Use 409 (non-retryable) to avoid retry delays
 				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(409));
@@ -391,7 +391,7 @@ describe("ActionCacheLive", () => {
 			it("fails when FinalizeCacheEntryUpload returns ok:false at HTTP 200", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
-					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+					makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 				);
 				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: false }));
 
@@ -449,13 +449,13 @@ describe("ActionCacheLive", () => {
 				fetchSpy.mockRestore();
 			});
 
-			it("returns Some with matchedKey on cache hit", async () => {
+			it("returns Some with matched_key on cache hit", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
 					makeTwirpResponse(200, {
 						ok: true,
-						signedDownloadUrl: "https://azure.example.com/download",
-						matchedKey: "my-key-abc",
+						signed_download_url: "https://azure.example.com/download",
+						matched_key: "my-key-abc",
 					}),
 				);
 
@@ -479,13 +479,13 @@ describe("ActionCacheLive", () => {
 				fetchSpy.mockRestore();
 			});
 
-			it("returns Some with primaryKey when response has no matchedKey", async () => {
+			it("returns Some with primaryKey when response has no matched_key", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
 					makeTwirpResponse(200, {
 						ok: true,
-						signedDownloadUrl: "https://azure.example.com/download",
-						// no matchedKey
+						signed_download_url: "https://azure.example.com/download",
+						// no matched_key
 					}),
 				);
 
@@ -527,8 +527,8 @@ describe("ActionCacheLive", () => {
 				fetchSpy.mockResolvedValueOnce(
 					makeTwirpResponse(200, {
 						ok: true,
-						signedDownloadUrl: "https://azure.example.com/download",
-						matchedKey: "my-key",
+						signed_download_url: "https://azure.example.com/download",
+						matched_key: "my-key",
 					}),
 				);
 
@@ -551,8 +551,8 @@ describe("ActionCacheLive", () => {
 				fetchSpy.mockResolvedValueOnce(
 					makeTwirpResponse(200, {
 						ok: true,
-						signedDownloadUrl: "https://azure.example.com/download",
-						matchedKey: "my-key",
+						signed_download_url: "https://azure.example.com/download",
+						matched_key: "my-key",
 					}),
 				);
 
@@ -572,7 +572,7 @@ describe("ActionCacheLive", () => {
 				fetchSpy.mockRestore();
 			});
 
-			it("sends restoreKeys in the Twirp request body", async () => {
+			it("sends restore_keys in the Twirp request body", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: false }));
 
@@ -585,7 +585,7 @@ describe("ActionCacheLive", () => {
 				const [, lookupInit] = fetchSpy.mock.calls[0] as [string, RequestInit];
 				const body = JSON.parse(lookupInit.body as string);
 				expect(body.key).toBe("primary-key");
-				expect(body.restoreKeys).toEqual(["restore-key-1", "restore-key-2"]);
+				expect(body.restore_keys).toEqual(["restore-key-1", "restore-key-2"]);
 
 				fetchSpy.mockRestore();
 			});
@@ -615,7 +615,7 @@ describe("version hash", () => {
 
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 		fetchSpy.mockResolvedValueOnce(
-			makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+			makeTwirpResponse(200, { ok: true, signed_upload_url: "https://azure.example.com/upload" }),
 		);
 		fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true }));
 
