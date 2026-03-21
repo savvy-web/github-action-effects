@@ -359,6 +359,29 @@ describe("ToolInstallerLive", () => {
 			expect(error.operation).toBe("extract");
 		});
 
+		it("uses PowerShell extraction on Windows platform", async () => {
+			// Create the zip archive BEFORE mocking platform, since execSync uses
+			// cmd.exe as the shell when process.platform is "win32".
+			const sourceDir = join(tempDir, "source");
+			await mkdir(sourceDir, { recursive: true });
+			await writeFile(join(sourceDir, "hello.txt"), "hello world");
+			const archivePath = join(tempDir, "test.zip");
+			execSync(`cd "${sourceDir}" && zip -r "${archivePath}" .`);
+			const destDir = join(tempDir, "win-extracted");
+
+			const originalPlatform = process.platform;
+			Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+
+			try {
+				const error = await runFail(Effect.flatMap(ToolInstaller, (svc) => svc.extractZip(archivePath, destDir)));
+
+				expect(error.operation).toBe("extract");
+				expect(error.reason).toMatch(/powershell/i);
+			} finally {
+				Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+			}
+		});
+
 		it("fails with ToolInstallerError when zip dest mkdir fails", async () => {
 			const sourceDir = join(tempDir, "source");
 			await mkdir(sourceDir, { recursive: true });

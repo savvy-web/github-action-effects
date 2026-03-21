@@ -235,7 +235,18 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 						}),
 				});
 			}
-			yield* spawnEffect("unzip", [file, "-d", targetDir], "extract", "unknown");
+
+			if (process.platform === "win32") {
+				const psCommand = `Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('${file.replace(/'/g, "''")}', '${targetDir.replace(/'/g, "''")}')`;
+				yield* spawnEffect("pwsh", ["-NoProfile", "-NonInteractive", "-Command", psCommand], "extract", "unknown").pipe(
+					Effect.catchAll(() =>
+						spawnEffect("powershell", ["-NoProfile", "-NonInteractive", "-Command", psCommand], "extract", "unknown"),
+					),
+				);
+			} else {
+				yield* spawnEffect("unzip", ["-oq", file, "-d", targetDir], "extract", "unknown");
+			}
+
 			return targetDir;
 		}),
 
