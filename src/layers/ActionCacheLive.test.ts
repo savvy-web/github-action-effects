@@ -32,6 +32,7 @@ vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
 	return {
 		...actual,
+		existsSync: vi.fn(),
 		globSync: vi.fn(),
 		statSync: vi.fn(),
 		unlinkSync: vi.fn(),
@@ -39,9 +40,10 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import { execFileSync } from "node:child_process";
-import { globSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, globSync, statSync, unlinkSync } from "node:fs";
 
 const mockedExecFileSync = vi.mocked(execFileSync);
+const mockedExistsSync = vi.mocked(existsSync);
 const mockedGlobSync = vi.mocked(globSync);
 const mockedStatSync = vi.mocked(statSync);
 const mockedUnlinkSync = vi.mocked(unlinkSync);
@@ -96,9 +98,11 @@ describe("ActionCacheLive", () => {
 			beforeEach(() => {
 				process.env.ACTIONS_RESULTS_URL = "https://results.example.com/";
 				process.env.ACTIONS_RUNTIME_TOKEN = "test-token";
+				process.env.HOME = "/home/runner";
 				mockedExecFileSync.mockReturnValue(Buffer.from(""));
 				mockedStatSync.mockReturnValue({ size: 100 } as ReturnType<typeof statSync>);
 				mockedUnlinkSync.mockReturnValue(undefined);
+				mockedExistsSync.mockReturnValue(true);
 				mockedGlobSync.mockImplementation((pattern) => [pattern] as unknown as string[]);
 				mockUploadFile.mockResolvedValue(undefined);
 				mockDownloadToFile.mockResolvedValue(undefined);
@@ -107,10 +111,11 @@ describe("ActionCacheLive", () => {
 			afterEach(() => {
 				delete process.env.ACTIONS_RESULTS_URL;
 				delete process.env.ACTIONS_RUNTIME_TOKEN;
+				delete process.env.HOME;
 				vi.clearAllMocks();
 			});
 
-			it("expands glob patterns before passing to tar", async () => {
+			it("expands relative glob patterns before passing to tar", async () => {
 				const fetchSpy = vi.spyOn(globalThis, "fetch");
 				fetchSpy.mockResolvedValueOnce(
 					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
@@ -144,8 +149,102 @@ describe("ActionCacheLive", () => {
 				fetchSpy.mockRestore();
 			});
 
-			it("fails when all glob patterns resolve to zero files", async () => {
+			it("expands absolute paths containing glob wildcards", async () => {
+				const fetchSpy = vi.spyOn(globalThis, "fetch");
+				fetchSpy.mockResolvedValueOnce(
+					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+				);
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+
+				mockedGlobSync.mockReturnValueOnce(["/opt/hostedtoolcache/bun/1.3.3/x64"] as unknown as string[]);
+
+				const exit = await runLiveExit(
+					Effect.flatMap(ActionCache, (svc) => svc.save(["/opt/hostedtoolcache/bun/1.3.3/*"], "abs-glob-key")),
+				);
+
+				expect(Exit.isSuccess(exit)).toBe(true);
+				expect(mockedGlobSync).toHaveBeenCalledWith("/opt/hostedtoolcache/bun/1.3.3/*");
+
+				const tarArgs = mockedExecFileSync.mock.calls[0]?.[1] as string[];
+				expect(tarArgs).toContain("/opt/hostedtoolcache/bun/1.3.3/x64");
+				expect(tarArgs).not.toContain("/opt/hostedtoolcache/bun/1.3.3/*");
+
+				fetchSpy.mockRestore();
+			});
+
+			it("resolves tilde paths to HOME before passing to tar", async () => {
+				const fetchSpy = vi.spyOn(globalThis, "fetch");
+				fetchSpy.mockResolvedValueOnce(
+					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+				);
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+
+				const exit = await runLiveExit(
+					Effect.flatMap(ActionCache, (svc) => svc.save(["~/.bun/install/cache", "~/.cache/deno"], "tilde-key")),
+				);
+
+				expect(Exit.isSuccess(exit)).toBe(true);
+
+				const tarArgs = mockedExecFileSync.mock.calls[0]?.[1] as string[];
+				expect(tarArgs).toContain("/home/runner/.bun/install/cache");
+				expect(tarArgs).toContain("/home/runner/.cache/deno");
+				expect(tarArgs).not.toContain("~/.bun/install/cache");
+				expect(tarArgs).not.toContain("~/.cache/deno");
+
+				fetchSpy.mockRestore();
+			});
+
+			it("filters out non-existent paths", async () => {
+				const fetchSpy = vi.spyOn(globalThis, "fetch");
+				fetchSpy.mockResolvedValueOnce(
+					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+				);
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+
+				mockedExistsSync.mockImplementation((p) => p !== "/home/runner/.bun/install/cache");
+
+				const exit = await runLiveExit(
+					Effect.flatMap(ActionCache, (svc) => svc.save(["~/.bun/install/cache", "/opt/real-path"], "filter-key")),
+				);
+
+				expect(Exit.isSuccess(exit)).toBe(true);
+
+				const tarArgs = mockedExecFileSync.mock.calls[0]?.[1] as string[];
+				expect(tarArgs).toContain("/opt/real-path");
+				expect(tarArgs).not.toContain("/home/runner/.bun/install/cache");
+
+				fetchSpy.mockRestore();
+			});
+
+			it("deduplicates paths where parent already covers child", async () => {
+				const fetchSpy = vi.spyOn(globalThis, "fetch");
+				fetchSpy.mockResolvedValueOnce(
+					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+				);
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+
+				mockedGlobSync.mockReturnValueOnce(["/opt/hostedtoolcache/bun/1.3.3/x64"] as unknown as string[]);
+
+				const exit = await runLiveExit(
+					Effect.flatMap(ActionCache, (svc) =>
+						svc.save(["/opt/hostedtoolcache/bun/1.3.3", "/opt/hostedtoolcache/bun/1.3.3/*"], "dedup-key"),
+					),
+				);
+
+				expect(Exit.isSuccess(exit)).toBe(true);
+
+				const tarArgs = mockedExecFileSync.mock.calls[0]?.[1] as string[];
+				// Parent directory should be included
+				expect(tarArgs).toContain("/opt/hostedtoolcache/bun/1.3.3");
+				// Child expanded from glob should be deduplicated away
+				expect(tarArgs).not.toContain("/opt/hostedtoolcache/bun/1.3.3/x64");
+
+				fetchSpy.mockRestore();
+			});
+
+			it("fails when all paths resolve to zero existing files", async () => {
 				mockedGlobSync.mockImplementation(() => [] as unknown as string[]);
+				mockedExistsSync.mockReturnValue(false);
 
 				const exit = await runLiveExit(
 					Effect.flatMap(ActionCache, (svc) => svc.save(["**/nonexistent"], "empty-glob-key")),

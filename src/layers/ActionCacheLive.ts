@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { globSync, statSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { existsSync, globSync, statSync, unlinkSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import { Effect, Layer, Option, Schedule } from "effect";
 import { ActionCacheError } from "../errors/ActionCacheError.js";
@@ -111,21 +111,48 @@ const twirpCall = <T>(
 	});
 
 /**
- * Resolve cache paths by expanding glob patterns to real filesystem paths.
- * Absolute paths are kept as-is; relative patterns (containing glob chars)
- * are expanded via `node:fs.globSync`.
+ * Check whether a path contains glob metacharacters (`*`, `?`, `[`).
+ */
+const hasGlobChars = (p: string): boolean => /[*?[]/.test(p);
+
+/**
+ * Resolve cache paths before passing to tar:
+ * 1. Expand `~` prefix to the user's home directory
+ * 2. Expand glob patterns (both relative and absolute) via `node:fs.globSync`
+ * 3. Filter out paths that don't exist on disk
+ * 4. Deduplicate entries where a parent directory already covers a child
  */
 const resolvePaths = (paths: ReadonlyArray<string>): ReadonlyArray<string> => {
-	const resolved: string[] = [];
-	for (const p of paths) {
-		if (isAbsolute(p)) {
-			resolved.push(p);
+	const home = process.env.HOME || homedir();
+	const expanded: string[] = [];
+
+	for (const raw of paths) {
+		// Step 1: Resolve tilde
+		const p = raw.startsWith("~/") ? join(home, raw.slice(2)) : raw === "~" ? home : raw;
+
+		// Step 2: Expand globs or keep literal paths
+		if (hasGlobChars(p)) {
+			expanded.push(...globSync(p));
 		} else {
-			const expanded = globSync(p);
-			resolved.push(...expanded);
+			expanded.push(p);
 		}
 	}
-	return resolved;
+
+	// Step 3: Filter non-existent paths
+	const existing = expanded.filter((p) => existsSync(p));
+
+	// Step 4: Deduplicate — remove entries where a parent directory is already listed
+	// Sort shortest-first so parents come before children
+	const sorted = [...existing].sort((a, b) => a.length - b.length);
+	const result: string[] = [];
+	for (const p of sorted) {
+		const coveredByParent = result.some((parent) => p.startsWith(`${parent}/`));
+		if (!coveredByParent) {
+			result.push(p);
+		}
+	}
+
+	return result;
 };
 
 /**
