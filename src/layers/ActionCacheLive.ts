@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { statSync, unlinkSync } from "node:fs";
+import { globSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import { Effect, Layer, Option, Schedule } from "effect";
 import { ActionCacheError } from "../errors/ActionCacheError.js";
@@ -111,13 +111,36 @@ const twirpCall = <T>(
 	});
 
 /**
+ * Resolve cache paths by expanding glob patterns to real filesystem paths.
+ * Absolute paths are kept as-is; relative patterns (containing glob chars)
+ * are expanded via `node:fs.globSync`.
+ */
+const resolvePaths = (paths: ReadonlyArray<string>): ReadonlyArray<string> => {
+	const resolved: string[] = [];
+	for (const p of paths) {
+		if (isAbsolute(p)) {
+			resolved.push(p);
+		} else {
+			const expanded = globSync(p);
+			resolved.push(...expanded);
+		}
+	}
+	return resolved;
+};
+
+/**
  * Create a tar.gz archive of the given paths.
+ * Glob patterns are expanded to real paths before invoking tar.
  */
 const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 	Effect.try({
 		try: () => {
+			const resolved = resolvePaths(paths);
+			if (resolved.length === 0) {
+				throw new Error("No files matched the provided cache paths");
+			}
 			const archivePath = join(tmpdir(), `cache-${randomUUID()}.tar.gz`);
-			execFileSync("tar", ["czf", archivePath, ...paths], { stdio: "pipe" });
+			execFileSync("tar", ["czf", archivePath, ...resolved], { stdio: "pipe" });
 			return archivePath;
 		},
 		catch: (error) =>

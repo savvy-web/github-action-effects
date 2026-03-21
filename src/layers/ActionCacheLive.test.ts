@@ -32,15 +32,17 @@ vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
 	return {
 		...actual,
+		globSync: vi.fn(),
 		statSync: vi.fn(),
 		unlinkSync: vi.fn(),
 	};
 });
 
 import { execFileSync } from "node:child_process";
-import { statSync, unlinkSync } from "node:fs";
+import { globSync, statSync, unlinkSync } from "node:fs";
 
 const mockedExecFileSync = vi.mocked(execFileSync);
+const mockedGlobSync = vi.mocked(globSync);
 const mockedStatSync = vi.mocked(statSync);
 const mockedUnlinkSync = vi.mocked(unlinkSync);
 
@@ -97,6 +99,7 @@ describe("ActionCacheLive", () => {
 				mockedExecFileSync.mockReturnValue(Buffer.from(""));
 				mockedStatSync.mockReturnValue({ size: 100 } as ReturnType<typeof statSync>);
 				mockedUnlinkSync.mockReturnValue(undefined);
+				mockedGlobSync.mockImplementation((pattern) => [pattern] as unknown as string[]);
 				mockUploadFile.mockResolvedValue(undefined);
 				mockDownloadToFile.mockResolvedValue(undefined);
 			});
@@ -105,6 +108,54 @@ describe("ActionCacheLive", () => {
 				delete process.env.ACTIONS_RESULTS_URL;
 				delete process.env.ACTIONS_RUNTIME_TOKEN;
 				vi.clearAllMocks();
+			});
+
+			it("expands glob patterns before passing to tar", async () => {
+				const fetchSpy = vi.spyOn(globalThis, "fetch");
+				fetchSpy.mockResolvedValueOnce(
+					makeTwirpResponse(200, { ok: true, signedUploadUrl: "https://azure.example.com/upload" }),
+				);
+				fetchSpy.mockResolvedValueOnce(makeTwirpResponse(200, { ok: true, entryId: "entry-1" }));
+
+				mockedGlobSync.mockReturnValueOnce(["project/.yarn/cache"] as unknown as string[]);
+				mockedGlobSync.mockReturnValueOnce(["project/node_modules"] as unknown as string[]);
+
+				const exit = await runLiveExit(
+					Effect.flatMap(ActionCache, (svc) =>
+						svc.save(["/home/runner/.cache", "**/.yarn/cache", "**/node_modules"], "glob-key"),
+					),
+				);
+
+				expect(Exit.isSuccess(exit)).toBe(true);
+
+				// globSync should be called for the two glob patterns, not the absolute path
+				expect(mockedGlobSync).toHaveBeenCalledTimes(2);
+				expect(mockedGlobSync).toHaveBeenCalledWith("**/.yarn/cache");
+				expect(mockedGlobSync).toHaveBeenCalledWith("**/node_modules");
+
+				// tar should receive the resolved paths, not the glob patterns
+				const tarArgs = mockedExecFileSync.mock.calls[0]?.[1] as string[];
+				expect(tarArgs).toContain("/home/runner/.cache");
+				expect(tarArgs).toContain("project/.yarn/cache");
+				expect(tarArgs).toContain("project/node_modules");
+				expect(tarArgs).not.toContain("**/.yarn/cache");
+				expect(tarArgs).not.toContain("**/node_modules");
+
+				fetchSpy.mockRestore();
+			});
+
+			it("fails when all glob patterns resolve to zero files", async () => {
+				mockedGlobSync.mockImplementation(() => [] as unknown as string[]);
+
+				const exit = await runLiveExit(
+					Effect.flatMap(ActionCache, (svc) => svc.save(["**/nonexistent"], "empty-glob-key")),
+				);
+
+				expect(Exit.isFailure(exit)).toBe(true);
+				const error = extractError(exit as Exit.Exit<unknown, ActionCacheError>);
+				expect(error?._tag).toBe("ActionCacheError");
+				expect(error?.operation).toBe("save");
+				expect(error?.reason).toContain("No files matched");
 			});
 
 			it("succeeds with full CreateCacheEntry → upload → FinalizeCacheEntry flow", async () => {
