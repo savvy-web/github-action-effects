@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { get as httpsGet } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Option } from "effect";
@@ -7,6 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolInstallerError } from "../errors/ToolInstallerError.js";
 import { ToolInstaller } from "../services/ToolInstaller.js";
 import { ToolInstallerLive } from "./ToolInstallerLive.js";
+
+vi.mock("node:https", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:https")>();
+	return { ...actual, default: actual, get: vi.fn(actual.get) };
+});
 
 const run = <A, E>(effect: Effect.Effect<A, E, ToolInstaller>) =>
 	Effect.runPromise(Effect.provide(effect, ToolInstallerLive));
@@ -103,15 +109,23 @@ describe("ToolInstallerLive", () => {
 		});
 
 		it("fails with ToolInstallerError when HTTP response is not ok", async () => {
-			vi.stubGlobal(
-				"fetch",
-				vi.fn().mockResolvedValue({
-					ok: false,
-					status: 404,
-					statusText: "Not Found",
-					body: null,
-				}),
-			);
+			const { PassThrough } = await import("node:stream");
+
+			const mockResponse = new PassThrough();
+			Object.assign(mockResponse, { statusCode: 404, headers: {} });
+
+			const mockedGet = vi.mocked(httpsGet);
+			mockedGet.mockImplementation((...args: unknown[]) => {
+				const cb = args.find((a) => typeof a === "function") as (res: InstanceType<typeof PassThrough>) => void;
+				process.nextTick(() => cb(mockResponse));
+				const req = new PassThrough();
+				Object.assign(req, {
+					setTimeout: vi.fn(),
+					on: vi.fn().mockReturnThis(),
+					destroy: vi.fn(),
+				});
+				return req as unknown as import("node:http").ClientRequest;
+			});
 
 			const error = await runFail(
 				Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")),
@@ -121,46 +135,27 @@ describe("ToolInstallerLive", () => {
 			expect(error.reason).toContain("HTTP 404");
 		});
 
-		it("fails with ToolInstallerError when response body is empty", async () => {
-			vi.stubGlobal(
-				"fetch",
-				vi.fn().mockResolvedValue({
-					ok: true,
-					status: 200,
-					statusText: "OK",
-					body: null,
-				}),
-			);
-
-			const error = await runFail(
-				Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")),
-			);
-
-			expect(error.operation).toBe("download");
-			expect(error.reason).toContain("Response body is empty");
-		});
-
 		it("downloads a file successfully to a temp path", async () => {
-			// Create a small in-memory ReadableStream to mock a real response body
-			const content = "binary content data";
-			const encoder = new TextEncoder();
-			const bytes = encoder.encode(content);
-			const stream = new ReadableStream({
-				start(controller) {
-					controller.enqueue(bytes);
-					controller.close();
-				},
-			});
+			const { PassThrough } = await import("node:stream");
 
-			vi.stubGlobal(
-				"fetch",
-				vi.fn().mockResolvedValue({
-					ok: true,
-					status: 200,
-					statusText: "OK",
-					body: stream,
-				}),
-			);
+			const mockResponse = new PassThrough();
+			Object.assign(mockResponse, { statusCode: 200, headers: {} });
+
+			const mockedGet = vi.mocked(httpsGet);
+			mockedGet.mockImplementation((...args: unknown[]) => {
+				const cb = args.find((a) => typeof a === "function") as (res: InstanceType<typeof PassThrough>) => void;
+				process.nextTick(() => cb(mockResponse));
+				process.nextTick(() => {
+					mockResponse.end("binary content data");
+				});
+				const req = new PassThrough();
+				Object.assign(req, {
+					setTimeout: vi.fn(),
+					on: vi.fn().mockReturnThis(),
+					destroy: vi.fn(),
+				});
+				return req as unknown as import("node:http").ClientRequest;
+			});
 
 			const result = await run(Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")));
 
