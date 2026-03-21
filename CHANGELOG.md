@@ -1,5 +1,13 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.5
+
+### Bug Fixes
+
+* [`1784de5`](https://github.com/savvy-web/github-action-effects/commit/1784de503919abbaf58c2593fda28ec318c6f511) Use snake\_case field names in Twirp cache protocol requests and responses to match the protobuf wire format. Fixes #69.
+
+- [`1749567`](https://github.com/savvy-web/github-action-effects/commit/1749567d1bf0e0d31904fd9230c323625376cc87) Resolve tilde paths, expand absolute glob patterns, filter non-existent paths, and deduplicate parent/child entries before passing cache paths to tar. Fixes #68.
+
 ## 0.11.4
 
 ### Bug Fixes
