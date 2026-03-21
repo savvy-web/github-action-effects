@@ -3,7 +3,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, globSync, statSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { platform } from "node:process";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import { Effect, Layer, Option, Schedule } from "effect";
 import { ActionCacheError } from "../errors/ActionCacheError.js";
@@ -169,13 +168,6 @@ const resolvePaths = (paths: ReadonlyArray<string>): ReadonlyArray<string> => {
 };
 
 /**
- * Extra tar flags needed on Windows:
- * - `--force-local` prevents colons in paths (e.g. `C:\...`) from being
- *    interpreted as remote host indicators.
- */
-const windowsTarFlags = (): string[] => (platform === "win32" ? ["--force-local"] : []);
-
-/**
  * Create a tar.gz archive of the given paths.
  * Glob patterns are expanded to real paths before invoking tar.
  */
@@ -187,7 +179,7 @@ const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 				throw new Error("No files matched the provided cache paths");
 			}
 			const archivePath = join(tmpdir(), `cache-${randomUUID()}.tar.gz`);
-			execFileSync("tar", ["czf", archivePath, ...windowsTarFlags(), ...resolved], { stdio: "pipe" });
+			execFileSync("tar", ["czf", archivePath, ...resolved], { stdio: "pipe" });
 			return archivePath;
 		},
 		catch: (error) =>
@@ -205,7 +197,7 @@ const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 const extractArchive = (archivePath: string, key: string) =>
 	Effect.try({
 		try: () => {
-			execFileSync("tar", ["xzf", archivePath, ...windowsTarFlags()], { stdio: "pipe" });
+			execFileSync("tar", ["xzf", archivePath], { stdio: "pipe" });
 		},
 		catch: (error) =>
 			new ActionCacheError({
