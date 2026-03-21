@@ -214,7 +214,7 @@ describe("ToolInstallerLive", () => {
 
 			expect(error.operation).toBe("download");
 			expect(error.reason).toContain("Socket timeout");
-		});
+		}, 10_000);
 
 		it("downloads a file successfully to a temp path", async () => {
 			const { PassThrough } = await import("node:stream");

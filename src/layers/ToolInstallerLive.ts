@@ -108,8 +108,9 @@ const httpRequest = (url: string, redirectCount = 0): Effect.Effect<string, Tool
 
 			if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
 				response.resume();
-				const location = response.headers.location as string;
-				resume(Effect.suspend(() => httpRequest(location, redirectCount + 1)));
+				req.removeAllListeners("error");
+				const resolvedLocation = new URL(response.headers.location as string, url).toString();
+				resume(Effect.suspend(() => httpRequest(resolvedLocation, redirectCount + 1)));
 				return;
 			}
 
