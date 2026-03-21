@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-20
-last-synced: 2026-03-20
+updated: 2026-03-21
+last-synced: 2026-03-21
 completeness: 95
 related:
   - ./index.md
@@ -256,24 +256,28 @@ ActionState.get(key, schema)
   -> typed value | ActionStateError
 ```
 
-### Cache Flow
+### Cache Flow (V2 Twirp Protocol)
 
 ```text
 ActionCache.save(paths, key)
-  -> Read ACTIONS_CACHE_URL + ACTIONS_RUNTIME_TOKEN from env
+  -> Read ACTIONS_RESULTS_URL + ACTIONS_RUNTIME_TOKEN from env
   -> execFileSync("tar", ["czf", archivePath, ...paths])
-  -> POST reserve cache entry
-  -> PATCH upload chunks (32 MB max)
-  -> POST commit cache
+  -> Twirp CreateCacheEntry (key, version hash)
+  -> Azure Blob BlockBlobClient.uploadFile() (64 MB chunks, 8 concurrent)
+  -> Twirp FinalizeCacheEntryUpload (key, size, version hash)
   -> cleanup temp archive
 
 ActionCache.restore(paths, primaryKey, restoreKeys?)
-  -> GET cache lookup with keys + version hash
-  -> 204 or miss → Option.none()
-  -> fetch archive from archiveLocation
+  -> Twirp GetCacheEntryDownloadURL with keys + version hash
+  -> miss → Option.none()
+  -> Azure Blob BlobClient.downloadToFile() from signed URL
   -> execFileSync("tar", ["xzf", archivePath])
   -> cleanup temp archive
   -> Option.some(matchedKey)
+
+Version hash: sha256(paths.join("|") + "|gzip|1.0")
+Retry: exponential backoff (3s base, 1.5x, 5 attempts) on 5xx/network for Twirp;
+       Azure SDK handles its own retries internally.
 ```
 
 ### Permission Check Flow

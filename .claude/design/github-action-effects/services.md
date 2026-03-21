@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-20
-last-synced: 2026-03-20
+updated: 2026-03-21
+last-synced: 2026-03-21
 completeness: 95
 related:
   - ./index.md
@@ -51,7 +51,7 @@ by `ActionsLogger`.
 │   ├── ActionOutputs       — Typed output setting and step summaries
 │   ├── ActionState         — Schema-serialized state for multi-phase actions
 │   ├── ActionEnvironment   — Schema-validated GitHub/Runner context variables
-│   └── ActionCache         — Cache save/restore via native fetch (ACTIONS_CACHE_URL)
+│   └── ActionCache         — Cache save/restore via V2 Twirp protocol (ACTIONS_RESULTS_URL)
 │
 ├── Git Operations
 │   ├── GitBranch           — Branch management via Git Data API
@@ -196,16 +196,20 @@ Read-only, schema-validated access to GitHub Actions context variables.
 
 ### ActionCache Service
 
-Cache save/restore using the internal GitHub Actions cache protocol directly
-via native `fetch`. Reads `ACTIONS_CACHE_URL` and `ACTIONS_RUNTIME_TOKEN`
-from the environment. No dependency on `@actions/cache`.
+Cache save/restore using the GitHub Actions V2 Twirp RPC protocol at
+`ACTIONS_RESULTS_URL/twirp/github.actions.results.api.v1.CacheService/`.
+Reads `ACTIONS_RESULTS_URL` and `ACTIONS_RUNTIME_TOKEN` from the environment.
+Uses `@azure/storage-blob` for Azure Blob Storage upload/download. No
+dependency on `@actions/cache`.
 
 **Interface:**
 
-- `save(paths, key)` -- Create tar.gz archive of paths, upload via chunked
-  protocol (reserve, upload chunks, commit)
-- `restore(paths, primaryKey, restoreKeys?)` -- Look up cache entry, download
-  archive, extract. Returns `Option<string>` (matched key or none on miss)
+- `save(paths, key)` -- Create tar.gz archive of paths, upload via
+  `CreateCacheEntry` + Azure Blob `BlockBlobClient.uploadFile()` +
+  `FinalizeCacheEntryUpload`
+- `restore(paths, primaryKey, restoreKeys?)` -- Look up cache entry via
+  `GetCacheEntryDownloadURL`, download via Azure Blob `BlobClient.downloadToFile()`,
+  extract. Returns `Option<string>` (matched key or none on miss)
 
 **Error type:** `ActionCacheError`
 

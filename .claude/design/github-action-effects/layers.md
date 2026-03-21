@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-20
-last-synced: 2026-03-20
+updated: 2026-03-21
+last-synced: 2026-03-21
 completeness: 95
 related:
   - ./index.md
@@ -29,9 +29,9 @@ This document describes the layer architecture for all services. Each domain
 service has a `Live` layer and a `Test` layer backed by in-memory state for
 unit testing. All `@actions/*` packages have been removed. The runtime layer
 (`src/runtime/`) provides native implementations of the GitHub Actions
-protocol. Only two Live layers import external packages directly:
-`GitHubClientLive` imports `@octokit/rest` and `OctokitAuthAppLive` imports
-`@octokit/auth-app`.
+protocol. Three Live layers import external packages directly:
+`GitHubClientLive` imports `@octokit/rest`, `OctokitAuthAppLive` imports
+`@octokit/auth-app`, and `ActionCacheLive` imports `@azure/storage-blob`.
 
 ---
 
@@ -64,9 +64,10 @@ Core Action I/O:
   ActionEnvironmentLive    — Layer.succeed; reads from process.env, lazy context construction
   ActionEnvironmentTest    — reads from provided Record<string, string>
 
-  ActionCacheLive          — Layer.succeed; uses native fetch with ACTIONS_CACHE_URL +
-                             ACTIONS_RUNTIME_TOKEN. Creates tar.gz archives via
-                             execFileSync("tar"). Chunked upload protocol.
+  ActionCacheLive          — Layer.succeed; uses V2 Twirp RPC protocol with
+                             ACTIONS_RESULTS_URL + ACTIONS_RUNTIME_TOKEN.
+                             Creates tar.gz archives via execFileSync("tar").
+                             Uses @azure/storage-blob for Azure Blob upload/download.
   ActionCacheTest           — in-memory Map for cache simulation (always-miss when empty)
 
 Git Operations:
@@ -162,10 +163,11 @@ Platform:
 
 ## Import Pattern
 
-Only two Live layers import external packages directly:
+Three Live layers import external packages directly:
 
 - `GitHubClientLive` -- `import { Octokit } from "@octokit/rest"`
 - `OctokitAuthAppLive` -- `import { createAppAuth } from "@octokit/auth-app"`
+- `ActionCacheLive` -- `import { BlobClient, BlockBlobClient } from "@azure/storage-blob"`
 
 All other Live layers either have no external imports or depend on Effect
 services via `Layer.effect` and `yield*`. The runtime layer modules
@@ -179,7 +181,7 @@ interact directly with process environment, stdout, or Node.js built-ins:
 - `ActionEnvironmentLive` -- reads from `process.env`
 - `CommandRunnerLive` -- uses `node:child_process` spawn
 - `ToolInstallerLive` -- uses `node:https`/`node:http` + `node:child_process` + `node:fs/promises`
-- `ActionCacheLive` -- uses native fetch + `node:child_process` execFileSync
+- `ActionCacheLive` -- uses V2 Twirp RPC + `@azure/storage-blob` + `node:child_process` execFileSync
 
 ---
 
@@ -221,10 +223,15 @@ Schema encode/decode via shared `decodeState`/`encodeState` helpers.
 
 ### ActionCacheLive
 
-`Layer.Layer<ActionCache>`. No service dependencies. Reads `ACTIONS_CACHE_URL`
+`Layer.Layer<ActionCache>`. No service dependencies. Reads `ACTIONS_RESULTS_URL`
 and `ACTIONS_RUNTIME_TOKEN` from environment. Uses `execFileSync("tar")` for
-archive creation/extraction. Three-step protocol: reserve cache, upload
-chunks (32 MB max), commit cache. Download uses native `fetch`.
+archive creation/extraction. V2 Twirp RPC protocol: `CreateCacheEntry` to
+reserve, Azure Blob `BlockBlobClient.uploadFile()` for upload (64 MB chunks,
+8 concurrent), `FinalizeCacheEntryUpload` to commit. Restore uses
+`GetCacheEntryDownloadURL` then Azure Blob `BlobClient.downloadToFile()`.
+Version hash: `sha256(paths.join("|") + "|gzip|1.0")`. Exponential backoff
+retry (3s base, 1.5x, 5 attempts) on 5xx and network errors for Twirp calls;
+Azure SDK handles its own retries internally.
 
 ### GitHubClientLive
 
@@ -350,13 +357,14 @@ do NOT depend on GitHubClient -- they operate entirely in-memory.
 
 ```text
 Tier 0 — No service dependencies (use Node.js built-ins / native APIs directly):
-  ActionLogger, ActionEnvironment, ActionCache, CommandRunner,
+  ActionLogger, ActionEnvironment, CommandRunner,
   ToolInstaller, DryRun,
   GithubMarkdown, SemverResolver, ErrorAccumulator, ReportBuilder
 
 Tier 0 — External package import (no service dependencies):
   OctokitAuthApp            <- imports @octokit/auth-app
   GitHubClient              <- imports @octokit/rest, reads GITHUB_TOKEN from env
+  ActionCache               <- imports @azure/storage-blob, reads ACTIONS_RESULTS_URL from env
 
 Tier 0.5 — Depends on FileSystem (from @effect/platform):
   ActionOutputs             <- depends on FileSystem

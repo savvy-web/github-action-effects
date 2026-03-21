@@ -5,8 +5,8 @@ import type { ActionCacheError } from "../errors/ActionCacheError.js";
 /**
  * Service for GitHub Actions cache operations.
  *
- * Uses the internal GitHub Actions cache protocol directly via native `fetch`,
- * with no dependency on `@actions/cache`.
+ * Uses the V2 Twirp cache protocol at ACTIONS_RESULTS_URL with Azure Blob
+ * Storage for uploads/downloads. No dependency on `@actions/cache`.
  *
  * @public
  */

@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-20
-last-synced: 2026-03-20
+updated: 2026-03-21
+last-synced: 2026-03-21
 completeness: 95
 related:
   - ./index.md
@@ -169,9 +169,9 @@ STATE_* env vars.
 **ActionEnvironment** -- get/getOptional for individual env vars, github/runner
 lazy accessors with schema validation, missing var errors.
 
-**ActionCache** -- save/restore with the internal cache protocol, archive
-creation/extraction, chunked upload, cache miss handling. Test layer
-in-memory Map.
+**ActionCache** -- save/restore with the V2 Twirp cache protocol, archive
+creation/extraction, Azure Blob upload/download, cache miss handling. Test
+layer in-memory Map.
 
 ### Git Operations
 

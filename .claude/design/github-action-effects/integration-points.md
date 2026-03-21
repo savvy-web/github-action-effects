@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-20
-last-synced: 2026-03-20
+updated: 2026-03-21
+last-synced: 2026-03-21
 completeness: 95
 related:
   - ./index.md
@@ -45,6 +45,7 @@ PackagePublish) depend on `FileSystem` from `@effect/platform`.
 | --- | --- | --- |
 | `@octokit/rest` | GitHub REST + GraphQL API client | `GitHubClientLive` |
 | `@octokit/auth-app` | GitHub App JWT authentication | `OctokitAuthAppLive` |
+| `@azure/storage-blob` | Azure Blob Storage upload/download for cache | `ActionCacheLive` |
 | `jsonc-effect` | JSONC parsing with Effect | `ConfigLoaderLive` |
 | `semver-effect` | Semver operations with Effect | `SemverResolver` |
 | `yaml-effect` | YAML parsing with Effect | `ConfigLoaderLive` |
@@ -70,7 +71,7 @@ GitHub Actions runtime protocol natively:
 | `@actions/core` summary | Direct write to `$GITHUB_STEP_SUMMARY` file |
 | `@actions/exec` | `node:child_process` spawn |
 | `@actions/github` getOctokit | Direct `@octokit/rest` instantiation |
-| `@actions/cache` | Native `fetch` with ACTIONS_CACHE_URL protocol |
+| `@actions/cache` | V2 Twirp RPC protocol + `@azure/storage-blob` at ACTIONS_RESULTS_URL |
 | `@actions/tool-cache` | Native `fetch` + `node:child_process` + `node:fs/promises` |
 
 ---
@@ -109,13 +110,16 @@ name uppercased and spaces replaced by underscores. Hyphens are preserved.
 Implemented in `src/runtime/ActionsConfigProvider.ts` as an Effect
 `ConfigProvider`.
 
-### Cache Protocol
+### Cache Protocol (V2 Twirp)
 
-The internal cache API at `ACTIONS_CACHE_URL` with `ACTIONS_RUNTIME_TOKEN`
-authentication. Three-step save (reserve, upload chunks, commit) and
-lookup-based restore.
+The V2 cache API at `ACTIONS_RESULTS_URL` with `ACTIONS_RUNTIME_TOKEN`
+authentication. Uses the Twirp RPC service at
+`/twirp/github.actions.results.api.v1.CacheService/`. Three-step save
+(`CreateCacheEntry`, Azure Blob upload, `FinalizeCacheEntryUpload`) and
+`GetCacheEntryDownloadURL`-based restore via Azure Blob download.
 
-Implemented in `src/layers/ActionCacheLive.ts` using native `fetch`.
+Implemented in `src/layers/ActionCacheLive.ts` using native `fetch` for
+Twirp RPC calls and `@azure/storage-blob` for Azure Blob Storage transfers.
 
 ---
 
@@ -125,7 +129,7 @@ Implemented in `src/layers/ActionCacheLive.ts` using native `fetch`.
 Tier 0 — No service dependencies:
   ActionLogger              (uses WorkflowCommand, Effect Logger)
   ActionEnvironment         (reads process.env)
-  ActionCache               (native fetch + tar)
+  ActionCache               (V2 Twirp RPC + @azure/storage-blob + tar)
   CommandRunner             (node:child_process spawn)
   ToolInstaller             (native fetch + spawn + fs)
   DryRun                    (pure logic)
@@ -268,8 +272,9 @@ with `@vercel/ncc`, which requires static imports (no dynamic `import()`).
 All dependencies and service tiers are documented with a complete dependency
 graph. The `@actions/*` packages have been fully replaced with native
 implementations. `ActionsRuntime.Default` is the single integration point
-for wiring the runtime layer. `@octokit/rest` and `@octokit/auth-app` are
-the only external runtime dependencies (besides Effect peers).
+for wiring the runtime layer. `@octokit/rest`, `@octokit/auth-app`, and
+`@azure/storage-blob` are the only external runtime dependencies (besides
+Effect peers).
 
 ## Rationale
 
