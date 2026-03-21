@@ -133,6 +133,7 @@ describe("ToolInstallerLive", () => {
 
 			expect(error.operation).toBe("download");
 			expect(error.reason).toContain("HTTP 404");
+			expect(error.statusCode).toBe(404);
 		});
 
 		it("follows HTTP redirects", async () => {

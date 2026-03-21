@@ -17,4 +17,7 @@ export class ToolInstallerError extends Data.TaggedError("ToolInstallerError")<{
 
 	/** Human-readable description. */
 	readonly reason: string;
+
+	/** HTTP status code, when the failure is HTTP-driven. */
+	readonly statusCode?: number | undefined;
 }> {}

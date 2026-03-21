@@ -123,6 +123,7 @@ const httpRequest = (url: string, redirectCount = 0): Effect.Effect<string, Tool
 							version: "unknown",
 							operation: "download",
 							reason: `Failed to download ${url}: HTTP ${statusCode}`,
+							statusCode,
 						}),
 					),
 				);
@@ -186,16 +187,17 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 		httpRequest(url).pipe(
 			Effect.retry(
 				Schedule.intersect(Schedule.exponential("1 second"), Schedule.recurs(2)).pipe(
-					Schedule.whileInput(
-						(error: ToolInstallerError) =>
-							error.reason.includes("HTTP 5") ||
-							error.reason.includes("HTTP 408") ||
-							error.reason.includes("HTTP 429") ||
+					Schedule.whileInput((error: ToolInstallerError) => {
+						if (error.statusCode !== undefined) {
+							return error.statusCode >= 500 || error.statusCode === 408 || error.statusCode === 429;
+						}
+						return (
 							error.reason.includes("Socket timeout") ||
 							error.reason.includes("ECONNRESET") ||
 							error.reason.includes("ECONNREFUSED") ||
-							error.reason.includes("ETIMEDOUT"),
-					),
+							error.reason.includes("ETIMEDOUT")
+						);
+					}),
 				),
 			),
 		),
