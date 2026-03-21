@@ -96,9 +96,9 @@ describe("ActionCacheLive", () => {
 
 		describe("with env vars set", () => {
 			beforeEach(() => {
-				process.env.ACTIONS_RESULTS_URL = "https://results.example.com/";
-				process.env.ACTIONS_RUNTIME_TOKEN = "test-token";
-				process.env.HOME = "/home/runner";
+				vi.stubEnv("ACTIONS_RESULTS_URL", "https://results.example.com/");
+				vi.stubEnv("ACTIONS_RUNTIME_TOKEN", "test-token");
+				vi.stubEnv("HOME", "/home/runner");
 				mockedExecFileSync.mockReturnValue(Buffer.from(""));
 				mockedStatSync.mockReturnValue({ size: 100 } as ReturnType<typeof statSync>);
 				mockedUnlinkSync.mockReturnValue(undefined);
@@ -109,9 +109,7 @@ describe("ActionCacheLive", () => {
 			});
 
 			afterEach(() => {
-				delete process.env.ACTIONS_RESULTS_URL;
-				delete process.env.ACTIONS_RUNTIME_TOKEN;
-				delete process.env.HOME;
+				vi.unstubAllEnvs();
 				vi.clearAllMocks();
 			});
 
@@ -422,8 +420,8 @@ describe("ActionCacheLive", () => {
 
 		describe("with env vars set", () => {
 			beforeEach(() => {
-				process.env.ACTIONS_RESULTS_URL = "https://results.example.com/";
-				process.env.ACTIONS_RUNTIME_TOKEN = "test-token";
+				vi.stubEnv("ACTIONS_RESULTS_URL", "https://results.example.com/");
+				vi.stubEnv("ACTIONS_RUNTIME_TOKEN", "test-token");
 				mockedExecFileSync.mockReturnValue(Buffer.from(""));
 				mockedUnlinkSync.mockReturnValue(undefined);
 				mockUploadFile.mockResolvedValue(undefined);
@@ -431,8 +429,7 @@ describe("ActionCacheLive", () => {
 			});
 
 			afterEach(() => {
-				delete process.env.ACTIONS_RESULTS_URL;
-				delete process.env.ACTIONS_RUNTIME_TOKEN;
+				vi.unstubAllEnvs();
 				vi.clearAllMocks();
 			});
 
@@ -607,11 +604,13 @@ describe("version hash", () => {
 	};
 
 	it("sends version matching @actions/cache format (paths|gzip|1.0)", async () => {
-		process.env.ACTIONS_RESULTS_URL = "https://results.example.com/";
-		process.env.ACTIONS_RUNTIME_TOKEN = "test-token";
+		vi.stubEnv("ACTIONS_RESULTS_URL", "https://results.example.com/");
+		vi.stubEnv("ACTIONS_RUNTIME_TOKEN", "test-token");
 		vi.mocked(execFileSync).mockReturnValue(Buffer.from(""));
 		vi.mocked(statSync).mockReturnValue({ size: 100 } as ReturnType<typeof statSync>);
 		vi.mocked(unlinkSync).mockReturnValue(undefined);
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(globSync).mockImplementation((pattern) => [pattern] as unknown as string[]);
 		mockUploadFile.mockResolvedValue(undefined);
 
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -628,8 +627,7 @@ describe("version hash", () => {
 		expect(body.version).toBe(expectedVersion);
 
 		fetchSpy.mockRestore();
-		delete process.env.ACTIONS_RESULTS_URL;
-		delete process.env.ACTIONS_RUNTIME_TOKEN;
+		vi.unstubAllEnvs();
 	});
 
 	it("version is NOT order-independent (matches upstream behavior)", () => {
