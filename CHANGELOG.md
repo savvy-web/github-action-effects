@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.7
+
+### Bug Fixes
+
+* [`2a3a4f6`](https://github.com/savvy-web/github-action-effects/commit/2a3a4f67eda185d3ac7eb8b56f2cf269ad769219) Remove `--overwrite` flag from tar extraction — bsdtar (used on macOS and Windows runners) does not support it, and both GNU tar and bsdtar overwrite by default. Fixes #71.
+
 ## 0.11.6
 
 ### Bug Fixes
