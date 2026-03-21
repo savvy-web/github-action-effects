@@ -1,218 +1,151 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 import { ToolInstallerTest } from "../layers/ToolInstallerTest.js";
 import { ToolInstaller } from "./ToolInstaller.js";
 
-const provide = <A, E>(state: ReturnType<typeof ToolInstallerTest.empty>, effect: Effect.Effect<A, E, ToolInstaller>) =>
-	Effect.provide(effect, ToolInstallerTest.layer(state));
-
 const run = <A, E>(state: ReturnType<typeof ToolInstallerTest.empty>, effect: Effect.Effect<A, E, ToolInstaller>) =>
-	Effect.runPromise(provide(state, effect));
+	Effect.runPromise(Effect.provide(effect, ToolInstallerTest.layer(state)));
 
 describe("ToolInstaller", () => {
-	describe("install", () => {
-		it("returns a deterministic path and records in state", async () => {
+	describe("find", () => {
+		it("returns Option.none() for uncached tools", async () => {
 			const state = ToolInstallerTest.empty();
 
 			const result = await run(
 				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.install("node", "20.0.0", "https://example.com/node.tar.gz")),
+				Effect.flatMap(ToolInstaller, (svc) => svc.find("node", "20.0.0")),
+			);
+
+			expect(Option.isNone(result)).toBe(true);
+			expect(state.findCalls).toHaveLength(1);
+			expect(state.findCalls[0]).toEqual({ tool: "node", version: "20.0.0" });
+		});
+
+		it("returns Option.some(path) for cached tools", async () => {
+			const state = ToolInstallerTest.empty();
+			state.cachedTools.set("node@20.0.0", "/tools/node/20.0.0");
+
+			const result = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.find("node", "20.0.0")),
+			);
+
+			expect(Option.isSome(result)).toBe(true);
+			expect(Option.getOrThrow(result)).toBe("/tools/node/20.0.0");
+		});
+	});
+
+	describe("download", () => {
+		it("records the download call and returns a path", async () => {
+			const state = ToolInstallerTest.empty();
+
+			const result = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")),
+			);
+
+			expect(result).toContain("tool.tar.gz");
+			expect(state.downloadCalls).toHaveLength(1);
+			expect(state.downloadCalls[0]).toEqual({ url: "https://example.com/tool.tar.gz" });
+		});
+	});
+
+	describe("extractTar", () => {
+		it("records call and returns destination", async () => {
+			const state = ToolInstallerTest.empty();
+
+			const result = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.extractTar("/tmp/archive.tar.gz", "/tmp/out")),
+			);
+
+			expect(result).toBe("/tmp/out");
+			expect(state.extractTarCalls).toHaveLength(1);
+			expect(state.extractTarCalls[0]).toEqual({ file: "/tmp/archive.tar.gz", dest: "/tmp/out" });
+		});
+
+		it("generates a path when dest is omitted", async () => {
+			const state = ToolInstallerTest.empty();
+
+			const result = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.extractTar("/tmp/archive.tar.gz")),
+			);
+
+			expect(result).toContain("archive.tar.gz");
+			expect(state.extractTarCalls).toHaveLength(1);
+		});
+	});
+
+	describe("extractZip", () => {
+		it("records call and returns destination", async () => {
+			const state = ToolInstallerTest.empty();
+
+			const result = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.extractZip("/tmp/archive.zip", "/tmp/out")),
+			);
+
+			expect(result).toBe("/tmp/out");
+			expect(state.extractZipCalls).toHaveLength(1);
+			expect(state.extractZipCalls[0]).toEqual({ file: "/tmp/archive.zip", dest: "/tmp/out" });
+		});
+	});
+
+	describe("cacheDir", () => {
+		it("records call and returns cached path", async () => {
+			const state = ToolInstallerTest.empty();
+
+			const result = await run(
+				state,
+				Effect.flatMap(ToolInstaller, (svc) => svc.cacheDir("/tmp/extracted", "node", "20.0.0")),
 			);
 
 			expect(result).toBe("/tools/node/20.0.0");
-			expect(state.installed).toHaveLength(1);
-			expect(state.installed[0]).toEqual({ name: "node", version: "20.0.0", path: "/tools/node/20.0.0" });
+			expect(state.cacheDirCalls).toHaveLength(1);
+			expect(state.cacheDirCalls[0]).toEqual({ sourceDir: "/tmp/extracted", tool: "node", version: "20.0.0" });
 		});
 
-		it("appends binSubPath when provided", async () => {
-			const state = ToolInstallerTest.empty();
-
-			const result = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) =>
-					svc.install("node", "20.0.0", "https://example.com/node.tar.gz", { binSubPath: "bin" }),
-				),
-			);
-
-			expect(result).toBe("/tools/node/20.0.0/bin");
-			expect(state.installed[0]?.path).toBe("/tools/node/20.0.0/bin");
-		});
-
-		it("marks tool as cached after install", async () => {
+		it("adds tool to cached tools", async () => {
 			const state = ToolInstallerTest.empty();
 
 			await run(
 				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.install("node", "20.0.0", "https://example.com/node.tar.gz")),
+				Effect.flatMap(ToolInstaller, (svc) => svc.cacheDir("/tmp/extracted", "node", "20.0.0")),
 			);
 
-			const isCached = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.isCached("node", "20.0.0")),
-			);
-			expect(isCached).toBe(true);
+			expect(state.cachedTools.has("node@20.0.0")).toBe(true);
 		});
 	});
 
-	describe("isCached", () => {
-		it("returns true for cached tools", async () => {
-			const state = ToolInstallerTest.empty();
-			state.cached.add("node@20.0.0");
-
-			const result = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.isCached("node", "20.0.0")),
-			);
-			expect(result).toBe(true);
-		});
-
-		it("returns false for uncached tools", async () => {
+	describe("cacheFile", () => {
+		it("records call and returns cached path", async () => {
 			const state = ToolInstallerTest.empty();
 
 			const result = await run(
 				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.isCached("node", "20.0.0")),
-			);
-			expect(result).toBe(false);
-		});
-	});
-
-	describe("installBinary", () => {
-		it("returns base path and records install", async () => {
-			const state = ToolInstallerTest.empty();
-
-			const result = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.installBinary("biome", "1.0.0", "https://example.com/biome")),
+				Effect.flatMap(ToolInstaller, (svc) => svc.cacheFile("/tmp/biome", "biome", "biome", "1.0.0")),
 			);
 
 			expect(result).toBe("/tools/biome/1.0.0");
-			expect(state.installed).toHaveLength(1);
-			expect(state.installed[0]).toEqual({ name: "biome", version: "1.0.0", path: "/tools/biome/1.0.0" });
+			expect(state.cacheFileCalls).toHaveLength(1);
+			expect(state.cacheFileCalls[0]).toEqual({
+				sourceFile: "/tmp/biome",
+				targetFile: "biome",
+				tool: "biome",
+				version: "1.0.0",
+			});
 		});
 
-		it("uses custom binaryName when provided", async () => {
+		it("adds tool to cached tools", async () => {
 			const state = ToolInstallerTest.empty();
 
 			await run(
 				state,
-				Effect.flatMap(ToolInstaller, (svc) =>
-					svc.installBinary("my-tool", "2.0.0", "https://example.com/my-tool-linux", { binaryName: "tool" }),
-				),
+				Effect.flatMap(ToolInstaller, (svc) => svc.cacheFile("/tmp/biome", "biome", "biome", "1.0.0")),
 			);
 
-			expect(state.installed).toHaveLength(1);
-			expect(state.installed[0]?.name).toBe("my-tool");
-		});
-
-		it("marks tool as cached after install", async () => {
-			const state = ToolInstallerTest.empty();
-
-			await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.installBinary("biome", "1.0.0", "https://example.com/biome")),
-			);
-
-			const isCached = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.isCached("biome", "1.0.0")),
-			);
-			expect(isCached).toBe(true);
-		});
-	});
-
-	describe("installBinaryAndAddToPath", () => {
-		it("returns base path, records install, and adds to PATH", async () => {
-			const state = ToolInstallerTest.empty();
-
-			const result = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) =>
-					svc.installBinaryAndAddToPath("biome", "1.0.0", "https://example.com/biome"),
-				),
-			);
-
-			expect(result).toBe("/tools/biome/1.0.0");
-			expect(state.installed).toHaveLength(1);
-			expect(state.addedToPaths).toEqual(["/tools/biome/1.0.0"]);
-		});
-
-		it("uses custom binaryName and adds correct path", async () => {
-			const state = ToolInstallerTest.empty();
-
-			await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) =>
-					svc.installBinaryAndAddToPath("my-tool", "2.0.0", "https://example.com/my-tool", { binaryName: "tool" }),
-				),
-			);
-
-			expect(state.addedToPaths).toEqual(["/tools/my-tool/2.0.0"]);
-		});
-
-		it("marks tool as cached after install", async () => {
-			const state = ToolInstallerTest.empty();
-
-			await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) =>
-					svc.installBinaryAndAddToPath("biome", "1.0.0", "https://example.com/biome"),
-				),
-			);
-
-			const isCached = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.isCached("biome", "1.0.0")),
-			);
-			expect(isCached).toBe(true);
-		});
-	});
-
-	describe("installAndAddToPath", () => {
-		it("returns path, records install, and adds to PATH", async () => {
-			const state = ToolInstallerTest.empty();
-
-			const result = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) =>
-					svc.installAndAddToPath("node", "20.0.0", "https://example.com/node.tar.gz"),
-				),
-			);
-
-			expect(result).toBe("/tools/node/20.0.0");
-			expect(state.installed).toHaveLength(1);
-			expect(state.addedToPaths).toEqual(["/tools/node/20.0.0"]);
-		});
-
-		it("appends binSubPath and adds correct path", async () => {
-			const state = ToolInstallerTest.empty();
-
-			const result = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) =>
-					svc.installAndAddToPath("node", "20.0.0", "https://example.com/node.tar.gz", { binSubPath: "bin" }),
-				),
-			);
-
-			expect(result).toBe("/tools/node/20.0.0/bin");
-			expect(state.addedToPaths).toEqual(["/tools/node/20.0.0/bin"]);
-		});
-
-		it("marks tool as cached after install", async () => {
-			const state = ToolInstallerTest.empty();
-
-			await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) =>
-					svc.installAndAddToPath("node", "20.0.0", "https://example.com/node.tar.gz"),
-				),
-			);
-
-			const isCached = await run(
-				state,
-				Effect.flatMap(ToolInstaller, (svc) => svc.isCached("node", "20.0.0")),
-			);
-			expect(isCached).toBe(true);
+			expect(state.cachedTools.has("biome@1.0.0")).toBe(true);
 		});
 	});
 });

@@ -57,22 +57,18 @@
 		"types:check": "tsgo --noEmit"
 	},
 	"dependencies": {
+		"@octokit/auth-app": "^8.2.0",
+		"@octokit/rest": "^22.0.0",
 		"jsonc-effect": "^0.2.0",
 		"semver-effect": "^0.2.0",
 		"yaml-effect": "^0.2.0"
 	},
 	"devDependencies": {
-		"@actions/cache": "^6.0.0",
-		"@actions/core": "^3.0.0",
-		"@actions/exec": "^3.0.0",
-		"@actions/github": "^9.0.0",
-		"@actions/tool-cache": "^4.0.0",
 		"@effect/cluster": "catalog:silk",
 		"@effect/platform": "catalog:silk",
 		"@effect/platform-node": "catalog:silk",
 		"@effect/rpc": "catalog:silk",
 		"@effect/sql": "catalog:silk",
-		"@octokit/auth-app": "^8.2.0",
 		"@savvy-web/changesets": "^0.5.3",
 		"@savvy-web/commitlint": "^0.4.2",
 		"@savvy-web/lint-staged": "^0.6.1",
@@ -81,35 +77,14 @@
 		"effect": "catalog:silk"
 	},
 	"peerDependencies": {
-		"@actions/cache": "^6.0.0",
-		"@actions/core": "^3.0.0",
-		"@actions/exec": "^3.0.0",
-		"@actions/github": "^9.0.0",
-		"@actions/tool-cache": "^4.0.0",
 		"@effect/cluster": "catalog:silkPeers",
 		"@effect/platform": "catalog:silkPeers",
 		"@effect/platform-node": "catalog:silkPeers",
 		"@effect/rpc": "catalog:silkPeers",
 		"@effect/sql": "catalog:silkPeers",
-		"@octokit/auth-app": "^8.2.0",
 		"effect": "catalog:silkPeers"
 	},
 	"peerDependenciesMeta": {
-		"@actions/cache": {
-			"optional": true
-		},
-		"@actions/core": {
-			"optional": false
-		},
-		"@actions/exec": {
-			"optional": true
-		},
-		"@actions/github": {
-			"optional": true
-		},
-		"@actions/tool-cache": {
-			"optional": true
-		},
 		"@effect/cluster": {
 			"optional": false
 		},
@@ -124,9 +99,6 @@
 		},
 		"@effect/sql": {
 			"optional": false
-		},
-		"@octokit/auth-app": {
-			"optional": true
 		},
 		"effect": {
 			"optional": false

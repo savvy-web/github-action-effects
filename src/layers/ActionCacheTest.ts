@@ -1,5 +1,4 @@
-import { Effect, Layer } from "effect";
-import type { CacheHit } from "../services/ActionCache.js";
+import { Effect, Layer, Option } from "effect";
 import { ActionCache } from "../services/ActionCache.js";
 
 /**
@@ -12,40 +11,27 @@ export interface ActionCacheTestState {
 }
 
 const makeTestCache = (state: ActionCacheTestState): typeof ActionCache.Service => ({
-	save: (key, paths) =>
+	save: (paths, key) =>
 		Effect.sync(() => {
 			state.entries.set(key, [...paths]);
 		}),
 
-	restore: (key, _paths, restoreKeys = []) =>
-		Effect.sync((): CacheHit => {
+	restore: (_paths, primaryKey, restoreKeys = []) =>
+		Effect.sync((): Option.Option<string> => {
 			// Check exact match first
-			if (state.entries.has(key)) {
-				return { hit: true, matchedKey: key };
+			if (state.entries.has(primaryKey)) {
+				return Option.some(primaryKey);
 			}
 			// Check restore keys (prefix match)
 			for (const rk of restoreKeys) {
 				for (const entryKey of state.entries.keys()) {
 					if (entryKey.startsWith(rk)) {
-						return { hit: true, matchedKey: entryKey };
+						return Option.some(entryKey);
 					}
 				}
 			}
-			return { hit: false, matchedKey: undefined };
+			return Option.none();
 		}),
-
-	withCache: (key, paths, effect, _restoreKeys = []) => {
-		const hasExactHit = state.entries.has(key);
-		return Effect.flatMap(effect, (result) => {
-			if (hasExactHit) {
-				return Effect.succeed(result);
-			}
-			return Effect.sync(() => {
-				state.entries.set(key, [...paths]);
-				return result;
-			});
-		});
-	},
 });
 
 /**

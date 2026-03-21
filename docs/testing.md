@@ -3,20 +3,18 @@
 This guide covers how to test GitHub Actions built with
 `@savvy-web/github-action-effects`. Every service in the library ships with a
 companion test layer that captures operations in memory, so your tests never
-call `@actions/core` and never require a real GitHub Actions runner environment.
+need a real GitHub Actions runner environment.
 
 ## Overview
 
 Test layers come in two shapes:
 
-* **Namespace objects** (`ActionLoggerTest`, `ActionOutputsTest`,
+- **Namespace objects** (`ActionLoggerTest`, `ActionOutputsTest`,
   `ActionStateTest`) expose an `empty()` function that creates a mutable state
   container and a `layer()` function that builds an Effect `Layer` backed by
   that state. After running your effect, you inspect the state to verify what
   happened.
-* **Simple function** (`ActionInputsTest`) takes a `Record<string, string>` of
-  input name/value pairs and returns a `Layer` directly. There is no mutable
-  state because inputs are read-only.
+- **Direct layers** (`ActionEnvironmentTest`) return a `Layer` directly.
 
 ## Importing for Tests
 
@@ -24,57 +22,26 @@ Use the `/testing` subpath in all test files:
 
 ```typescript
 import {
-  ActionInputs,
-  ActionInputsTest,
   ActionLogger,
   ActionLoggerTest,
+  ActionOutputs,
+  ActionOutputsTest,
 } from "@savvy-web/github-action-effects/testing"
 ```
 
-**When to use `@savvy-web/github-action-effects/testing`** (test files):
+The `/testing` entry point exports all service tags, test layers, live layers,
+errors, schemas, and utilities -- but **excludes the `Action` namespace**.
+`Action` statically imports runtime components that emit workflow commands,
+which is inappropriate in test environments.
 
-* Provides all service tags, test layers, errors, schemas, and utils
-* Does **not** import `@actions/core`, `@actions/github`, or any other
-  `@actions/*` package — those are only loaded by the platform wrapper Live
-  layers
-* All Live layers (`ActionInputsLive`, `ActionOutputsLive`, etc.) are also
-  exported from `/testing` — they no longer import `@actions/*` directly
-* The platform wrapper service tags (`ActionsCore`, `ActionsGitHub`,
-  `ActionsExec`, `ActionsCache`, `ActionsToolCache`, `OctokitAuthApp`) are
-  exported so you can construct mock platform layers
-
-**When to use `@savvy-web/github-action-effects`** (production code):
-
-* Includes everything from `/testing` plus the platform wrapper Live layers
-  (`ActionsCoreLive`, `ActionsGitHubLive`, etc.), `ActionsPlatformLive`, and
-  the `Action` namespace
-
-**Important:** The `Action` namespace is **not** available from `/testing`.
-`Action` statically imports `ActionsCoreLive` (the live platform wrapper that
-calls `@actions/core` directly), which would defeat the purpose of isolating
-tests from `@actions/*` imports. In production entry points (`main.ts`,
-`pre.ts`, `post.ts`), import from the main package.
-
-## Test Layer APIs
-
-### ActionInputsTest
-
-`ActionInputsTest` is a function that accepts a record mapping input names to
-their string values and returns a `Layer<ActionInputs>`.
+In production entry points (`main.ts`, `pre.ts`, `post.ts`), import from the
+main package:
 
 ```typescript
-import { ActionInputsTest } from "@savvy-web/github-action-effects/testing"
-
-const layer = ActionInputsTest({
-  "package-name": "my-pkg",
-  "token": "ghp_abc",
-})
+import { Action } from "@savvy-web/github-action-effects"
 ```
 
-The returned layer supports all service methods (`get`, `getOptional`,
-`getSecret`, `getJson`, `getMultiline`, `getBoolean`, `getBooleanOptional`).
-Missing keys cause the effect to fail with an `ActionInputError`, and values
-are validated against the provided `Schema` just like the live layer.
+## Test Layer APIs
 
 ### ActionOutputsTest
 
@@ -111,9 +78,6 @@ import { ActionLoggerTest } from "@savvy-web/github-action-effects/testing"
 const state = ActionLoggerTest.empty()
 const layer = ActionLoggerTest.layer(state)
 ```
-
-After running your effect against this layer, inspect `state` to verify
-logging behavior.
 
 **State shape (`ActionLoggerTestState`):**
 
@@ -159,7 +123,6 @@ When your action uses multiple services, merge the test layers together with
 ```typescript
 import { Effect, Layer } from "effect"
 import {
-  ActionInputsTest,
   ActionLoggerTest,
   ActionOutputsTest,
   ActionStateTest,
@@ -170,7 +133,6 @@ const logState = ActionLoggerTest.empty()
 const stateState = ActionStateTest.empty()
 
 const TestLayer = Layer.mergeAll(
-  ActionInputsTest({ "package-name": "my-pkg" }),
   ActionOutputsTest.layer(outputState),
   ActionLoggerTest.layer(logState),
   ActionStateTest.layer(stateState),
@@ -180,113 +142,6 @@ const TestLayer = Layer.mergeAll(
 Then provide the merged layer to any effect that requires those services.
 
 ## Testing Patterns
-
-### Testing input validation
-
-Verify that missing or invalid inputs produce failures:
-
-```typescript
-import { Effect, Schema } from "effect"
-import { describe, expect, it } from "vitest"
-import { ActionInputs, ActionInputsTest } from "@savvy-web/github-action-effects/testing"
-
-describe("input validation", () => {
-  it("fails on missing required input", async () => {
-    const exit = await Effect.runPromise(
-      Effect.exit(
-        Effect.provide(
-          Effect.flatMap(ActionInputs, (svc) => svc.get("missing", Schema.String)),
-          ActionInputsTest({}),
-        ),
-      ),
-    )
-    expect(exit._tag).toBe("Failure")
-  })
-
-  it("reads a valid input", async () => {
-    const result = await Effect.runPromise(
-      Effect.provide(
-        Effect.flatMap(ActionInputs, (svc) => svc.get("name", Schema.String)),
-        ActionInputsTest({ name: "hello" }),
-      ),
-    )
-    expect(result).toBe("hello")
-  })
-})
-```
-
-### Testing multiline and boolean inputs
-
-```typescript
-import { Effect, Schema } from "effect"
-import { describe, expect, it } from "vitest"
-import { ActionInputs, ActionInputsTest } from "@savvy-web/github-action-effects/testing"
-
-describe("extended input methods", () => {
-  it("reads multiline input", async () => {
-    const result = await Effect.runPromise(
-      Effect.provide(
-        Effect.flatMap(ActionInputs, (svc) =>
-          svc.getMultiline("packages", Schema.String)
-        ),
-        ActionInputsTest({ packages: "pkg-a\npkg-b\n# comment\n\npkg-c" }),
-      ),
-    )
-    expect(result).toEqual(["pkg-a", "pkg-b", "pkg-c"])
-  })
-
-  it("reads boolean input", async () => {
-    const result = await Effect.runPromise(
-      Effect.provide(
-        Effect.flatMap(ActionInputs, (svc) => svc.getBoolean("dry-run")),
-        ActionInputsTest({ "dry-run": "true" }),
-      ),
-    )
-    expect(result).toBe(true)
-  })
-
-  it("reads optional boolean with default", async () => {
-    const result = await Effect.runPromise(
-      Effect.provide(
-        Effect.flatMap(ActionInputs, (svc) =>
-          svc.getBooleanOptional("verbose", false)
-        ),
-        ActionInputsTest({}),
-      ),
-    )
-    expect(result).toBe(false)
-  })
-})
-```
-
-### Testing Action.parseInputs
-
-`Action.parseInputs` is only available from the main package entry point
-(not from `/testing`). Test it by importing `Action` from the main package in
-tests that specifically test production-entry logic, or refactor the parsing
-into a standalone function that accepts injected services.
-
-```typescript
-import { Effect, Schema } from "effect"
-import { describe, expect, it } from "vitest"
-import { Action } from "@savvy-web/github-action-effects"
-import { ActionInputsTest } from "@savvy-web/github-action-effects/testing"
-
-describe("Action.parseInputs", () => {
-  it("reads all inputs from config", async () => {
-    const result = await Effect.runPromise(
-      Effect.provide(
-        Action.parseInputs({
-          name: { schema: Schema.String, required: true },
-          count: { schema: Schema.NumberFromString, default: 1 },
-        }),
-        ActionInputsTest({ name: "test" }),
-      ),
-    )
-    expect(result).toEqual({ name: "test", count: 1 })
-  })
-})
-```
 
 ### Testing outputs
 
@@ -399,8 +254,6 @@ describe("ActionState", () => {
 
 ### Testing logging groups
 
-Verify that your action organizes output into collapsible groups:
-
 ```typescript
 import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
@@ -422,10 +275,6 @@ describe("log groups", () => {
 ```
 
 ### Testing buffer-on-failure
-
-The `withBuffer` method captures verbose output and only flushes it when the
-wrapped effect fails. At the default `info` log level, successful runs discard
-the buffer silently.
 
 ```typescript
 import { Effect } from "effect"
@@ -465,10 +314,6 @@ describe("withBuffer", () => {
 
 ### Testing annotations
 
-Annotations attach messages to specific files and lines in the GitHub Actions
-UI. The three methods (`annotationError`, `annotationWarning`,
-`annotationNotice`) each record a `type` field in the captured state.
-
 ```typescript
 import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
@@ -491,37 +336,6 @@ describe("annotations", () => {
         message: "Check failed",
         properties: { file: "src/index.ts", startLine: 10 },
       },
-    ])
-  })
-
-  it("records warning annotation", async () => {
-    const state = ActionLoggerTest.empty()
-    await Effect.gen(function* () {
-      const logger = yield* ActionLogger
-      yield* logger.annotationWarning("Deprecated usage", {
-        file: "src/helpers.ts",
-        startLine: 42,
-      })
-    }).pipe(Effect.provide(ActionLoggerTest.layer(state)), Effect.runPromise)
-
-    expect(state.annotations).toEqual([
-      {
-        type: "warning",
-        message: "Deprecated usage",
-        properties: { file: "src/helpers.ts", startLine: 42 },
-      },
-    ])
-  })
-
-  it("records notice annotation without properties", async () => {
-    const state = ActionLoggerTest.empty()
-    await Effect.gen(function* () {
-      const logger = yield* ActionLogger
-      yield* logger.annotationNotice("Something happened")
-    }).pipe(Effect.provide(ActionLoggerTest.layer(state)), Effect.runPromise)
-
-    expect(state.annotations).toEqual([
-      { type: "notice", message: "Something happened" },
     ])
   })
 })
@@ -550,68 +364,8 @@ describe("GFM builders", () => {
   it("builds a heading", () => {
     expect(GithubMarkdown.heading("Results", 2)).toBe("## Results")
   })
-
-  it("builds a bulleted list", () => {
-    const result = GithubMarkdown.list(["first", "second"])
-    expect(result).toBe("- first\n- second")
-  })
-
-  it("bolds text", () => {
-    expect(GithubMarkdown.bold("important")).toBe("**important**")
-  })
 })
 ```
-
-## Integration Testing with Live Layers
-
-In most cases, the in-memory test layers are the right choice. However, you
-may occasionally want to test the behavior of a Live layer itself -- for
-example, verifying that `ActionInputsLive` reads inputs correctly through the
-`ActionsCore` wrapper.
-
-The platform abstraction makes this straightforward: inject a mock `ActionsCore`
-layer instead of the real `ActionsCoreLive`, then use the actual `Live` layer
-logic without touching `@actions/core` at all.
-
-```typescript
-import { Effect, Layer } from "effect"
-import { vi } from "vitest"
-import {
-  ActionInputsLive,
-  ActionsCore,
-} from "@savvy-web/github-action-effects/testing"
-
-// Mock only the platform wrapper -- test the real Live layer logic
-const mockPlatform = Layer.succeed(ActionsCore, {
-  getInput: vi.fn().mockReturnValue("test-value"),
-  getBooleanInput: vi.fn().mockReturnValue(false),
-  getMultilineInput: vi.fn().mockReturnValue([]),
-  setOutput: vi.fn(),
-  exportVariable: vi.fn(),
-  addPath: vi.fn(),
-  setFailed: vi.fn(),
-  setSecret: vi.fn(),
-  info: vi.fn(),
-  debug: vi.fn(),
-  warning: vi.fn(),
-  error: vi.fn(),
-  notice: vi.fn(),
-  startGroup: vi.fn(),
-  endGroup: vi.fn(),
-  saveState: vi.fn(),
-  getState: vi.fn().mockReturnValue(""),
-  summary: { addRaw: vi.fn().mockReturnThis(), write: vi.fn() },
-})
-
-// ActionInputsLive depends on ActionsCore; mockPlatform satisfies that dependency
-const layer = ActionInputsLive.pipe(Layer.provide(mockPlatform))
-```
-
-This pattern lets you verify that the Live layer wires the platform calls
-correctly without standing up a real GitHub Actions runner.
-
-See `src/layers/ActionLoggerLive.test.ts` for a complete example of this
-pattern.
 
 ## Helper Patterns
 
@@ -621,7 +375,6 @@ returns both the merged layer and the state containers:
 ```typescript
 import { Layer } from "effect"
 import {
-  ActionInputsTest,
   ActionLoggerTest,
   ActionOutputsTest,
   ActionStateTest,
@@ -637,19 +390,17 @@ interface TestContext {
   readonly logState: ActionLoggerTestState
   readonly stateState: ActionStateTestState
   readonly layer: Layer.Layer<
-    import("@savvy-web/github-action-effects/testing").ActionInputs
-    | import("@savvy-web/github-action-effects/testing").ActionOutputs
+    import("@savvy-web/github-action-effects/testing").ActionOutputs
     | import("@savvy-web/github-action-effects/testing").ActionLogger
     | import("@savvy-web/github-action-effects/testing").ActionState
   >
 }
 
-const runWithTestLayers = (inputs: Record<string, string>): TestContext => {
+const runWithTestLayers = (): TestContext => {
   const outputState = ActionOutputsTest.empty()
   const logState = ActionLoggerTest.empty()
   const stateState = ActionStateTest.empty()
   const layer = Layer.mergeAll(
-    ActionInputsTest(inputs),
     ActionOutputsTest.layer(outputState),
     ActionLoggerTest.layer(logState),
     ActionStateTest.layer(stateState),
@@ -663,19 +414,15 @@ Usage in tests:
 ```typescript
 import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
-import { ActionInputs, ActionOutputs } from "@savvy-web/github-action-effects/testing"
+import { ActionOutputs } from "@savvy-web/github-action-effects/testing"
 
 describe("my action", () => {
-  it("reads input and sets output", async () => {
-    const { layer, outputState } = runWithTestLayers({
-      "package-name": "my-pkg",
-    })
+  it("sets output", async () => {
+    const { layer, outputState } = runWithTestLayers()
 
     await Effect.gen(function* () {
-      const inputs = yield* ActionInputs
       const outputs = yield* ActionOutputs
-      const name = yield* inputs.get("package-name", Schema.String)
-      yield* outputs.set("resolved-name", name)
+      yield* outputs.set("resolved-name", "my-pkg")
     }).pipe(Effect.provide(layer), Effect.runPromise)
 
     expect(outputState.outputs).toContainEqual({

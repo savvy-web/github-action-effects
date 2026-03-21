@@ -3,9 +3,9 @@
 This tutorial builds a complete three-stage GitHub Action with `pre`, `main`,
 and `post` phases. It demonstrates three key library features:
 
-- **Log level helper** -- configure and resolve log levels from action inputs
 - **GitHub App authentication** -- generate and revoke installation tokens
 - **ActionState** -- transfer typed data between phases
+- **Buffer-on-failure logging** -- capture verbose output, flush only on error
 
 ## The action.yml
 
@@ -27,10 +27,6 @@ inputs:
   packages:
     description: 'Newline-separated list of packages to publish'
     required: true
-  log-level:
-    description: 'Log level (info, verbose, debug, auto)'
-    required: false
-    default: 'auto'
   dry-run:
     description: 'Skip actual publishing'
     required: false
@@ -40,8 +36,6 @@ outputs:
     description: 'Number of packages published'
   duration-ms:
     description: 'Total elapsed time in milliseconds'
-  token-permissions:
-    description: 'JSON of resolved token permissions'
 
 runs:
   using: 'node24'
@@ -91,16 +85,13 @@ authenticate, validate permissions, and record the start time.
 
 ```typescript
 // src/pre.ts
-import { Effect, Layer, Schema } from "effect"
+import { Config, Effect, Layer, Schema } from "effect"
 import {
   Action,
-  ActionInputs,
   ActionLogger,
   ActionState,
-  ActionStateLive,
   GitHubApp,
   GitHubAppLive,
-  LogLevelInput,
   TokenPermissionChecker,
   TokenPermissionCheckerLive,
 } from "@savvy-web/github-action-effects"
@@ -108,27 +99,19 @@ import {
 import { TimingState, TokenState } from "./shared.js"
 
 const program = Effect.gen(function* () {
-  const inputs = yield* ActionInputs
   const logger = yield* ActionLogger
   const state = yield* ActionState
   const app = yield* GitHubApp
   const checker = yield* TokenPermissionChecker
 
-  // -- 1. Configure log level --
-  // Reads the `log-level` input and resolves "auto" based on RUNNER_DEBUG.
-  // "auto" becomes "debug" when RUNNER_DEBUG=1, otherwise "info".
-  const logLevelInput = yield* inputs.get("log-level", LogLevelInput)
-  const resolvedLevel = Action.resolveLogLevel(logLevelInput)
-  yield* Action.setLogLevel(resolvedLevel)
-  yield* Effect.log(`Log level: ${resolvedLevel}`)
-
-  // -- 2. Record start time --
+  // -- 1. Record start time --
   yield* state.save("timing", { startedAt: Date.now() }, TimingState)
 
-  // -- 3. Authenticate as GitHub App --
-  const appId = yield* inputs.get("app-id", Schema.NumberFromString)
-  const privateKey = yield* inputs.getSecret("private-key", Schema.String)
+  // -- 2. Read inputs via Config API --
+  const appId = yield* Config.integer("app-id")
+  const privateKey = yield* Config.secret("private-key")
 
+  // -- 3. Authenticate as GitHub App --
   yield* logger.group("GitHub App Authentication", Effect.gen(function* () {
     yield* app.withToken(appId, privateKey, (token) =>
       Effect.gen(function* () {
@@ -155,25 +138,24 @@ const program = Effect.gen(function* () {
 
 Action.run(
   program,
-  Layer.mergeAll(
-    ActionStateLive,
-    GitHubAppLive,
-    TokenPermissionCheckerLive,
-  ),
+  {
+    layer: Layer.mergeAll(
+      GitHubAppLive,
+      TokenPermissionCheckerLive,
+    ),
+  },
 )
 ```
 
 ### What happens in pre.ts
 
-1. **Log level** -- `LogLevelInput` is a schema that accepts `"info"`,
-   `"verbose"`, `"debug"`, or `"auto"`. `Action.resolveLogLevel` converts
-   `"auto"` to a concrete level by checking `RUNNER_DEBUG`. Then
-   `Action.setLogLevel` configures the fiber so all subsequent `Effect.log`
-   calls respect it.
-
-2. **ActionState.save** -- Persists the start timestamp as a Schema-encoded
+1. **ActionState.save** -- Persists the start timestamp as a Schema-encoded
    JSON string. GitHub Actions stores state as key-value string pairs between
    phases; the Schema encode/decode layer handles serialization transparently.
+
+2. **Config API** -- `Config.integer("app-id")` reads `INPUT_APP-ID` from
+   the environment. `Config.secret("private-key")` reads `INPUT_PRIVATE-KEY`
+   and wraps it in a `Secret` type.
 
 3. **GitHubApp.withToken** -- Bracket pattern that generates an installation
    token and automatically revokes it when the callback completes (or fails).
@@ -190,19 +172,16 @@ publishes packages, and saves results for `post`.
 
 ```typescript
 // src/main.ts
-import { Effect, Layer, Schema } from "effect"
+import { Config, Effect, Layer, Schema } from "effect"
 import {
   Action,
-  ActionInputs,
   ActionLogger,
   ActionOutputs,
   ActionState,
-  ActionStateLive,
   DryRun,
   DryRunLive,
   ErrorAccumulator,
   GithubMarkdown,
-  LogLevelInput,
   NpmRegistry,
   NpmRegistryLive,
   PackagePublish,
@@ -212,7 +191,6 @@ import {
 import { PublishState, TimingState, TokenState } from "./shared.js"
 
 const program = Effect.gen(function* () {
-  const inputs = yield* ActionInputs
   const logger = yield* ActionLogger
   const state = yield* ActionState
   const outputs = yield* ActionOutputs
@@ -220,23 +198,20 @@ const program = Effect.gen(function* () {
   const npm = yield* NpmRegistry
   const publisher = yield* PackagePublish
 
-  // -- 1. Restore log level (each phase is a separate process) --
-  const logLevelInput = yield* inputs.get("log-level", LogLevelInput)
-  yield* Action.setLogLevel(Action.resolveLogLevel(logLevelInput))
-
-  // -- 2. Read state from pre phase --
+  // -- 1. Read state from pre phase --
   const timing = yield* state.get("timing", TimingState)
   const tokenInfo = yield* state.get("token", TokenState)
   yield* Effect.log(`Resuming from pre (started ${timing.startedAt})`)
   yield* Effect.log(`Using installation ${tokenInfo.installationId}`)
 
-  // -- 3. Read inputs --
-  const packages = yield* inputs.getMultiline("packages", Schema.String)
-  const isDry = yield* inputs.getBooleanOptional("dry-run", false)
+  // -- 2. Read inputs via Config API --
+  const packagesRaw = yield* Config.string("packages")
+  const packages = packagesRaw.split("\n").map(s => s.trim()).filter(Boolean)
+  const isDry = yield* Config.boolean("dry-run").pipe(Config.withDefault(false))
 
   yield* Effect.log(`Publishing ${packages.length} packages (dry-run: ${isDry})`)
 
-  // -- 4. Publish each package, accumulating errors --
+  // -- 3. Publish each package, accumulating errors --
   const result = yield* logger.group("Publish Packages",
     ErrorAccumulator.forEachAccumulate(packages, (pkg) =>
       logger.withBuffer(`publish-${pkg}`, Effect.gen(function* () {
@@ -260,7 +235,7 @@ const program = Effect.gen(function* () {
     )
   )
 
-  // -- 5. Save results for post phase --
+  // -- 4. Save results for post phase --
   const publishResults = {
     publishedCount: result.successes.length,
     failedCount: result.failures.length,
@@ -275,10 +250,10 @@ const program = Effect.gen(function* () {
   }
   yield* state.save("publish", publishResults, PublishState)
 
-  // -- 6. Set outputs --
+  // -- 5. Set outputs --
   yield* outputs.set("published-count", String(result.successes.length))
 
-  // -- 7. Write step summary --
+  // -- 6. Write step summary --
   yield* outputs.summary([
     GithubMarkdown.heading("Publish Results"),
     GithubMarkdown.table(
@@ -302,34 +277,31 @@ const program = Effect.gen(function* () {
 
 Action.run(
   program,
-  Layer.mergeAll(
-    ActionStateLive,
-    DryRunLive,
-    NpmRegistryLive,
-    PackagePublishLive,
-  ),
+  {
+    layer: Layer.mergeAll(
+      DryRunLive,
+      NpmRegistryLive,
+      PackagePublishLive,
+    ),
+  },
 )
 ```
 
 ### What happens in main.ts
 
-1. **Log level restored** -- Each phase runs as a separate Node.js process.
-   The log level input is re-read and re-applied because `Action.setLogLevel`
-   is scoped to the current fiber.
-
-2. **State from pre** -- `state.get("timing", TimingState)` reads and
+1. **State from pre** -- `state.get("timing", TimingState)` reads and
    Schema-decodes the timing data saved by `pre.ts`. If the state is missing
    or invalid, it fails with an `ActionStateError`.
 
-3. **ErrorAccumulator** -- `forEachAccumulate` processes all packages without
+2. **ErrorAccumulator** -- `forEachAccumulate` processes all packages without
    short-circuiting. Failed publishes are collected alongside successes,
    allowing a complete summary.
 
-4. **Buffer-on-failure** -- `logger.withBuffer` captures verbose output per
+3. **Buffer-on-failure** -- `logger.withBuffer` captures verbose output per
    package. On success the buffer is discarded; on failure it flushes for
    debugging context.
 
-5. **DryRun.guard** -- When `dry-run` is `"true"`, the `publisher.publish`
+4. **DryRun.guard** -- When `dry-run` is `"true"`, the `publisher.publish`
    call is skipped and the fallback value (`undefined`) is returned instead.
 
 ## Phase 3: post.ts
@@ -339,36 +311,28 @@ timing reports, and final telemetry.
 
 ```typescript
 // src/post.ts
-import { Effect, Layer, Option } from "effect"
+import { Config, Effect, Option } from "effect"
 import {
   Action,
   ActionLogger,
   ActionOutputs,
   ActionState,
-  ActionStateLive,
   GithubMarkdown,
-  LogLevelInput,
-  ActionInputs,
 } from "@savvy-web/github-action-effects"
 
 import { PublishState, TimingState } from "./shared.js"
 
 const program = Effect.gen(function* () {
-  const inputs = yield* ActionInputs
   const logger = yield* ActionLogger
   const state = yield* ActionState
   const outputs = yield* ActionOutputs
 
-  // -- 1. Restore log level --
-  const logLevelInput = yield* inputs.get("log-level", LogLevelInput)
-  yield* Action.setLogLevel(Action.resolveLogLevel(logLevelInput))
-
-  // -- 2. Calculate elapsed time --
+  // -- 1. Calculate elapsed time --
   const timing = yield* state.get("timing", TimingState)
   const elapsed = Date.now() - timing.startedAt
   yield* outputs.set("duration-ms", String(elapsed))
 
-  // -- 3. Read publish results (may not exist if main failed early) --
+  // -- 2. Read publish results (may not exist if main failed early) --
   const publishResult = yield* state.getOptional("publish", PublishState)
 
   yield* logger.group("Summary", Effect.gen(function* () {
@@ -381,7 +345,7 @@ const program = Effect.gen(function* () {
     yield* Effect.log(`Total duration: ${elapsed}ms`)
   }))
 
-  // -- 4. Append timing to step summary --
+  // -- 3. Append timing to step summary --
   yield* outputs.summary([
     "",
     GithubMarkdown.rule(),
@@ -395,10 +359,7 @@ const program = Effect.gen(function* () {
   yield* Effect.log("Post phase complete")
 })
 
-Action.run(
-  program,
-  ActionStateLive,
-)
+Action.run(program)
 ```
 
 ### What happens in post.ts
@@ -430,7 +391,6 @@ jobs:
             @scope/core
             @scope/utils
             @scope/cli
-          log-level: verbose
           dry-run: false
 ```
 
@@ -439,10 +399,6 @@ jobs:
 **State is the bridge between phases.** Each phase runs as a separate
 Node.js process. `ActionState` with Effect Schemas provides type-safe
 serialization across the process boundary.
-
-**Log level must be set in each phase.** `Action.setLogLevel` configures
-the current fiber, which does not persist across processes. Re-read the
-input and re-apply in every phase.
 
 **Use `getOptional` in post.** The `post` phase always runs, but earlier
 phases may have failed before saving their state. Use `state.getOptional`
@@ -465,8 +421,8 @@ Test `pre.ts` logic by providing test layers for every required service:
 import { Effect, Layer, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import {
-  ActionInputsTest,
   ActionLoggerTest,
+  ActionOutputsTest,
   ActionStateTest,
   GitHubAppTest,
   TokenPermissionCheckerTest,
@@ -477,12 +433,8 @@ describe("pre phase", () => {
     const stateState = ActionStateTest.empty()
 
     const layer = Layer.mergeAll(
-      ActionInputsTest({
-        "app-id": "12345",
-        "private-key": "pem-key-value",
-        "log-level": "info",
-      }),
       ActionLoggerTest.layer(ActionLoggerTest.empty()),
+      ActionOutputsTest.layer(ActionOutputsTest.empty()),
       ActionStateTest.layer(stateState),
       GitHubAppTest.layer(GitHubAppTest.empty()),
       TokenPermissionCheckerTest.layer(TokenPermissionCheckerTest.empty()),
@@ -508,17 +460,10 @@ Pre-populate the `ActionStateTest` entries directly:
 import { Effect, Layer, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import {
-  ActionInputsTest,
   ActionLoggerTest,
   ActionOutputsTest,
   ActionStateTest,
 } from "@savvy-web/github-action-effects/testing"
-
-const TimingState = Schema.Struct({ startedAt: Schema.Number })
-const TokenState = Schema.Struct({
-  installationId: Schema.Number,
-  permissions: Schema.Record({ key: Schema.String, value: Schema.String }),
-})
 
 describe("post phase", () => {
   it("reads timing from pre phase state", async () => {
@@ -533,7 +478,6 @@ describe("post phase", () => {
     }))
 
     const layer = Layer.mergeAll(
-      ActionInputsTest({ "log-level": "info" }),
       ActionLoggerTest.layer(ActionLoggerTest.empty()),
       ActionOutputsTest.layer(outputState),
       ActionStateTest.layer(stateState),

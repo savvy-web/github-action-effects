@@ -1,21 +1,12 @@
-import type { Effect } from "effect";
+import type { Effect, Option } from "effect";
 import { Context } from "effect";
 import type { ActionCacheError } from "../errors/ActionCacheError.js";
 
 /**
- * Result of a cache restore operation.
- *
- * @public
- */
-export interface CacheHit {
-	/** Whether a cache entry was found. */
-	readonly hit: boolean;
-	/** The key that matched, if any. */
-	readonly matchedKey: string | undefined;
-}
-
-/**
  * Service for GitHub Actions cache operations.
+ *
+ * Uses the internal GitHub Actions cache protocol directly via native `fetch`,
+ * with no dependency on `@actions/cache`.
  *
  * @public
  */
@@ -23,24 +14,16 @@ export class ActionCache extends Context.Tag("github-action-effects/ActionCache"
 	ActionCache,
 	{
 		/** Save paths to cache under the given key. */
-		readonly save: (key: string, paths: ReadonlyArray<string>) => Effect.Effect<void, ActionCacheError>;
-
-		/** Restore from cache. Returns hit status and matched key. */
-		readonly restore: (
-			key: string,
-			paths: ReadonlyArray<string>,
-			restoreKeys?: ReadonlyArray<string>,
-		) => Effect.Effect<CacheHit, ActionCacheError>;
+		readonly save: (paths: ReadonlyArray<string>, key: string) => Effect.Effect<void, ActionCacheError>;
 
 		/**
-		 * Bracket pattern: restore cache, run effect, save if cache miss.
-		 * Returns the effect's result regardless of cache hit/miss.
+		 * Restore from cache. Returns the matched key wrapped in Option,
+		 * or Option.none() on cache miss.
 		 */
-		readonly withCache: <A, E>(
-			key: string,
+		readonly restore: (
 			paths: ReadonlyArray<string>,
-			effect: Effect.Effect<A, E>,
+			primaryKey: string,
 			restoreKeys?: ReadonlyArray<string>,
-		) => Effect.Effect<A, E | ActionCacheError>;
+		) => Effect.Effect<Option.Option<string>, ActionCacheError>;
 	}
 >() {}

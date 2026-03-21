@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-export type { ActionRunOptions, CoreServices, InputConfig, ParsedInputs } from "./Action.js";
+export type { ActionRunOptions, CoreServices } from "./Action.js";
 // -- Namespaces --
 export { Action } from "./Action.js";
 // -- Errors --
@@ -34,6 +34,7 @@ export { PackagePublishError } from "./errors/PackagePublishError.js";
 export { PullRequestCommentError } from "./errors/PullRequestCommentError.js";
 export { PullRequestError } from "./errors/PullRequestError.js";
 export { RateLimitError } from "./errors/RateLimitError.js";
+export { RuntimeEnvironmentError } from "./errors/RuntimeEnvironmentError.js";
 export { SemverResolverError } from "./errors/SemverResolverError.js";
 export { TokenPermissionError } from "./errors/TokenPermissionError.js";
 export { ToolInstallerError } from "./errors/ToolInstallerError.js";
@@ -45,10 +46,8 @@ export type { ActionCacheTestState } from "./layers/ActionCacheTest.js";
 export { ActionCacheTest } from "./layers/ActionCacheTest.js";
 export { ActionEnvironmentLive } from "./layers/ActionEnvironmentLive.js";
 export { ActionEnvironmentTest } from "./layers/ActionEnvironmentTest.js";
-export { ActionInputsLive } from "./layers/ActionInputsLive.js";
-export { ActionInputsTest } from "./layers/ActionInputsTest.js";
-export { ActionLoggerLayer, ActionLoggerLive, CurrentLogLevel } from "./layers/ActionLoggerLive.js";
-export type { ActionLoggerTestState, TestAnnotationType } from "./layers/ActionLoggerTest.js";
+export { ActionLoggerLive } from "./layers/ActionLoggerLive.js";
+export type { ActionLoggerTestState } from "./layers/ActionLoggerTest.js";
 export { ActionLoggerTest } from "./layers/ActionLoggerTest.js";
 export { ActionOutputsLive } from "./layers/ActionOutputsLive.js";
 export type { ActionOutputsTestState } from "./layers/ActionOutputsTest.js";
@@ -56,14 +55,6 @@ export { ActionOutputsTest } from "./layers/ActionOutputsTest.js";
 export { ActionStateLive } from "./layers/ActionStateLive.js";
 export type { ActionStateTestState } from "./layers/ActionStateTest.js";
 export { ActionStateTest } from "./layers/ActionStateTest.js";
-export { ActionsCacheLive } from "./layers/ActionsCacheLive.js";
-// -- Platform Layers --
-export { ActionsCoreLive } from "./layers/ActionsCoreLive.js";
-export { ActionsExecLive } from "./layers/ActionsExecLive.js";
-export { ActionsGitHubLive } from "./layers/ActionsGitHubLive.js";
-export type { ActionsPlatform } from "./layers/ActionsPlatformLive.js";
-export { ActionsPlatformLive } from "./layers/ActionsPlatformLive.js";
-export { ActionsToolCacheLive } from "./layers/ActionsToolCacheLive.js";
 export { ChangesetAnalyzerLive } from "./layers/ChangesetAnalyzerLive.js";
 export type { ChangesetAnalyzerTestState } from "./layers/ChangesetAnalyzerTest.js";
 export { ChangesetAnalyzerTest } from "./layers/ChangesetAnalyzerTest.js";
@@ -134,6 +125,11 @@ export { WorkflowDispatchTest } from "./layers/WorkflowDispatchTest.js";
 export { WorkspaceDetectorLive } from "./layers/WorkspaceDetectorLive.js";
 export type { WorkspaceDetectorTestState } from "./layers/WorkspaceDetectorTest.js";
 export { WorkspaceDetectorTest } from "./layers/WorkspaceDetectorTest.js";
+// -- Runtime --
+export { ActionsConfigProvider } from "./runtime/ActionsConfigProvider.js";
+export { ActionsLogger } from "./runtime/ActionsLogger.js";
+export { ActionsRuntime } from "./runtime/ActionsRuntime.js";
+// -- Schemas --
 export type {
 	BumpType as BumpTypeType,
 	Changeset as ChangesetType,
@@ -141,7 +137,6 @@ export type {
 } from "./schemas/Changeset.js";
 export { BumpType, Changeset, ChangesetFile } from "./schemas/Changeset.js";
 export type { GitHubContext as GitHubContextType, RunnerContext as RunnerContextType } from "./schemas/Environment.js";
-// -- Schemas --
 export { GitHubContext, RunnerContext } from "./schemas/Environment.js";
 export { CapturedOutput, ChecklistItem, Status } from "./schemas/GithubMarkdown.js";
 export type { FileChange as FileChangeType, TreeEntry as TreeEntryType } from "./schemas/GitTree.js";
@@ -177,22 +172,11 @@ export type {
 } from "./schemas/Workspace.js";
 export { WorkspaceInfo, WorkspacePackage, WorkspaceType } from "./schemas/Workspace.js";
 // -- Services --
-export type { CacheHit } from "./services/ActionCache.js";
 export { ActionCache } from "./services/ActionCache.js";
 export { ActionEnvironment } from "./services/ActionEnvironment.js";
-export { ActionInputs } from "./services/ActionInputs.js";
 export { ActionLogger } from "./services/ActionLogger.js";
 export { ActionOutputs } from "./services/ActionOutputs.js";
 export { ActionState } from "./services/ActionState.js";
-export { ActionsCache } from "./services/ActionsCache.js";
-// -- Platform Services --
-export type { AnnotationProperties } from "./services/ActionsCore.js";
-export { ActionsCore } from "./services/ActionsCore.js";
-export type { ActionsExecOptions } from "./services/ActionsExec.js";
-export { ActionsExec } from "./services/ActionsExec.js";
-export type { GitHubOctokit } from "./services/ActionsGitHub.js";
-export { ActionsGitHub } from "./services/ActionsGitHub.js";
-export { ActionsToolCache } from "./services/ActionsToolCache.js";
 export { ChangesetAnalyzer } from "./services/ChangesetAnalyzer.js";
 export type { AnnotationLevel, CheckRunAnnotation, CheckRunConclusion, CheckRunOutput } from "./services/CheckRun.js";
 export { CheckRun } from "./services/CheckRun.js";
@@ -225,7 +209,6 @@ export type { CommentRecord } from "./services/PullRequestComment.js";
 export { PullRequestComment } from "./services/PullRequestComment.js";
 export { RateLimiter } from "./services/RateLimiter.js";
 export { TokenPermissionChecker } from "./services/TokenPermissionChecker.js";
-export type { BinaryInstallOptions, ToolInstallOptions } from "./services/ToolInstaller.js";
 export { ToolInstaller } from "./services/ToolInstaller.js";
 export type { PollOptions, WorkflowRunStatus } from "./services/WorkflowDispatch.js";
 export { WorkflowDispatch } from "./services/WorkflowDispatch.js";

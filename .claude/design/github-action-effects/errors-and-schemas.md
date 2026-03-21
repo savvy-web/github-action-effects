@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-19
-last-synced: 2026-03-19
+updated: 2026-03-20
+last-synced: 2026-03-20
 completeness: 95
 related:
   - ./index.md
@@ -42,18 +42,19 @@ export class FooError extends Data.TaggedError("FooError")<{
 }> {}
 ```
 
-No separate `Base` export is needed. The `*Base` exports were removed in v0.8.0.
+No separate `Base` export is needed.
 
 ### Error Types
 
 | Error | Service | Key Fields |
 | --- | --- | --- |
-| `ActionInputError` | ActionInputs | input name, raw value, schema validation issues |
+| `ActionInputError` | (Config validation) | input name, raw value, schema validation issues |
 | `ActionOutputError` | ActionOutputs | output name, reason |
-| `ActionStateError` | ActionState | key name, reason (`"decode_failed"`, `"not_found"`), optional raw value |
+| `ActionStateError` | ActionState | key name, reason, optional raw value |
 | `ActionEnvironmentError` | ActionEnvironment | variable name, reason |
 | `ActionCacheError` | ActionCache | key, operation (save/restore), reason |
-| `CommandRunnerError` | CommandRunner | command, args, exitCode, stderr |
+| `RuntimeEnvironmentError` | RuntimeFile | variable name, message |
+| `CommandRunnerError` | CommandRunner | command, args, exitCode, stderr, reason |
 | `ConfigLoaderError` | ConfigLoader | path, operation, reason |
 | `ChangesetError` | ChangesetAnalyzer | operation, reason |
 | `GitHubClientError` | GitHubClient | operation, status (HTTP), reason, retryable (boolean) |
@@ -64,18 +65,26 @@ No separate `Base` export is needed. The `*Base` exports were removed in v0.8.0.
 | `GitTagError` | GitTag | operation, tag, reason |
 | `GitHubReleaseError` | GitHubRelease | operation, tag, reason, retryable |
 | `GitHubIssueError` | GitHubIssue | operation, issueNumber, reason, retryable |
-| `CheckRunError` | CheckRun | name, operation (create/update/complete), reason |
+| `CheckRunError` | CheckRun | name, operation, reason |
 | `PullRequestCommentError` | PullRequestComment | prNumber, operation, reason |
+| `PullRequestError` | PullRequest | operation, prNumber (optional), reason |
 | `RateLimitError` | RateLimiter | reason |
 | `WorkflowDispatchError` | WorkflowDispatch | operation, workflow, reason |
 | `NpmRegistryError` | NpmRegistry | pkg, operation, reason |
 | `PackagePublishError` | PackagePublish | operation, pkg, registry, reason |
 | `PackageManagerError` | PackageManagerAdapter | operation, reason |
 | `WorkspaceDetectorError` | WorkspaceDetector | operation, reason |
-| `ToolInstallerError` | ToolInstaller | operation (download/extract/cache/path/chmod), tool, version, reason |
-| `PullRequestError` | PullRequest | operation, prNumber (optional), reason |
+| `ToolInstallerError` | ToolInstaller | operation, tool, version, reason |
 | `TokenPermissionError` | TokenPermissionChecker | missing permissions array |
 | `SemverResolverError` | SemverResolver | operation, version, reason |
+
+### RuntimeEnvironmentError
+
+New error type introduced with the runtime layer. Raised by `RuntimeFile`
+when a required environment variable (e.g., `GITHUB_OUTPUT`, `GITHUB_STATE`)
+is not set. Fields: `variable` (the env var name) and `message`. This error
+is mapped to domain-specific errors by consuming layers (e.g.,
+`ActionOutputsLive` maps it to `ActionOutputError`).
 
 ### Error Hierarchy
 
@@ -103,34 +112,35 @@ and 5xx status codes, enabling consumers to implement retry logic.
 Schemas use `Schema.Struct` with annotations for validated types. Types are
 inferred via `typeof X.Type`.
 
-### Platform Service Interfaces
+### Service Interfaces
 
-These are TypeScript interfaces (not Effect Schemas) defined alongside the
-platform wrapper services. They are exported from the main barrel and the
-`./testing` subpath.
+TypeScript interfaces exported from service files:
 
 | Interface | Location | Purpose |
 | --- | --- | --- |
-| `AnnotationProperties` | `services/ActionsCore.ts` | File/line annotation properties for GitHub UI |
-| `ActionsExecOptions` | `services/ActionsExec.ts` | Subset of `@actions/exec` ExecOptions |
-| `GitHubOctokit` | `services/ActionsGitHub.ts` | Octokit instance shape (`graphql`, `rest`, `request`) |
 | `AppAuth` | `services/OctokitAuthApp.ts` | Callable auth function for app/installation tokens |
-| `BinaryInstallOptions` | `services/ToolInstaller.ts` | Options for single binary installation (`binaryName?`, `executable?`) |
+| `BotIdentity` | `services/GitHubApp.ts` | Bot identity for commit attribution (`name`, `email`) |
 | `PullRequestInfo` | `services/PullRequest.ts` | PR data (number, url, nodeId, title, state, head, base, draft, merged) |
-| `PullRequestListOptions` | `services/PullRequest.ts` | PR list filter options (head, base, state, perPage, paginate) |
+| `PullRequestListOptions` | `services/PullRequest.ts` | PR list filter options |
+| `ExecOptions` | `services/CommandRunner.ts` | Command execution options (cwd, env, timeout) |
+| `ExecOutput` | `services/CommandRunner.ts` | Command execution result (exitCode, stdout, stderr) |
+| `CommentRecord` | `services/PullRequestComment.ts` | PR comment data (id, body) |
+| `IssueData` | `services/GitHubIssue.ts` | Issue data (number, title, state, labels) |
+| `ReleaseData` | `services/GitHubRelease.ts` | Release data |
+| `ReleaseAsset` | `services/GitHubRelease.ts` | Release asset data |
+| `TagRef` | `services/GitTag.ts` | Tag reference (tag, sha) |
+| `PackResult` | `services/PackagePublish.ts` | Pack result (tarball, digest) |
+| `RegistryTarget` | `services/PackagePublish.ts` | Registry publishing target |
+| `InstallOptions` | `services/PackageManagerAdapter.ts` | PM install options |
+| `PollOptions` | `services/WorkflowDispatch.ts` | Workflow dispatch poll options |
+| `WorkflowRunStatus` | `services/WorkflowDispatch.ts` | Workflow run status |
 
 ### Action Run Interfaces
 
 | Interface | Location | Purpose |
 | --- | --- | --- |
-| `ActionRunOptions` | `Action.ts` | Options for `Action.run()` (`layer?`, `platform?`) |
-| `CoreServices` | `Action.ts` | Union type of services provided automatically by `Action.run()` |
-
-### Type Aliases
-
-| Alias | Location | Purpose |
-| --- | --- | --- |
-| `ActionsPlatform` | `layers/ActionsPlatformLive.ts` | Union of all 6 platform wrapper service types |
+| `ActionRunOptions` | `Action.ts` | Options for `Action.run()` (`layer?`) |
+| `CoreServices` | `Action.ts` | Union type of services provided by `Action.run()` |
 
 ### Core Schemas
 
@@ -146,33 +156,32 @@ platform wrapper services. They are exported from the main barrel and the
 | `BumpType` | `schemas/Changeset.ts` | Bump type (`"major"`, `"minor"`, `"patch"`) |
 | `Changeset` | `schemas/Changeset.ts` | Parsed changeset file |
 | `ChangesetFile` | `schemas/Changeset.ts` | Changeset file with path |
-| `FileChange` | `schemas/GitTree.ts` | File change for Git Data API commits (union of `FileChangeContent` and `FileChangeDeletion`) |
-| `FileChangeContent` | `schemas/GitTree.ts` | File change that adds or updates a file (path, content) |
-| `FileChangeDeletion` | `schemas/GitTree.ts` | File change that deletes a file (path, sha: null) |
-| `TreeEntry` | `schemas/GitTree.ts` | Git tree entry (union of `TreeEntryContent` and `TreeEntryDeletion`) |
-| `TreeEntryContent` | `schemas/GitTree.ts` | Tree entry that adds or updates a file (path, mode, content) |
-| `TreeEntryDeletion` | `schemas/GitTree.ts` | Tree entry that deletes a file (path, mode, sha: null) |
+| `FileChange` | `schemas/GitTree.ts` | File change for Git Data API commits (union) |
+| `FileChangeContent` | `schemas/GitTree.ts` | File change that adds or updates |
+| `FileChangeDeletion` | `schemas/GitTree.ts` | File change that deletes (sha: null) |
+| `TreeEntry` | `schemas/GitTree.ts` | Git tree entry (union) |
+| `TreeEntryContent` | `schemas/GitTree.ts` | Tree entry that adds or updates |
+| `TreeEntryDeletion` | `schemas/GitTree.ts` | Tree entry that deletes (sha: null) |
 | `PackageManagerName` | `schemas/PackageManager.ts` | PM name enum |
 | `PackageManagerInfo` | `schemas/PackageManager.ts` | Detected PM info |
 | `NpmPackageInfo` | `schemas/NpmPackage.ts` | npm registry package metadata |
 | `RateLimitStatus` | `schemas/RateLimit.ts` | GitHub API rate limit status |
-| `PermissionLevel` | `schemas/TokenPermission.ts` | Token permission level (`"read"`, `"write"`, `"admin"`) |
+| `PermissionLevel` | `schemas/TokenPermission.ts` | Token permission level |
 | `PermissionGap` | `schemas/TokenPermission.ts` | Missing/insufficient permission |
 | `ExtraPermission` | `schemas/TokenPermission.ts` | Over-scoped permission |
 | `PermissionCheckResult` | `schemas/TokenPermission.ts` | Full permission check result |
 | `WorkspaceType` | `schemas/Workspace.ts` | Workspace type enum |
 | `WorkspaceInfo` | `schemas/Workspace.ts` | Detected workspace metadata |
 | `WorkspacePackage` | `schemas/Workspace.ts` | Individual workspace package |
-| `InstallationToken` | `services/GitHubApp.ts` | GitHub App installation token with permissions |
+| `InstallationToken` | `services/GitHubApp.ts` | GitHub App installation token (Schema.Struct) |
 
 ### Shared Decode Helpers
 
 `decodeInput` and `decodeJsonInput` are extracted to
-`layers/internal/decodeInput.ts` and shared by both `ActionInputsLive` and
-`ActionInputsTest`, eliminating duplication of schema validation logic.
+`layers/internal/decodeInput.ts` and used by internal validation logic.
 
-`decodeState` is extracted to `layers/internal/decodeState.ts` and shared
-by both `ActionStateLive` and `ActionStateTest`.
+`decodeState` and `encodeState` are extracted to `layers/internal/decodeState.ts`
+and shared by both `ActionStateLive` and `ActionStateTest`.
 
 `environmentMaps` in `layers/internal/environmentMaps.ts` provides shared
 environment variable mapping logic for `ActionEnvironmentLive` and
@@ -182,44 +191,52 @@ environment variable mapping logic for `ActionEnvironmentLive` and
 
 ## Data Flow
 
-### Input Validation Flow
+### Input Reading Flow
 
 ```text
 action.yml inputs
-  -> @actions/core.getInput()
-  -> ActionInputs.get(name, schema)
-  -> Effect.Schema.decode
-  -> typed value | ActionInputError
+  -> GitHub Actions runtime sets INPUT_* env vars
+  -> ActionsConfigProvider reads INPUT_* (Config API)
+  -> Config.string("name") / Config.integer("count")
+  -> typed value | ConfigError
 ```
 
 ### Logging Flow
 
 ```text
 Effect.log*() calls in user program
-  -> ActionLogger (Effect Logger implementation)
-  -> always: write internal details to core.debug() (GitHub-gated)
-  -> based on log-level:
-     info:    capture in buffer
-              -> on success: discard, emit outcome summary via core.info()
-              -> on failure: flush buffer via core.info(), then outcome
-     verbose: emit milestone markers via core.info() (start/finish)
-     debug:   emit everything via core.info()
+  -> ActionsLogger (Effect Logger)
+  -> maps log levels:
+     Debug/Trace → ::debug::message
+     Info        → plain stdout
+     Warning     → ::warning::message
+     Error/Fatal → ::error::message
+  -> annotations (file, line, col) become command properties
 
-log-level resolution:
-  "auto" -> RUNNER_DEBUG === '1' ? "debug" : "info"
-  "info" | "verbose" | "debug" -> use directly
+ActionLogger.withBuffer(label, effect):
+  -> At Info level: capture in buffer
+     -> on success: discard buffer
+     -> on failure: flush buffer to stdout, then error
+  -> At Debug level: pass through without buffering
 ```
 
 ### Output Flow
 
 ```text
 ActionOutputs.set(name, value)
-  -> @actions/core.setOutput()
+  -> RuntimeFile.append("GITHUB_OUTPUT", name, value)
   -> available to downstream steps
 
 ActionOutputs.summary(gfm)
-  -> $GITHUB_STEP_SUMMARY file
+  -> fs.writeFileString($GITHUB_STEP_SUMMARY, content, { flag: "a" })
   -> visible in Actions UI
+
+ActionOutputs.setFailed(message)
+  -> WorkflowCommand.issue("error", {}, message)
+  -> process.exitCode = 1
+
+ActionOutputs.setSecret(value)
+  -> WorkflowCommand.issue("add-mask", {}, value)
 ```
 
 ### State Serialization Flow
@@ -228,15 +245,35 @@ ActionOutputs.summary(gfm)
 ActionState.save(key, value, schema)
   -> Schema.encode(schema)(value)
   -> JSON.stringify(encoded)
-  -> @actions/core.saveState(key, json)
+  -> RuntimeFile.append("GITHUB_STATE", key, json)
   -> persisted across action phases
 
 ActionState.get(key, schema)
-  -> @actions/core.getState(key)
-  -> empty string? -> ActionStateError (not_found)
+  -> process.env[STATE_*key*]
+  -> empty string? -> ActionStateError (not set)
   -> JSON.parse(raw)
   -> Schema.decode(schema)(parsed)
-  -> typed value | ActionStateError (decode_failed)
+  -> typed value | ActionStateError
+```
+
+### Cache Flow
+
+```text
+ActionCache.save(paths, key)
+  -> Read ACTIONS_CACHE_URL + ACTIONS_RUNTIME_TOKEN from env
+  -> execFileSync("tar", ["czf", archivePath, ...paths])
+  -> POST reserve cache entry
+  -> PATCH upload chunks (32 MB max)
+  -> POST commit cache
+  -> cleanup temp archive
+
+ActionCache.restore(paths, primaryKey, restoreKeys?)
+  -> GET cache lookup with keys + version hash
+  -> 204 or miss → Option.none()
+  -> fetch archive from archiveLocation
+  -> execFileSync("tar", ["xzf", archivePath])
+  -> cleanup temp archive
+  -> Option.some(matchedKey)
 ```
 
 ### Permission Check Flow
@@ -245,7 +282,7 @@ ActionState.get(key, schema)
 TokenPermissionChecker.assertSufficient(requirements)
   -> reads InstallationToken.permissions from GitHubApp
   -> compares each required scope against granted (hierarchical: admin > write > read)
-  -> returns PermissionCheckResult with granted/required/missing/extra/satisfied
+  -> returns PermissionCheckResult
   -> fails with TokenPermissionError if missing permissions
 ```
 
@@ -253,12 +290,10 @@ TokenPermissionChecker.assertSufficient(requirements)
 
 ## Current State
 
-All 28 error types and 25+ schemas are fully defined and in use across the
+All 29 error types and 25+ schemas are fully defined and in use across the
 service catalog. The error hierarchy with domain-specific wrapping of
-`GitHubClientError` is stable. The platform service interfaces (`AnnotationProperties`,
-`ActionsExecOptions`, `GitHubOctokit`, `AppAuth`) and action run types
-(`ActionRunOptions`, `ActionsPlatform`, `CoreServices`) are exported from both
-the main barrel and the `./testing` subpath.
+`GitHubClientError` is stable. `RuntimeEnvironmentError` is new, used by
+the runtime layer for missing environment variables.
 
 ## Rationale
 

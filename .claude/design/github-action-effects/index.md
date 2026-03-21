@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-19
-last-synced: 2026-03-19
+updated: 2026-03-20
+last-synced: 2026-03-20
 completeness: 95
 related:
   - ./services.md
@@ -18,7 +18,9 @@ dependencies: []
 # GitHub Action Effects - Architecture
 
 Effect-based utility library for building robust, well-logged, and
-schema-validated GitHub Actions with Node.js 24.
+schema-validated GitHub Actions with Node.js 24. Zero CJS dependencies --
+all `@actions/*` packages replaced with native ESM implementations using
+Effect primitives and the GitHub Actions runtime protocol.
 
 ## Design Documents
 
@@ -28,14 +30,14 @@ schema-validated GitHub Actions with Node.js 24.
 | [layers.md](./layers.md) | Layer patterns, live vs test implementations, dependency graph |
 | [errors-and-schemas.md](./errors-and-schemas.md) | Error types, schema patterns, data flow |
 | [testing-strategy.md](./testing-strategy.md) | Testing approach, coverage requirements, test layer patterns |
-| [integration-points.md](./integration-points.md) | Peer dependencies, how services compose, data flow diagrams |
+| [integration-points.md](./integration-points.md) | Dependencies, how services compose, data flow diagrams |
 
 ## Current State
 
-The library provides 35 Effect services (29 domain services + 6 platform
-wrapper services) spanning core action I/O, GitHub API integration, git
-operations, build tooling, and platform abstraction, along with utility
-namespaces for markdown generation and report building.
+The library provides 29 Effect service interfaces plus 5 namespace/utility
+objects spanning core action I/O, GitHub API integration, git operations,
+build tooling, and a runtime layer that implements the GitHub Actions protocol
+natively (no `@actions/*` packages).
 
 ## Overview
 
@@ -47,18 +49,19 @@ building blocks.
 
 ### Scope
 
-The library provides 35 service interfaces, 5 utility namespaces, 28 error
+The library provides 29 service interfaces, 5 utility namespaces, 29 error
 types, and 11 schema modules. Services cover five domains:
 
-- **Core action I/O** -- inputs, outputs, state, logging, environment, cache
+- **Core action I/O** -- outputs, state, logging, environment, cache
 - **Git operations** -- branches, commits, tags via Git Data API
 - **GitHub API** -- REST client, GraphQL, releases, issues, PR lifecycle, PR
   comments, check runs, workflow dispatch, app auth, rate limiting
 - **Build tooling** -- command execution, npm registry, package publishing,
   workspace detection, package manager adaptation, tool installation, changeset
   analysis, config loading
-- **Platform abstraction** -- wrapper services for `@actions/*` and
-  `@octokit/auth-app` packages, enabling DI for all external platform calls
+- **Runtime layer** -- native implementations of the GitHub Actions workflow
+  command protocol, environment file appending, ConfigProvider for `INPUT_*`
+  variables, and Effect Logger integration
 
 ### Problem Statement
 
@@ -77,16 +80,58 @@ GitHub Actions development suffers from four recurring pain points:
 
 - **Utility-first** -- Provide composable services, not an opinionated framework
 - **Effect-native** -- All services are Effect services with proper Layer composition
-- **Peer dependencies** -- `effect` and `@actions/*` packages are peers; users
-  bring their own versions (action-builder bundles with ncc anyway). All Live layers use
-  static imports exclusively -- ncc cannot follow dynamic `import()` calls.
-- **Platform abstraction** -- All `@actions/*` and `@octokit/auth-app` calls
-  go through wrapper services (`ActionsCore`, `ActionsGitHub`, `ActionsCache`,
-  `ActionsExec`, `ActionsToolCache`, `OctokitAuthApp`). Live layers yield from
-  these services via `Layer.effect` instead of importing the packages directly.
-  Only the 6 wrapper Live layers import `@actions/*` packages.
+- **Zero @actions/* dependencies** -- All platform interactions use native ESM
+  implementations: `WorkflowCommand` for the `::command::` protocol,
+  `RuntimeFile` for environment file appending, `ActionsConfigProvider` for
+  reading `INPUT_*` env vars, and `ActionsLogger` for the Effect Logger.
+  Direct dependencies on `@octokit/rest` and `@octokit/auth-app` replace
+  `@actions/github`.
+- **Peer dependencies** -- `effect`, `@effect/platform`, and
+  `@effect/platform-node` are required peers. Users bring their own versions.
 - **Single entry point** -- One barrel export at `@savvy-web/github-action-effects`
 - **Incrementally adoptable** -- Use one service or all of them; no all-or-nothing
+
+---
+
+## Runtime Layer
+
+The `src/runtime/` directory contains native implementations of the GitHub
+Actions runtime protocol, replacing all `@actions/*` packages:
+
+- **`WorkflowCommand`** -- Formats and issues `::command key=value::message`
+  protocol strings to stdout. Handles escaping of `%`, `\r`, `\n`, `:`, `,`.
+- **`RuntimeFile`** -- Appends key-value pairs to GitHub Actions environment
+  files (`GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_STATE`, `GITHUB_PATH`).
+  Supports multiline values via the delimiter protocol.
+- **`ActionsConfigProvider`** -- A `ConfigProvider` that reads `INPUT_*`
+  environment variables. Converts config keys to the `INPUT_` prefix format
+  (uppercase, spaces to underscores, hyphens preserved).
+- **`ActionsLogger`** -- An Effect `Logger` that maps log levels to workflow
+  commands: Debug/Trace to `::debug::`, Info to plain stdout, Warning to
+  `::warning::`, Error/Fatal to `::error::`. Forwards `file`, `line`, `col`
+  annotations as command properties.
+- **`ActionsRuntime.Default`** -- Single convenience Layer wiring everything
+  together: ConfigProvider, Logger, ActionLogger, ActionOutputs, ActionState,
+  ActionEnvironment, and NodeFileSystem.
+
+Consumer pattern:
+
+```typescript
+// Inputs via Effect's Config API (backed by ActionsConfigProvider)
+const name = yield* Config.string("name")      // reads INPUT_NAME
+const count = yield* Config.integer("count")    // reads INPUT_COUNT
+
+// Logging via Effect Logger (backed by ActionsLogger)
+yield* Effect.log("hello")                      // plain stdout
+yield* Effect.logDebug("details")               // ::debug::details
+yield* Effect.logWarning("caution")             // ::warning::caution
+
+// Option A: Direct layer provision
+program.pipe(Effect.provide(ActionsRuntime.Default))
+
+// Option B: Action.run with error handling + buffering
+Action.run(program)
+```
 
 ---
 
@@ -94,83 +139,71 @@ GitHub Actions development suffers from four recurring pain points:
 
 ### Architectural Decisions
 
-#### AD-1: Peer Dependencies for effect and @actions/*
+#### AD-1: No @actions/* Dependencies
 
-- **Decision:** `effect` and all `@actions/*` packages are peer dependencies.
-  All Live layers use static imports for their peer dependencies (no dynamic
-  `import()` calls).
-- **Rationale:** `@savvy-web/github-action-builder` bundles everything with
-  `@vercel/ncc` into a single file. Peer deps let the bundler resolve versions
-  from the consumer's package.json, avoiding duplication and version conflicts.
-  All Live layers use static imports because ncc cannot follow dynamic
-  `import()` calls. This applies to both optional peers
-  (`@actions/tool-cache`, `@octokit/auth-app`, `@actions/github`,
-  `@actions/exec`, `@actions/cache`) and `effect`. Consumers do not need bare
-  `import` hints in their entry points.
-- **Trade-off:** Users must install effect themselves. This is acceptable since
-  this library targets Effect-using action authors.
+- **Decision:** All `@actions/*` packages removed. The library uses native
+  ESM implementations for the GitHub Actions runtime protocol.
+- **Rationale:** The `@actions/*` packages are CommonJS, cannot be tree-shaken,
+  and create version coupling between the library and consumers. The runtime
+  protocol (workflow commands via stdout, environment files) is simple and
+  well-documented. Native implementations give full control, better error
+  handling via Effect, and zero CJS in the dependency tree.
+- **Direct dependencies:** `@octokit/rest` for REST/GraphQL API access,
+  `@octokit/auth-app` for GitHub App authentication. These are ESM-compatible
+  and provide the Octokit API surface directly.
 
-#### AD-2: Two Entry Points — Main and Testing Subpath
+#### AD-2: Inputs via Config API
+
+- **Decision:** Action inputs are read via Effect's `Config` API backed by
+  `ActionsConfigProvider`, not a dedicated `ActionInputs` service.
+- **Rationale:** Effect's `Config` API is the idiomatic way to read
+  configuration. The `ActionsConfigProvider` maps config keys to `INPUT_*`
+  environment variables, matching GitHub Actions behavior. This eliminates a
+  dedicated service while providing schema validation, composition, and
+  default values through Effect's built-in `Config` combinators.
+
+#### AD-3: Two Entry Points -- Main and Testing Subpath
 
 - **Decision:** Two barrel exports: `index.ts` (main) and `testing.ts`
   (`./testing` subpath export in `package.json`). The `./testing` subpath
-  excludes the 6 platform wrapper Live layers (`ActionsCoreLive`,
-  `ActionsGitHubLive`, `ActionsCacheLive`, `ActionsExecLive`,
-  `ActionsToolCacheLive`, `OctokitAuthAppLive`) and `ActionsPlatformLive`, as
-  well as the `Action` namespace (which statically imports `ActionsCoreLive`).
-  The `./testing` subpath exports all services, test layers, schemas, errors,
-  and utility namespaces.
-- **Rationale:** The platform wrapper Live layers import optional peer
-  dependencies (`@actions/cache`, `@actions/exec`, etc.) directly. Importing
-  them in a test environment without those peers installed causes module
-  resolution errors. The `./testing` subpath lets test files import everything
-  they need without triggering those peer imports. Direct imports (rather than
-  re-exporting from subfolder index files) avoid circular dependency issues and
-  make the dependency graph explicit.
+  excludes `GitHubClientLive` (which imports `@octokit/rest`),
+  `OctokitAuthAppLive` (which imports `@octokit/auth-app`), and the `Action`
+  namespace (which imports `ActionsRuntime`).
+- **Rationale:** Test environments may not have `@octokit/rest` or
+  `@octokit/auth-app` installed. The `./testing` subpath lets test files
+  import everything they need without triggering those dependency imports.
 
-#### AD-3: Services Over Frameworks
+#### AD-4: Services Over Frameworks
 
 - **Decision:** Export composable Effect services, not an opinionated runner
 - **Rationale:** Users may have their own Effect programs, layers, and error
-  strategies. Providing services lets them compose freely. We can layer
-  higher-level opinionated services on top later (e.g., a service that runs
-  `npm pack --dry-run --json` and produces structured metrics).
+  strategies. Providing services lets them compose freely.
 
-#### AD-4: GFM Builder Standalone from Check Runs
+#### AD-5: GFM Builder Standalone from Check Runs
 
 - **Decision:** GFM/markdown builders are independent of the CheckRun service
 - **Rationale:** GFM output is used in check run summaries, PR comments, issue
   bodies, and step summaries. Coupling it to check runs would limit reuse.
 
-#### AD-5: Class-Based Context.Tag and Inline Data.TaggedError
+#### AD-6: Class-Based Context.Tag and Inline Data.TaggedError
 
 - **Decision:** Services use `class Foo extends Context.Tag("github-action-effects/Foo")<Foo, { ... }>() {}`
   and errors use `class FooError extends Data.TaggedError("FooError")<{ ... }> {}`.
 - **Rationale:** `Context.GenericTag` is deprecated in modern Effect. The
   class-based `Context.Tag` merges the interface and tag into a single
-  declaration. `api-extractor` warnings about internal `_base` symbols are
-  cosmetic and safe to suppress. Error types use inline `Data.TaggedError`
-  without a separate `Base` export — the `*Base` exports were removed as a
-  breaking change.
+  declaration. Error types use inline `Data.TaggedError` without a separate
+  `Base` export.
 
-#### AD-6: Schema-Based State Serialization
+#### AD-7: Schema-Based State Serialization
 
 - **Decision:** ActionState uses `Schema.encode` / `Schema.decode` for
   multi-phase state transfer rather than raw JSON.stringify/parse
-- **Rationale:** `@actions/core.saveState()` / `getState()` only accept
-  strings. Complex objects (timestamps, enums, nested structures) need
-  serialization. Using Effect Schema for the round-trip provides three
-  benefits: (1) type-safe encode on save guarantees the persisted JSON
-  conforms to the schema, (2) decode on get validates data integrity and
-  catches phase-ordering bugs (e.g., main.ts reading state before pre.ts
-  sets it produces a clear `ActionStateError` instead of undefined behavior),
-  (3) schema evolution is possible by widening the decode schema while
-  keeping the encode schema strict.
-- **Trade-off:** Slightly more ceremony than raw JSON, but the safety
-  guarantees are essential for multi-phase actions where debugging state
-  issues across phases is otherwise very difficult.
+- **Rationale:** State is persisted via `GITHUB_STATE` environment file and
+  read back via `STATE_*` environment variables. Using Effect Schema for the
+  round-trip provides type-safe encoding, decode validation, and clear
+  `ActionStateError` on phase-ordering bugs.
 
-#### AD-7: Utility Namespaces for Lightweight Abstractions
+#### AD-8: Utility Namespaces for Lightweight Abstractions
 
 - **Decision:** Pure computation patterns and thin API wrappers use
   `const X = { ... } as const` namespace objects instead of full services
@@ -184,12 +217,15 @@ GitHub Actions development suffers from four recurring pain points:
 #### Node.js 24 Runtime
 
 GitHub Actions runners support Node.js 24. We can use modern APIs and
-ES2024+ features freely. The action-builder targets es2022+.
+ES2024+ features freely (native `fetch`, `crypto.randomUUID()`,
+`node:child_process`, etc.).
 
-#### GitHub Actions I/O Conventions
+#### GitHub Actions Runtime Protocol
 
-Actions communicate through environment variables, file-based commands, and
-the `@actions/core` API. All services must respect these conventions.
+Actions communicate through environment variables, file-based commands
+(`GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_STATE`, `GITHUB_PATH`), and
+workflow commands written to stdout (`::command::message`). All services
+respect these conventions via the `src/runtime/` implementations.
 
 #### Bundle Size
 
@@ -210,4 +246,4 @@ size-constrained like browser bundles.
 
 - [Effect Documentation](https://effect.website)
 - [@savvy-web/github-action-builder](https://github.com/savvy-web/github-action-builder)
-- [GitHub Actions Toolkit](https://github.com/actions/toolkit)
+- [GitHub Actions Workflow Commands](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions)

@@ -64,6 +64,30 @@ describe("GitHubGraphQLLive", () => {
 		expect(result).toHaveProperty("reason", "Bad credentials");
 	});
 
+	it("maps GitHubClientError to GitHubGraphQLError on mutation failure", async () => {
+		const mockClient = makeMockGitHubClient(() =>
+			Effect.fail(
+				new GitHubClientError({
+					operation: "graphql",
+					status: 403,
+					reason: "Forbidden",
+					retryable: false,
+				}),
+			),
+		);
+		const layer = GitHubGraphQLLive.pipe(Layer.provide(mockClient));
+		const result = await Effect.runPromise(
+			GitHubGraphQL.pipe(
+				Effect.flatMap((gql) => gql.mutation("EnableAutoMerge", "mutation { enableAutoMerge { id } }")),
+				Effect.catchAll((error) => Effect.succeed(error)),
+				Effect.provide(layer),
+			),
+		);
+		expect(result).toHaveProperty("_tag", "GitHubGraphQLError");
+		expect(result).toHaveProperty("operation", "EnableAutoMerge");
+		expect(result).toHaveProperty("reason", "Forbidden");
+	});
+
 	it("extracts GraphQL errors from JSON error reason", async () => {
 		const errorJson = JSON.stringify({
 			errors: [{ message: "Field not found", type: "FIELD_ERROR" }],

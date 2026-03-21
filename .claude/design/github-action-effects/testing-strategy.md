@@ -3,9 +3,9 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-19
-last-synced: 2026-03-19
-completeness: 90
+updated: 2026-03-20
+last-synced: 2026-03-20
+completeness: 95
 related:
   - ./index.md
   - ./services.md
@@ -28,8 +28,8 @@ See [layers.md](./layers.md) for test layer implementations.
 This document describes the testing strategy for the library, covering unit
 test organization, coverage requirements, and what each service tests. All
 tests use Effect test layers with in-memory backing to avoid real platform
-dependencies. The `./testing` subpath export makes importing test infrastructure
-straightforward without pulling in optional peer dependencies.
+dependencies. Since there are no `@actions/*` packages, tests run without
+any GitHub Actions runtime installed.
 
 ---
 
@@ -40,30 +40,22 @@ straightforward without pulling in optional peer dependencies.
 The `./testing` subpath export in `package.json` re-exports everything from
 the main entry point **except**:
 
-- The 6 platform wrapper Live layers: `ActionsCoreLive`, `ActionsGitHubLive`,
-  `ActionsCacheLive`, `ActionsExecLive`, `ActionsToolCacheLive`,
-  `OctokitAuthAppLive`
-- `ActionsPlatformLive`
-- The `Action` namespace (which statically imports `ActionsCoreLive`)
+- `GitHubClientLive` (imports `@octokit/rest`)
+- `OctokitAuthAppLive` (imports `@octokit/auth-app`)
+- `Action` namespace (imports `ActionsRuntime` which pulls in runtime modules)
 
-This prevents test environments from importing optional peer dependencies
-(`@actions/cache`, `@actions/exec`, etc.) that may not be installed. All
-services, Test layers, schemas, errors, and utility namespaces are available
-via `./testing`.
+This prevents test environments from importing `@octokit/rest` or
+`@octokit/auth-app` when those packages may not be installed.
 
 **Included in `./testing`:**
 
-- `ActionRunOptions`, `CoreServices`, `InputConfig`, `ParsedInputs` type exports
-- All error classes
-- All Test layers (`ActionLoggerTest`, `ActionInputsTest`, etc.)
-- All Live layers that depend on services rather than @actions/* directly
+- `ActionRunOptions`, `CoreServices` type exports
+- All error classes (including `RuntimeEnvironmentError`)
+- All Test layers (e.g., `ActionLoggerTest`, `ActionCacheTest`, etc.)
+- All Live layers except `GitHubClientLive` and `OctokitAuthAppLive`
 - All schemas, services, and utility namespaces
-- `ActionsCore`, `ActionsGitHub`, `ActionsCache`, `ActionsExec`,
-  `ActionsToolCache`, `OctokitAuthApp` service interfaces (but NOT their Live
-  layers)
-- `ActionsPlatform` type alias
-- `AppAuth`, `GitHubOctokit`, `AnnotationProperties`, `ActionsExecOptions`
-  interfaces
+- `OctokitAuthApp` and `AppAuth` service interfaces (but NOT `OctokitAuthAppLive`)
+- Runtime modules: `ActionsConfigProvider`, `ActionsLogger`, `ActionsRuntime`
 
 ---
 
@@ -71,28 +63,29 @@ via `./testing`.
 
 ### Tier 1: Unit Tests with Test Layers
 
-In-memory test layers replace real platform calls. No `@actions/core` imported.
+In-memory test layers replace real platform calls. No external packages imported.
 
 ```typescript
-import { ActionLoggerTest, ActionInputsTest }
+import { ActionLoggerTest, ActionCacheTest }
   from "@savvy-web/github-action-effects/testing"
 ```
 
-### Tier 2: Integration Tests with Mock Wrapper Services
+### Tier 2: Live Layer Tests with Mocked Dependencies
 
-Live layers are used but with mock wrapper services substituted for the
-`@actions/*` Live layers:
+Live layers are tested with their actual logic but mocked dependencies:
 
 ```typescript
-import { ActionLoggerLive, ActionInputsLive, ActionsCore }
+import { ActionOutputsLive }
   from "@savvy-web/github-action-effects/testing"
 
-// Provide a mock ActionsCore instead of ActionsCoreLive
-const mockCore = Layer.succeed(ActionsCore, { getInput: () => "test", ... })
+// Provide a mock FileSystem and set env vars for testing
+const testFs = /* in-memory FileSystem mock */
 ```
 
-This approach tests the Live layer logic (schema validation, error mapping,
-DI wiring) without requiring the real `@actions/core` package to be present.
+Since Live layers no longer depend on `@actions/*` wrapper services but
+instead use Node.js built-ins (WorkflowCommand, RuntimeFile, spawn, fetch),
+Live layer tests mock at the Node.js level (env vars, filesystem) rather
+than at a wrapper service level.
 
 ---
 
@@ -104,8 +97,8 @@ DI wiring) without requiring the real `@actions/core` package to be present.
 
 **Approach:** Each service has a `Test` layer with in-memory backing. Tests
 exercise services through the Effect runtime with test layers, never touching
-real `@actions/core` APIs. Test layers use the namespace object pattern for
-ergonomic test setup.
+real GitHub APIs or workflow commands. Test layers use the namespace object
+pattern for ergonomic test setup.
 
 ---
 
@@ -121,136 +114,141 @@ ergonomic test setup.
 Test files are co-located with their implementation:
 
 ```text
-src/services/ActionInputs.ts       — service interface
-src/services/ActionInputs.test.ts  — service tests via test layer
-src/layers/ActionInputsLive.ts     — live layer
-src/layers/ActionInputsLive.test.ts — live layer tests with mocked deps
-src/layers/ActionInputsTest.ts     — test layer (no test file needed)
+src/services/ActionOutputs.ts         — service interface
+src/services/ActionOutputs.test.ts    — service tests via test layer
+src/layers/ActionOutputsLive.ts       — live layer
+src/layers/ActionOutputsLive.test.ts  — live layer tests with mocked deps
+src/layers/ActionOutputsTest.ts       — test layer (no test file needed)
+
+src/runtime/WorkflowCommand.ts        — runtime module
+src/runtime/WorkflowCommand.test.ts   — pure function tests
+src/runtime/RuntimeFile.ts            — runtime module
+src/runtime/RuntimeFile.test.ts       — tests with mock filesystem
+src/runtime/ActionsConfigProvider.ts  — runtime module
+src/runtime/ActionsConfigProvider.test.ts — tests with mock env vars
+src/runtime/ActionsLogger.ts          — runtime module
+src/runtime/ActionsLogger.test.ts     — tests with captured stdout
+src/runtime/ActionsRuntime.ts         — runtime module
+src/runtime/ActionsRuntime.test.ts    — integration test
 ```
 
 ---
 
 ## What is Tested
 
+### Runtime Layer
+
+**WorkflowCommand** -- `escapeData`, `escapeProperty`, `format`, and `issue`
+functions with various special characters and command types.
+
+**RuntimeFile** -- `prepareValue` for single-line and multiline values,
+`append` with mock FileSystem and env vars.
+
+**ActionsConfigProvider** -- Config resolution from `INPUT_*` env vars,
+key transformation (uppercase, spaces to underscores, hyphens preserved),
+empty value handling.
+
+**ActionsLogger** -- Log level mapping (Debug to `::debug::`, Info to stdout,
+Warning to `::warning::`, Error to `::error::`), annotation forwarding.
+
+**ActionsRuntime** -- Integration test verifying all layers compose correctly.
+
 ### Core Action I/O
 
-**ActionInputs** -- Schema validation (valid/invalid), input laziness via
-`Effect.sync`, multiline/boolean/optional variants, `parseAllInputs`
-config-driven batch reading with cross-validation.
+**ActionLogger** -- Group markers (`::group::` / `::endgroup::`), buffer
+capture on success/failure, log level-dependent buffering behavior.
 
-**ActionLogger** -- Buffer capture on success/failure, two-channel behavior
-(always debug, conditionally info), three annotation types
-(`annotationError`/`annotationWarning`/`annotationNotice`) via test layer
-`type` field, FiberRef log level propagation.
-
-**ActionOutputs** -- Output setting captured by test layer, live layer
-`core.setOutput()`/`core.exportVariable()`/`core.addPath()`/`core.summary`
-interactions, setFailed, setSecret.
+**ActionOutputs** -- Output setting via RuntimeFile, live layer
+interactions with GITHUB_OUTPUT/GITHUB_ENV/GITHUB_PATH files,
+setFailed via WorkflowCommand, setSecret via `::add-mask::`.
 
 **ActionState** -- save/get/getOptional with Schema encode/decode, phase
-ordering errors, live layer core.saveState()/core.getState() interactions.
+ordering errors, live layer interactions with GITHUB_STATE file and
+STATE_* env vars.
 
 **ActionEnvironment** -- get/getOptional for individual env vars, github/runner
-lazy accessors with schema validation, missing var errors, test layer reads
-from provided record.
+lazy accessors with schema validation, missing var errors.
 
-**ActionCache** -- save/restore/withCache bracket, CacheHit with hit/miss
-and matchedKey, cache errors, test layer in-memory Map.
+**ActionCache** -- save/restore with the internal cache protocol, archive
+creation/extraction, chunked upload, cache miss handling. Test layer
+in-memory Map.
 
 ### Git Operations
 
 **GitBranch** -- create/exists/delete/getSha/reset operations, error mapping
 from GitHubClientError, test layer in-memory branch state.
 
-**GitCommit** -- createTree/createCommit/updateRef/commitFiles, Git Data API
-interactions, test layer in-memory state. Both createTree and commitFiles
-support file deletions via `sha: null` entries (TreeEntryDeletion /
-FileChangeDeletion).
+**GitCommit** -- createTree/createCommit/updateRef/commitFiles, file deletions
+via `sha: null` entries.
 
-**GitTag** -- create/delete/list/resolve operations, prefix filtering, test
-layer in-memory tag state.
+**GitTag** -- create/delete/list/resolve operations, prefix filtering.
 
 ### GitHub API
 
 **GitHubClient** -- REST callback, GraphQL query execution, pagination
 (page incrementing, empty-page termination, maxPages), repo context from
 GITHUB_REPOSITORY, error wrapping with HTTP status extraction, retryable
-flag for 429/5xx, test layer recorded responses.
+flag for 429/5xx, HTML error page detection.
 
 **GitHubGraphQL** -- query/mutation delegation to GitHubClient.graphql(),
-error mapping to GitHubGraphQLError, test layer recorded responses.
+error mapping.
 
-**GitHubRelease** -- create/uploadAsset/getByTag/list operations, test layer
-in-memory release state.
+**GitHubRelease** -- create/uploadAsset/getByTag/list operations.
 
-**GitHubIssue** -- list/close/comment/getLinkedIssues, REST + GraphQL
-integration, test layer in-memory issue state.
+**GitHubIssue** -- list/close/comment/getLinkedIssues, REST + GraphQL.
 
-**GitHubApp** -- generateToken/revokeToken/withToken bracket, JWT-based
-auth, test layer in-memory token state.
+**GitHubApp** -- generateToken/revokeToken/botIdentity/withToken bracket,
+installation resolution.
 
-**CheckRun** -- create/update/complete/withCheckRun bracket, failure case
-completes with "failure" and re-raises cause, annotations capped at 50,
-test layer CheckRunRecord array.
+**CheckRun** -- create/update/complete/withCheckRun bracket, annotations
+capped at 50.
 
 **PullRequest** -- get/list/create/update/getOrCreate/merge/addLabels/
-requestReviewers, auto-merge via GraphQL, test layer in-memory PR state.
+requestReviewers, auto-merge via GraphQL.
 
-**PullRequestComment** -- create/upsert/find/delete, marker pattern
-`<!-- savvy-web:KEY -->`, test layer per-PR comment storage with
-instance-scoped ID counter.
+**PullRequestComment** -- create/upsert/find/delete, marker pattern.
 
-**RateLimiter** -- checkRest/checkGraphQL/withRateLimit guard/withRetry,
-rate limit threshold checking, test layer configurable state.
+**RateLimiter** -- checkRest/checkGraphQL/withRateLimit/withRetry.
 
-**WorkflowDispatch** -- dispatch/dispatchAndWait/getRunStatus, polling
-behavior, test layer dispatch records.
+**WorkflowDispatch** -- dispatch/dispatchAndWait/getRunStatus.
 
 ### Build Tooling
 
 **CommandRunner** -- exec/execCapture/execJson/execLines, exit codes,
-timeout handling, cwd/env options, test layer response matching.
+timeout handling.
 
-**NpmRegistry** -- getLatestVersion/getDistTags/getPackageInfo/getVersions,
-npm view --json parsing, test layer in-memory metadata.
+**NpmRegistry** -- getLatestVersion/getDistTags/getPackageInfo/getVersions.
 
 **PackagePublish** -- setupAuth/pack/publish/verifyIntegrity/
-publishToRegistries, .npmrc writing, multi-registry support, test layer
-in-memory publish state.
+publishToRegistries.
 
-**PackageManagerAdapter** -- detect/install/getCachePaths/getLockfilePaths/exec,
-PM detection logic, frozen lockfile, test layer in-memory state.
+**PackageManagerAdapter** -- detect/install/getCachePaths/getLockfilePaths/exec.
 
-**WorkspaceDetector** -- detect/listPackages/getPackage, pnpm-workspace.yaml
-and package.json workspaces parsing, test layer in-memory state.
+**WorkspaceDetector** -- detect/listPackages/getPackage.
 
-**ToolInstaller** -- install/isCached/installAndAddToPath/installBinary/
-installBinaryAndAddToPath, download/extract/cache lifecycle, single binary
-installation with chmod, test layer in-memory tool cache.
+**ToolInstaller** -- find/download/extractTar/extractZip/cacheDir/cacheFile,
+native fetch downloads, tar/unzip extraction.
 
-**ChangesetAnalyzer** -- parseAll/hasChangesets/generate, changeset YAML
-frontmatter parsing, test layer in-memory state.
+**ChangesetAnalyzer** -- parseAll/hasChangesets/generate.
 
-**ConfigLoader** -- loadJson/loadJsonc/loadYaml/exists, schema validation
-of loaded configs, test layer in-memory config state.
+**ConfigLoader** -- loadJson/loadJsonc/loadYaml/exists.
 
-**DryRun** -- isDryRun/guard, mutation interception, test layer always-dry
-with recorded labels.
+**DryRun** -- isDryRun/guard, mutation interception.
+
+**TokenPermissionChecker** -- check/assertSufficient/assertExact/
+warnOverPermissioned.
 
 ### Utilities
 
 **GithubMarkdown** -- Pure function output matches expected markdown strings.
 
-**SemverResolver** -- compare/satisfies/latestInRange/increment/parse with
-valid and invalid inputs.
+**SemverResolver** -- compare/satisfies/latestInRange/increment/parse.
 
 **AutoMerge** -- enable/disable GraphQL mutations.
 
-**ErrorAccumulator** -- Sequential and concurrent accumulation, success/
-failure collection.
+**ErrorAccumulator** -- Sequential and concurrent accumulation.
 
-**ReportBuilder** -- Fluent builder API, markdown rendering, multi-target
-output (summary/comment/checkRun).
+**ReportBuilder** -- Fluent builder API, markdown rendering, multi-target output.
 
 ### Schemas
 
@@ -267,18 +265,18 @@ action-builder's `persistLocal` feature to run actions in Docker containers.
 
 ## Current State
 
-Unit tests cover all 29 domain services, 4 namespace/utility objects, and key
-schemas. The 6 platform wrapper services are tested indirectly through the Live
-layers that depend on them (e.g., `ActionInputsLive.test.ts` mocks `ActionsCore`).
-Coverage meets the 80% threshold. Integration tests are deferred pending service
-stabilization.
+Unit tests cover all 29 services, the 4 runtime modules, 4 namespace/utility
+objects, and key schemas. Coverage meets the 80% threshold. Integration tests
+are deferred pending service stabilization.
 
 ## Rationale
 
 In-memory test layers allow fast, deterministic testing without GitHub API
 credentials or runner infrastructure. The co-located test file pattern keeps
 tests discoverable alongside their implementations, and the forks pool ensures
-compatibility with Effect-TS runtime requirements.
+compatibility with Effect-TS runtime requirements. Since all `@actions/*`
+packages are removed, tests have no dependency on the GitHub Actions runner
+environment.
 
 ## Related Documentation
 

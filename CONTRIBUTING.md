@@ -6,7 +6,7 @@ setup, project structure, and conventions you need to get started.
 ## Prerequisites
 
 - **Node.js 24** (24.11.0 or later)
-- **pnpm 10.30.3** -- enforced via the `packageManager` field in package.json
+- **pnpm 10.32.1** -- enforced via the `packageManager` field in package.json
 
 ## Getting Started
 
@@ -22,12 +22,15 @@ pnpm run test
 
 ```text
 src/
-  errors/          Tagged error types (ActionInputError, ActionOutputError)
+  runtime/         Native GitHub Actions runtime protocol implementations
+  errors/          Tagged error types (Data.TaggedError)
   layers/          Live and Test layer implementations per service
-  schemas/         Effect Schema definitions (LogLevel, GithubMarkdown)
-  services/        Service interfaces using Context.GenericTag
-  utils/           Pure utility functions (GithubMarkdown builders)
+  schemas/         Effect Schema definitions (LogLevel, Changeset, etc.)
+  services/        Service interfaces using Context.Tag
+  utils/           Pure utility functions (GithubMarkdown, ReportBuilder)
+  Action.ts        Action namespace (run, formatCause, resolveLogLevel)
   index.ts         Single barrel export
+  testing.ts       Test-safe entry point (excludes Action namespace)
 ```
 
 ## Development Commands
@@ -46,18 +49,24 @@ src/
 
 ## Architecture
 
+### Runtime Layer
+
+The `src/runtime/` directory contains native implementations of the GitHub
+Actions runtime protocol, replacing all `@actions/*` packages:
+
+- `WorkflowCommand` -- `::command::` protocol formatter with value escaping
+- `RuntimeFile` -- Environment file appender (GITHUB_OUTPUT, GITHUB_ENV, etc.)
+- `ActionsConfigProvider` -- ConfigProvider reading `INPUT_*` env vars
+- `ActionsLogger` -- Effect Logger emitting workflow commands
+- `ActionsRuntime.Default` -- Single convenience Layer wiring everything
+
 ### Services
 
-Each service is defined with `Context.GenericTag<T>(key)` rather than
-class-based `Context.Tag`. This produces simpler type signatures that work
-correctly with `api-extractor` for `.d.ts` rollup.
-
-### Layers
-
+Each service is defined with `Context.Tag` for dependency injection.
 Every service has two layer implementations:
 
-- **Live** -- backed by real `@actions/core` calls (e.g., `ActionInputsLive`)
-- **Test** -- backed by in-memory state (e.g., `ActionInputsTest`)
+- **Live** -- backed by native APIs (e.g., `ActionOutputsLive` uses `RuntimeFile`)
+- **Test** -- backed by in-memory state (e.g., `ActionOutputsTest`)
 
 Users compose layers with `Layer.mergeAll(...)`.
 
@@ -67,31 +76,20 @@ Errors use `Data.TaggedError` with an explicit `Base` export marked
 `@internal`. This pattern ensures `api-extractor` can resolve the error types
 in the public API surface.
 
-### GithubMarkdown
-
-Pure functions (not a service). No Effect dependency needed to use the
-GFM table, heading, details, and list builders.
-
 ## Testing
 
 **Framework:** Vitest with the forks pool (required for Effect-TS compatibility).
 
 **Convention:** Tests live next to source files as `*.test.ts`. Each test file
 uses the corresponding Test layer to exercise the service through the Effect
-runtime without touching real `@actions/core` APIs.
+runtime without touching real GitHub Actions runner APIs.
 
-**Test layer namespace pattern:**
-
-- `ActionInputsTest` -- constructed from `Record<string, string>`
-- `ActionLoggerTest.empty()` / `ActionLoggerTest.layer(state)` -- in-memory
-  log capture
-- `ActionOutputsTest.empty()` / `ActionOutputsTest.layer(state)` -- in-memory
-  output capture
+**Coverage threshold:** 80% for lines, functions, statements, and branches.
 
 Run a specific test file:
 
 ```bash
-pnpm vitest run src/services/ActionInputs.test.ts
+pnpm vitest run src/services/ActionOutputs.test.ts
 ```
 
 ## Commit Conventions

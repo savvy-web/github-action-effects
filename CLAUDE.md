@@ -6,11 +6,9 @@ code in this repository.
 ## Project Status
 
 Effect-based utility library for building robust, well-logged, and
-schema-validated GitHub Actions. Provides 27 Effect services covering inputs,
-logging, outputs, state, GitHub API operations, git operations,
-config loading, tool management, package manager abstraction, npm registry
-queries, package publishing, workspace detection, PR lifecycle management,
-and token permission checks.
+schema-validated GitHub Actions. Zero CJS dependencies — all `@actions/*`
+packages replaced with native ESM implementations using Effect primitives
+and the GitHub Actions runtime protocol.
 
 ## Design Documentation
 
@@ -47,7 +45,7 @@ pnpm run build:prod        # Build production/npm output only
 
 ```bash
 # Run a specific test file
-pnpm vitest run src/services/ActionInputs.test.ts
+pnpm vitest run src/services/ActionOutputs.test.ts
 ```
 
 ## Architecture
@@ -58,11 +56,14 @@ pnpm vitest run src/services/ActionInputs.test.ts
 - **Build**: Rslib with dual output (`dist/dev/` and `dist/npm/`)
 - **Build Orchestration**: Turbo for caching and task dependencies
 - **Core Dependency**: Effect-TS for service composition, error handling, and schema validation
+- **Direct deps**: `@octokit/rest`, `@octokit/auth-app`, jsonc/semver/yaml-effect
+- **Required peers**: `effect`, `@effect/platform`, `@effect/platform-node`
 
 ### Source Layout
 
 ```text
 src/
+  runtime/     -- ConfigProvider, Logger, WorkflowCommand, RuntimeFile, ActionsRuntime
   services/    -- Effect service interfaces (27 services)
   layers/      -- Live and Test layer implementations
   errors/      -- Tagged error types (Data.TaggedError)
@@ -70,46 +71,75 @@ src/
   utils/       -- GithubMarkdown, ReportBuilder
 ```
 
+### Runtime Layer
+
+The `src/runtime/` directory contains the GitHub Actions runtime protocol
+implementations that replace `@actions/core`, `@actions/exec`, etc.:
+
+- `WorkflowCommand` — `::command::` protocol formatter with escaping
+- `RuntimeFile` — Env file appender (GITHUB_OUTPUT, GITHUB_ENV, etc.)
+- `ActionsConfigProvider` — ConfigProvider reading INPUT_* env vars
+- `ActionsLogger` — Effect Logger emitting workflow commands
+- `ActionsRuntime.Default` — Single convenience Layer wiring everything
+
+Consumer pattern:
+
+```typescript
+// Option A: Direct layer provision
+program.pipe(Effect.provide(ActionsRuntime.Default))
+
+// Option B: Action.run with error handling + buffering
+Action.run(program)
+```
+
+Inputs use Effect's `Config` API:
+
+```typescript
+const name = yield* Config.string("name")      // reads INPUT_NAME
+const count = yield* Config.integer("count")    // reads INPUT_COUNT
+```
+
 ### Services
 
-| Service | Purpose | Optional Peer Deps |
-| ------- | ------- | ----------------- |
-| ActionInputs | Schema-validated input reading | — |
-| ActionLogger | Structured logging (info/verbose/debug) | — |
-| ActionOutputs | Typed outputs + step summaries | — |
-| ActionState | State transfer between action phases | — |
-| ActionCache | Cache save/restore | @actions/cache |
-| ActionEnvironment | GitHub/runner context access | — |
-| DryRun | Mutation guard with fallback values | — |
-| GitHubClient | Octokit REST/GraphQL wrapper | @actions/github |
-| GitHubGraphQL | Typed GraphQL query/mutation execution | @actions/github |
-| GitHubApp | App authentication lifecycle | @octokit/auth-app |
-| GitHubIssue | Issue CRUD (list, get, create, update, label) | @actions/github |
-| GitHubRelease | Release + asset management | @actions/github |
-| RateLimiter | API rate limit awareness + retry | — |
-| CheckRun | Check runs + annotations | — |
-| CommandRunner | Structured shell execution | @actions/exec |
-| PullRequest | PR lifecycle (CRUD, merge, labels, reviewers) | @actions/github |
-| PullRequestComment | PR comment management | — |
-| WorkflowDispatch | Trigger + poll workflows | — |
-| TokenPermissionChecker | Token permission validation + enforcement | — |
-| ChangesetAnalyzer | Parse/generate changeset files | — |
-| GitBranch | Branch management via Git Data API | — |
-| GitCommit | Verified commits + file deletions via Git Data API | — |
-| GitTag | Tag CRUD via Git Data API | — |
-| ConfigLoader | JSON/JSONC/YAML config loading | jsonc-parser, yaml |
-| ToolInstaller | Tool binary management | @actions/tool-cache |
-| NpmRegistry | npm registry queries (versions, dist-tags, info) | — |
-| PackagePublish | Pack + publish to registries | — |
-| PackageManagerAdapter | Unified PM interface | — |
-| WorkspaceDetector | Monorepo workspace detection + listing | — |
+| Service | Purpose |
+| ------- | ------- |
+| ActionLogger | Log groups + buffered output |
+| ActionOutputs | Typed outputs + step summaries |
+| ActionState | Schema-validated state transfer between phases |
+| ActionCache | Cache save/restore (internal protocol) |
+| ActionEnvironment | GitHub/runner context access |
+| DryRun | Mutation guard with fallback values |
+| GitHubClient | Octokit REST/GraphQL wrapper (direct @octokit/rest) |
+| GitHubGraphQL | Typed GraphQL query/mutation execution |
+| GitHubApp | App authentication lifecycle |
+| GitHubIssue | Issue CRUD (list, get, create, update, label) |
+| GitHubRelease | Release + asset management |
+| RateLimiter | API rate limit awareness + retry |
+| CheckRun | Check runs + annotations |
+| CommandRunner | Structured shell execution (node:child_process) |
+| PullRequest | PR lifecycle (CRUD, merge, labels, reviewers) |
+| PullRequestComment | PR comment management |
+| WorkflowDispatch | Trigger + poll workflows |
+| TokenPermissionChecker | Token permission validation + enforcement |
+| ChangesetAnalyzer | Parse/generate changeset files |
+| GitBranch | Branch management via Git Data API |
+| GitCommit | Verified commits + file deletions via Git Data API |
+| GitTag | Tag CRUD via Git Data API |
+| ConfigLoader | JSON/JSONC/YAML config loading |
+| ToolInstaller | Tool binary management (native fetch + child_process) |
+| NpmRegistry | npm registry queries (versions, dist-tags, info) |
+| PackagePublish | Pack + publish to registries |
+| PackageManagerAdapter | Unified PM interface |
+| WorkspaceDetector | Monorepo workspace detection + listing |
 
 ### Key Patterns
 
 - Services use `class Foo extends Context.Tag("github-action-effects/Foo")<Foo, { ... }>() {}`
-- Errors use `class FooError extends Data.TaggedError("FooError")<{ ... }> {}` (no Base export)
-- Live layers wrap `@actions/core`; Test layers use in-memory state
+- Errors use `class FooError extends Data.TaggedError("FooError")<{ ... }> {}`
+- Live layers use native APIs (no @actions/* wrappers)
 - Test layers use namespace object pattern: `ActionLoggerTest.empty()` / `ActionLoggerTest.layer(state)`
+- Inputs via `Config.*` backed by `ActionsConfigProvider`
+- Logging via Effect `Logger` backed by `ActionsLogger`
 
 ### Code Quality
 

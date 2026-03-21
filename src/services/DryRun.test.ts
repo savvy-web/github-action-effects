@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Logger } from "effect";
 import { describe, expect, it } from "vitest";
 import { DryRunLive } from "../layers/DryRunLive.js";
 import { DryRunTest } from "../layers/DryRunTest.js";
@@ -61,6 +61,7 @@ describe("DryRun", () => {
 					),
 				),
 				Effect.provide(DryRunLive(true)),
+				Effect.provide(Logger.replace(Logger.defaultLogger, Logger.none)),
 			),
 		);
 		expect(result).toBe("skipped");
@@ -72,10 +73,10 @@ describe("DryRun", () => {
 			DryRun.pipe(
 				Effect.flatMap((dr) => dr.guard("delete-branch", Effect.succeed("done"), "skipped")),
 				Effect.provide(DryRunLive(true)),
+				Effect.provide(Logger.replace(Logger.defaultLogger, Logger.none)),
 			),
 		);
 		// If it doesn't throw, the log was emitted without error
-		// (we can't easily capture Effect.logInfo in tests without a custom logger)
 	});
 
 	it("test layer records guarded labels", async () => {
