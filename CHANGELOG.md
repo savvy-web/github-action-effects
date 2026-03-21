@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.9
+
+### Bug Fixes
+
+* [`3a0542f`](https://github.com/savvy-web/github-action-effects/commit/3a0542fd9d2835fc0cb66b414d6141b701f0b0c3) Use `-k` (keep old files) flag for tar extraction to skip existing files instead of failing with "Permission denied" on Windows. Tolerates exit code 1 (non-fatal warnings) while still failing on exit code 2+ (fatal errors). Fixes #76.
+
 ## 0.11.8
 
 ### Bug Fixes
