@@ -451,7 +451,11 @@ describe("ToolInstallerLive", () => {
 			const destDir = join(tempDir, "win-extracted");
 
 			const originalPlatform = process.platform;
+			const originalPath = process.env.PATH;
 			Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+			// Restrict PATH so pwsh/powershell can't be found (pwsh IS installed
+			// on ubuntu-latest runners and would run slowly instead of failing fast)
+			process.env.PATH = "/nonexistent-path-for-testing";
 
 			try {
 				const error = await runFail(Effect.flatMap(ToolInstaller, (svc) => svc.extractZip(archivePath, destDir)));
@@ -460,8 +464,9 @@ describe("ToolInstallerLive", () => {
 				expect(error.reason).toMatch(/powershell/i);
 			} finally {
 				Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+				process.env.PATH = originalPath;
 			}
-		});
+		}, 15_000);
 
 		it("fails with ToolInstallerError when zip dest mkdir fails", async () => {
 			const sourceDir = join(tempDir, "source");
