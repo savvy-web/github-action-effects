@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.8
+
+### Bug Fixes
+
+* [`3636618`](https://github.com/savvy-web/github-action-effects/commit/3636618043429c9e011b3b94299246091c7e7910) Remove `--force-local` flag from tar commands — bsdtar (used on all GitHub Actions runner platforms) does not support it and does not need it. Plain `tar czf`/`tar xzf` works correctly across all platforms. Fixes #71.
+
 ## 0.11.7
 
 ### Bug Fixes
