@@ -135,6 +135,87 @@ describe("ToolInstallerLive", () => {
 			expect(error.reason).toContain("HTTP 404");
 		});
 
+		it("follows HTTP redirects", async () => {
+			const { PassThrough } = await import("node:stream");
+
+			let callCount = 0;
+
+			const mockedGet = vi.mocked(httpsGet);
+			mockedGet.mockImplementation((...args: unknown[]) => {
+				const cb = args.find((a) => typeof a === "function") as (res: InstanceType<typeof PassThrough>) => void;
+				callCount++;
+
+				if (callCount === 1) {
+					// First call: redirect
+					const redirectResponse = new PassThrough();
+					Object.assign(redirectResponse, {
+						statusCode: 302,
+						headers: { location: "https://cdn.example.com/tool.tar.gz" },
+					});
+					process.nextTick(() => {
+						cb(redirectResponse);
+						redirectResponse.end();
+					});
+				} else {
+					// Second call: actual content
+					const dataResponse = new PassThrough();
+					Object.assign(dataResponse, { statusCode: 200, headers: {} });
+					process.nextTick(() => {
+						cb(dataResponse);
+						dataResponse.end("binary content");
+					});
+				}
+
+				const req = new PassThrough();
+				Object.assign(req, {
+					setTimeout: vi.fn(),
+					on: vi.fn().mockReturnThis(),
+					destroy: vi.fn(),
+				});
+				return req as unknown as import("node:http").ClientRequest;
+			});
+
+			const result = await run(Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")));
+
+			expect(result).toBeTruthy();
+			expect(callCount).toBe(2);
+		});
+
+		it("fails with ToolInstallerError on socket timeout", async () => {
+			const { PassThrough } = await import("node:stream");
+
+			const mockedGet = vi.mocked(httpsGet);
+			mockedGet.mockImplementation((..._args: unknown[]) => {
+				// Never call the callback — simulate a hanging connection
+				const req = new PassThrough();
+				let timeoutHandler: (() => void) | undefined;
+				const onMock = vi.fn().mockReturnThis();
+				Object.assign(req, {
+					setTimeout: vi.fn((_ms: number, handler: () => void) => {
+						timeoutHandler = handler;
+					}),
+					on: onMock,
+					destroy: vi.fn((error: Error) => {
+						// When destroy is called with an error, emit the error event
+						const onCalls = onMock.mock.calls as Array<[string, (err: Error) => void]>;
+						for (const [event, handler] of onCalls) {
+							if (event === "error") handler(error);
+						}
+					}),
+				});
+				// Trigger the timeout immediately
+				process.nextTick(() => timeoutHandler?.());
+				return req as unknown as import("node:http").ClientRequest;
+			});
+
+			const error = await runFail(
+				Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")),
+			);
+
+			expect(error.operation).toBe("download");
+			expect(error.reason).toContain("Socket timeout");
+		});
+
 		it("downloads a file successfully to a temp path", async () => {
 			const { PassThrough } = await import("node:stream");
 
