@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.4
+
+### Bug Fixes
+
+* [`1e19145`](https://github.com/savvy-web/github-action-effects/commit/1e19145e7f00a52b4603b759d710d0a0c9043c1b) Expand glob patterns to real filesystem paths before passing to tar in ActionCacheLive.save(). Fixes #66.
+
 ## 0.11.3
 
 ### Bug Fixes
