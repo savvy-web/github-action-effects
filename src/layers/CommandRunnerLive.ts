@@ -13,6 +13,8 @@ const spawnCapture = (
 	Effect.async<ExecOutput, CommandRunnerError>((resume) => {
 		const spawnOpts: SpawnOptions = {
 			stdio: "pipe",
+			// Windows requires shell: true to resolve .cmd/.bat files (e.g., corepack.cmd)
+			...(process.platform === "win32" ? { shell: true } : {}),
 			...(options?.cwd !== undefined ? { cwd: options.cwd } : {}),
 			...(options?.env !== undefined ? { env: options.env as NodeJS.ProcessEnv } : {}),
 			...(options?.timeout !== undefined ? { timeout: options.timeout } : {}),
