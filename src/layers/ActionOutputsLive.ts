@@ -1,3 +1,4 @@
+import { delimiter } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect, Layer, Schema } from "effect";
 import { ActionOutputError } from "../errors/ActionOutputError.js";
@@ -77,13 +78,13 @@ export const ActionOutputsLive: Layer.Layer<ActionOutputs, never, FileSystem.Fil
 				/* v8 ignore next 4 -- fallback when not running in GitHub Actions */
 				if (filePath === undefined) {
 					return Effect.sync(() => {
-						process.env.PATH = `${path}:${process.env.PATH ?? ""}`;
+						process.env.PATH = `${path}${delimiter}${process.env.PATH ?? ""}`;
 					});
 				}
 				return fs.writeFileString(filePath, `${path}\n`, { flag: "a" }).pipe(
 					Effect.tap(() =>
 						Effect.sync(() => {
-							process.env.PATH = `${path}:${process.env.PATH ?? ""}`;
+							process.env.PATH = `${path}${delimiter}${process.env.PATH ?? ""}`;
 						}),
 					),
 					Effect.asVoid,
