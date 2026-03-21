@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.10
+
+### Bug Fixes
+
+* [`5b0b1bd`](https://github.com/savvy-web/github-action-effects/commit/5b0b1bd6852b923883ec50b4fadefedf03f39c38) Only use tar `-k` flag on Windows where file locking causes "Permission denied" errors. Linux/macOS use plain `xzf` which correctly overwrites existing files by default. Fixes #76.
+
 ## 0.11.9
 
 ### Bug Fixes
