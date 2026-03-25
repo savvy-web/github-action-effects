@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.12
+
+### Other
+
+* [`71aec8e`](https://github.com/savvy-web/github-action-effects/commit/71aec8e0183e02cde2a65aa543e63e544deabba4) Upgrades to new `@savvy-web/vitest` standard setup
+
 ## 0.11.11
 
 ### Features
