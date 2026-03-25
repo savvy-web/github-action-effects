@@ -62,7 +62,7 @@
 		"@octokit/rest": "^22.0.0",
 		"jsonc-effect": "^0.2.0",
 		"semver-effect": "^0.2.0",
-		"yaml-effect": "^0.2.0"
+		"yaml-effect": "^0.2.2"
 	},
 	"devDependencies": {
 		"@effect/cluster": "catalog:silk",
@@ -70,9 +70,9 @@
 		"@effect/platform-node": "catalog:silk",
 		"@effect/rpc": "catalog:silk",
 		"@effect/sql": "catalog:silk",
-		"@savvy-web/changesets": "^0.5.3",
-		"@savvy-web/commitlint": "^0.4.2",
-		"@savvy-web/lint-staged": "^0.6.1",
+		"@savvy-web/changesets": "^0.6.0",
+		"@savvy-web/commitlint": "^0.4.3",
+		"@savvy-web/lint-staged": "^0.6.2",
 		"@savvy-web/rslib-builder": "^0.19.0",
 		"@savvy-web/vitest": "^0.3.0",
 		"effect": "catalog:silk"
