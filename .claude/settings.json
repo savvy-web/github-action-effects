@@ -5,6 +5,8 @@
 	},
 	"enableAllProjectMcpServers": true,
 	"enabledPlugins": {
-		"workflow@savvy-web-claude-tools": true
+		"workflow@savvy-web-claude-tools": true,
+		"changesets@savvy-web-systems": true,
+		"vitest-agent-reporter@spencerbeggs": true
 	}
 }
