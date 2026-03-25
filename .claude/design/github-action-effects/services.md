@@ -204,12 +204,13 @@ dependency on `@actions/cache`.
 
 **Interface:**
 
-- `save(paths, key)` -- Create tar.gz archive of paths, upload via
-  `CreateCacheEntry` + Azure Blob `BlockBlobClient.uploadFile()` +
-  `FinalizeCacheEntryUpload`
+- `save(paths, key)` -- Create tar.gz archive of paths with `-P` (absolute-names)
+  to preserve absolute paths, upload via `CreateCacheEntry` + Azure Blob
+  `BlockBlobClient.uploadFile()` + `FinalizeCacheEntryUpload`
 - `restore(paths, primaryKey, restoreKeys?)` -- Look up cache entry via
   `GetCacheEntryDownloadURL`, download via Azure Blob `BlobClient.downloadToFile()`,
-  extract. Returns `Option<string>` (matched key or none on miss)
+  extract with `-P` to restore absolute paths correctly. Returns `Option<string>`
+  (matched key or none on miss)
 
 **Error type:** `ActionCacheError`
 
@@ -437,7 +438,7 @@ Structured shell command execution via `node:child_process` `spawn`.
 - `execJson(command, args?, schema?)` -- Run, parse stdout as JSON, validate
 - `execLines(command, args?, options?)` -- Run and return stdout split into lines
 
-**Types:** `ExecOptions` -- `{ cwd?, env?, timeout?, silent? }`,
+**Types:** `ExecOptions` -- `{ cwd?, env?, timeout?, silent?, streaming? }`,
 `ExecOutput` -- `{ exitCode, stdout, stderr }`
 
 **Error type:** `CommandRunnerError`

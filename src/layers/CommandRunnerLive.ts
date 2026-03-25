@@ -5,32 +5,57 @@ import { CommandRunnerError } from "../errors/CommandRunnerError.js";
 import type { ExecOptions, ExecOutput } from "../services/CommandRunner.js";
 import { CommandRunner } from "../services/CommandRunner.js";
 
+/**
+ * Escape an argument for safe use with cmd.exe on Windows.
+ *
+ * When `shell: true` is set, Node.js delegates to cmd.exe which interprets
+ * metacharacters like `&`, `|`, `>`, `<`, `^`, `(`, `)`. Wrapping args in
+ * double quotes neutralizes these. Internal double quotes are escaped with `\`.
+ *
+ * Limitation: `%VAR%` and `!VAR!` (delayed expansion) environment variable
+ * expansion still occurs inside double quotes in cmd.exe. Callers must not
+ * pass untrusted values containing `%`- or `!`-delimited variable references.
+ */
+const escapeWindowsArg = (arg: string): string => {
+	if (/[&|<>^() "!%]/.test(arg)) {
+		return `"${arg.replace(/"/g, '\\"')}"`;
+	}
+	return arg;
+};
+
 const spawnCapture = (
 	command: string,
 	args: ReadonlyArray<string>,
 	options: ExecOptions | undefined,
 ): Effect.Effect<ExecOutput, CommandRunnerError> =>
 	Effect.async<ExecOutput, CommandRunnerError>((resume) => {
+		const isWindows = process.platform === "win32";
 		const spawnOpts: SpawnOptions = {
 			stdio: "pipe",
-			// Windows requires shell: true to resolve .cmd/.bat files (e.g., corepack.cmd)
-			...(process.platform === "win32" ? { shell: true } : {}),
+			// Windows requires shell: true to resolve .cmd/.bat files (e.g., corepack.cmd).
+			// Arguments are escaped via escapeWindowsArg to prevent shell injection.
+			...(isWindows ? { shell: true } : {}),
 			...(options?.cwd !== undefined ? { cwd: options.cwd } : {}),
 			...(options?.env !== undefined ? { env: options.env as NodeJS.ProcessEnv } : {}),
 			...(options?.timeout !== undefined ? { timeout: options.timeout } : {}),
 		};
 
-		const child = spawn(command, [...args], spawnOpts);
+		// On Windows, escape args to prevent cmd.exe metacharacter injection
+		const safeArgs = isWindows ? [...args].map(escapeWindowsArg) : [...args];
+		const child = spawn(command, safeArgs, spawnOpts);
 
 		let stdout = "";
 		let stderr = "";
+		const streaming = options?.streaming === true;
 
 		(child.stdout as NodeJS.ReadableStream).on("data", (chunk: Buffer) => {
 			stdout += chunk.toString();
+			if (streaming) process.stdout.write(chunk);
 		});
 
 		(child.stderr as NodeJS.ReadableStream).on("data", (chunk: Buffer) => {
 			stderr += chunk.toString();
+			if (streaming) process.stderr.write(chunk);
 		});
 
 		child.on("error", (err: Error) => {

@@ -66,7 +66,9 @@ Core Action I/O:
 
   ActionCacheLive          — Layer.succeed; uses V2 Twirp RPC protocol with
                              ACTIONS_RESULTS_URL + ACTIONS_RUNTIME_TOKEN.
-                             Creates tar.gz archives via execFileSync("tar").
+                             Creates tar.gz archives via execFileSync("tar") with -P
+                             (absolute-names) to preserve absolute paths. Windows
+                             extract uses -k to skip locked files.
                              Uses @azure/storage-blob for Azure Blob upload/download.
   ActionCacheTest           — in-memory Map for cache simulation (always-miss when empty)
 
@@ -225,13 +227,17 @@ Schema encode/decode via shared `decodeState`/`encodeState` helpers.
 
 `Layer.Layer<ActionCache>`. No service dependencies. Reads `ACTIONS_RESULTS_URL`
 and `ACTIONS_RUNTIME_TOKEN` from environment. Uses `execFileSync("tar")` for
-archive creation/extraction. V2 Twirp RPC protocol: `CreateCacheEntry` to
-reserve, Azure Blob `BlockBlobClient.uploadFile()` for upload (64 MB chunks,
-8 concurrent), `FinalizeCacheEntryUpload` to commit. Restore uses
-`GetCacheEntryDownloadURL` then Azure Blob `BlobClient.downloadToFile()`.
-Version hash: `sha256(paths.join("|") + "|gzip|1.0")`. Exponential backoff
-retry (3s base, 1.5x, 5 attempts) on 5xx and network errors for Twirp calls;
-Azure SDK handles its own retries internally.
+archive creation/extraction with `-P` (absolute-names) flag to preserve leading
+`/` on absolute paths — create uses `czPf`, extract uses `xzPf` (Linux/macOS) or
+`xzPkf` (Windows, with `-k` to skip locked files). Tolerates tar exit code 1
+(non-fatal warnings) but fails on exit code 2+. V2 Twirp RPC protocol:
+`CreateCacheEntry` to reserve, Azure Blob `BlockBlobClient.uploadFile()` for
+upload (64 MB chunks, 8 concurrent), `FinalizeCacheEntryUpload` to commit.
+Restore uses `GetCacheEntryDownloadURL` then Azure Blob
+`BlobClient.downloadToFile()`. Version hash:
+`sha256(paths.join("|") + "|gzip|1.0")`. Exponential backoff retry (3s base,
+1.5x, 5 attempts) on 5xx and network errors for Twirp calls; Azure SDK handles
+its own retries internally.
 
 ### GitHubClientLive
 
@@ -258,7 +264,12 @@ Token revocation also uses native `fetch`.
 
 `Layer.Layer<CommandRunner>`. No service dependencies. Uses `node:child_process`
 `spawn` directly for all command execution. Captures stdout/stderr via pipe
-listeners.
+listeners. Supports `streaming` option to forward output to
+`process.stdout`/`process.stderr` in real-time while still capturing. On Windows,
+uses `shell: true` to resolve `.cmd`/`.bat` files, with `escapeWindowsArg()`
+applied to all arguments to prevent cmd.exe metacharacter injection (wraps in
+double quotes, escapes internal `"`). Documented limitation: `%VAR%` expansion
+still occurs inside double quotes in cmd.exe.
 
 ### ToolInstallerLive
 

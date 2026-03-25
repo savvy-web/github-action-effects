@@ -179,7 +179,9 @@ const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 				throw new Error("No files matched the provided cache paths");
 			}
 			const archivePath = join(tmpdir(), `cache-${randomUUID()}.tar.gz`);
-			execFileSync("tar", ["czf", archivePath, ...resolved], { stdio: "pipe" });
+			// -P (absolute-names) preserves leading "/" so absolute paths are
+			// stored verbatim and later extracted to their correct locations.
+			execFileSync("tar", ["czPf", archivePath, ...resolved], { stdio: "pipe" });
 			return archivePath;
 		},
 		catch: (error) =>
@@ -192,8 +194,10 @@ const createArchive = (paths: ReadonlyArray<string>, key: string) =>
 
 /**
  * Extract a tar.gz archive.
- * Uses `-k` (keep old files) to skip over existing files rather than fail
- * with "Permission denied" on Windows where file handles may be held.
+ * Uses `-P` (absolute-names) to restore absolute paths to their correct
+ * locations instead of extracting them relative to the working directory.
+ * Uses `-k` (keep old files) on Windows to skip locked files rather than
+ * fail with "Permission denied" when file handles are held.
  * The `-k` flag causes tar to exit non-zero when files are skipped, so
  * we tolerate exit code 1 (non-fatal warnings) but fail on exit code 2+.
  */
@@ -201,9 +205,10 @@ const extractArchive = (archivePath: string, key: string) =>
 	Effect.try({
 		try: () => {
 			try {
-				// Windows: use -k to skip locked files instead of failing with "Permission denied"
+				// -P (absolute-names) restores absolute paths to their original locations.
+				// Windows: also use -k to skip locked files instead of failing with "Permission denied"
 				// Linux/macOS: no -k, overwrite existing files (default behavior)
-				const flags = process.platform === "win32" ? "xzkf" : "xzf";
+				const flags = process.platform === "win32" ? "xzPkf" : "xzPf";
 				execFileSync("tar", [flags, archivePath], { stdio: "pipe" });
 			} catch (err: unknown) {
 				const code = (err as { status?: number }).status;
