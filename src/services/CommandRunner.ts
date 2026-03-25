@@ -12,6 +12,12 @@ export interface ExecOptions {
 	readonly env?: Record<string, string>;
 	readonly timeout?: number;
 	readonly silent?: boolean;
+	/**
+	 * When true, forward stdout/stderr to `process.stdout`/`process.stderr`
+	 * in real-time while still capturing the output for the return value.
+	 * Useful for long-running commands where real-time log visibility is needed.
+	 */
+	readonly streaming?: boolean;
 }
 
 /**

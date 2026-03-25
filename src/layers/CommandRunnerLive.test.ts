@@ -117,6 +117,26 @@ describe("CommandRunnerLive", () => {
 		});
 	});
 
+	describe("streaming", () => {
+		it("captures output while streaming to process.stdout/stderr", async () => {
+			const result = await run(
+				Effect.flatMap(CommandRunner, (svc) =>
+					svc.execCapture("sh", ["-c", "echo streamed-out; echo streamed-err >&2"], { streaming: true }),
+				),
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout.trim()).toBe("streamed-out");
+			expect(result.stderr.trim()).toBe("streamed-err");
+		});
+
+		it("still returns captured output when streaming is false", async () => {
+			const result = await run(
+				Effect.flatMap(CommandRunner, (svc) => svc.execCapture("echo", ["not-streamed"], { streaming: false })),
+			);
+			expect(result.stdout.trim()).toBe("not-streamed");
+		});
+	});
+
 	describe("error shape", () => {
 		it("CommandRunnerError has correct fields", async () => {
 			const exit = await runExit(Effect.flatMap(CommandRunner, (svc) => svc.exec("sh", ["-c", "exit 42"])));

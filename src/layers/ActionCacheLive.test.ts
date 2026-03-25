@@ -488,7 +488,7 @@ describe("ActionCacheLive", () => {
 				expect(mockDownloadToFile).toHaveBeenCalled();
 
 				// tar extraction should have been invoked
-				const expectedFlags = process.platform === "win32" ? "xzkf" : "xzf";
+				const expectedFlags = process.platform === "win32" ? "xzPkf" : "xzPf";
 				expect(mockedExecFileSync).toHaveBeenCalledWith(
 					"tar",
 					expect.arrayContaining([expectedFlags]),
