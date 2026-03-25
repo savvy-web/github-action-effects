@@ -12,14 +12,11 @@ import { CommandRunner } from "../services/CommandRunner.js";
  * metacharacters like `&`, `|`, `>`, `<`, `^`, `(`, `)`. Wrapping args in
  * double quotes neutralizes these. Internal double quotes are escaped with `\`.
  *
- * Limitation: `%VAR%` environment variable expansion still occurs inside
- * double quotes in cmd.exe. Callers must not pass untrusted values containing
- * `%`-delimited variable references.
+ * Limitation: `%VAR%` and `!VAR!` (delayed expansion) environment variable
+ * expansion still occurs inside double quotes in cmd.exe. Callers must not
+ * pass untrusted values containing `%`- or `!`-delimited variable references.
  */
 const escapeWindowsArg = (arg: string): string => {
-	// If the arg is already quoted or contains no special characters, return as-is
-	if (arg.startsWith('"') && arg.endsWith('"')) return arg;
-	// Metacharacters that cmd.exe interprets outside of double quotes
 	if (/[&|<>^() "!%]/.test(arg)) {
 		return `"${arg.replace(/"/g, '\\"')}"`;
 	}
