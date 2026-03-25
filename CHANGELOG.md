@@ -1,5 +1,22 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.11
+
+### Features
+
+* [`f1c7e5c`](https://github.com/savvy-web/github-action-effects/commit/f1c7e5cf35d9a4fbcf7e59451582e9bde379f752) Add `streaming` option to `CommandRunner.ExecOptions` that forwards
+  stdout/stderr to `process.stdout`/`process.stderr` in real-time while still
+  capturing output, improving log visibility for long-running commands (Fixes #80)
+* Add Windows shell argument escaping via `escapeWindowsArg()` to prevent
+  cmd.exe metacharacter injection when `shell: true` is used for `.cmd`/`.bat`
+  file resolution (Fixes #62)
+
+### Bug Fixes
+
+* [`f1c7e5c`](https://github.com/savvy-web/github-action-effects/commit/f1c7e5cf35d9a4fbcf7e59451582e9bde379f752) Fix cache restore extracting files relative to working directory instead of at
+  their correct absolute paths by adding `-P` (absolute-names) flag to both tar
+  create and extract operations (Fixes #81)
+
 ## 0.11.10
 
 ### Bug Fixes
