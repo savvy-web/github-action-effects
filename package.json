@@ -72,7 +72,7 @@
 		"@effect/sql": "catalog:silk",
 		"@savvy-web/changesets": "^0.7.1",
 		"@savvy-web/commitlint": "^0.4.4",
-		"@savvy-web/lint-staged": "^0.6.5",
+		"@savvy-web/lint-staged": "^0.6.6",
 		"@savvy-web/rslib-builder": "^0.19.1",
 		"@savvy-web/vitest": "^1.1.0",
 		"effect": "catalog:silk"
