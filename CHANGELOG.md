@@ -1,5 +1,19 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.13
+
+### Dependencies
+
+* | [`20729fe`](https://github.com/savvy-web/github-action-effects/commit/20729fef418181747fbddee6f8437bd9a4117def) | Dependency    | Type    | Action | From   | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/changesets                                                                                           | devDependency | updated | ^0.6.0 | ^0.7.0 |    |
+  | @savvy-web/lint-staged                                                                                          | devDependency | updated | ^0.6.2 | ^0.6.3 |    |
+  | @savvy-web/vitest                                                                                               | devDependency | updated | ^1.0.0 | ^1.0.1 |    |
+
+- | [`52c338a`](https://github.com/savvy-web/github-action-effects/commit/52c338a8b83dbaafc9a8bc594edc8f53492eecc2) | Dependency    | Type    | Action | From   | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/lint-staged                                                                                          | devDependency | updated | ^0.6.3 | ^0.6.4 |    |
+
 ## 0.11.12
 
 ### Other
