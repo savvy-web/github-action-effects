@@ -1,5 +1,45 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.13
+
+### Dependencies
+
+* | [`20729fe`](https://github.com/savvy-web/github-action-effects/commit/20729fef418181747fbddee6f8437bd9a4117def) | Dependency    | Type    | Action | From   | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/changesets                                                                                           | devDependency | updated | ^0.6.0 | ^0.7.0 |    |
+  | @savvy-web/lint-staged                                                                                          | devDependency | updated | ^0.6.2 | ^0.6.3 |    |
+  | @savvy-web/vitest                                                                                               | devDependency | updated | ^1.0.0 | ^1.0.1 |    |
+
+- | [`52c338a`](https://github.com/savvy-web/github-action-effects/commit/52c338a8b83dbaafc9a8bc594edc8f53492eecc2) | Dependency    | Type    | Action | From   | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/lint-staged                                                                                          | devDependency | updated | ^0.6.3 | ^0.6.4 |    |
+
+* | [`ea4b5d6`](https://github.com/savvy-web/github-action-effects/commit/ea4b5d6f582a15ced12cb305d3570ebe55a167ab) | Dependency    | Type    | Action | From   | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/changesets                                                                                           | devDependency | updated | ^0.7.1 | ^0.7.2 |    |
+  | @savvy-web/commitlint                                                                                           | devDependency | updated | ^0.4.4 | ^0.5.0 |    |
+  | @savvy-web/lint-staged                                                                                          | devDependency | updated | ^0.6.6 | ^0.7.0 |    |
+  | @savvy-web/vitest                                                                                               | devDependency | updated | ^1.1.0 | ^1.2.0 |    |
+
+- | [`6d8a405`](https://github.com/savvy-web/github-action-effects/commit/6d8a4050c0e8f63170be788e450531e5a4471375) | Dependency    | Type    | Action  | From    | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :------ | :------ | -- |
+  | @savvy-web/changesets                                                                                           | devDependency | updated | ^0.7.0  | ^0.7.1  |    |
+  | @savvy-web/commitlint                                                                                           | devDependency | updated | ^0.4.3  | ^0.4.4  |    |
+  | @savvy-web/lint-staged                                                                                          | devDependency | updated | ^0.6.4  | ^0.6.5  |    |
+  | @savvy-web/rslib-builder                                                                                        | devDependency | updated | ^0.19.0 | ^0.19.1 |    |
+  | @savvy-web/vitest                                                                                               | devDependency | updated | ^1.0.1  | ^1.1.0  |    |
+
+* | [`6c71f25`](https://github.com/savvy-web/github-action-effects/commit/6c71f256cb5d75a59ef51c9ab8d4b01641583c97) | Dependency    | Type    | Action | From   | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/lint-staged                                                                                          | devDependency | updated | ^0.6.5 | ^0.6.6 |    |
+
+- | [`3c4e54c`](https://github.com/savvy-web/github-action-effects/commit/3c4e54cf07d5e3c4425af6955c9a5f72a3ca6915) | Dependency    | Type    | Action | From   | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/changesets                                                                                           | devDependency | updated | ^0.7.2 | ^0.7.3 |    |
+  | @savvy-web/commitlint                                                                                           | devDependency | updated | ^0.5.0 | ^0.5.1 |    |
+  | @savvy-web/lint-staged                                                                                          | devDependency | updated | ^0.7.0 | ^0.7.1 |    |
+  | @savvy-web/vitest                                                                                               | devDependency | updated | ^1.2.0 | ^1.2.1 |    |
+
 ## 0.11.12
 
 ### Other
