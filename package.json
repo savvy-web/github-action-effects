@@ -70,11 +70,11 @@
 		"@effect/platform-node": "catalog:silk",
 		"@effect/rpc": "catalog:silk",
 		"@effect/sql": "catalog:silk",
-		"@savvy-web/changesets": "^0.7.1",
-		"@savvy-web/commitlint": "^0.4.4",
-		"@savvy-web/lint-staged": "^0.6.6",
+		"@savvy-web/changesets": "^0.7.2",
+		"@savvy-web/commitlint": "^0.5.0",
+		"@savvy-web/lint-staged": "^0.7.0",
 		"@savvy-web/rslib-builder": "^0.19.1",
-		"@savvy-web/vitest": "^1.1.0",
+		"@savvy-web/vitest": "^1.2.0",
 		"effect": "catalog:silk"
 	},
 	"peerDependencies": {
