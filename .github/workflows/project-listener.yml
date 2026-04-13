@@ -17,7 +17,7 @@ jobs:
 
       - name: Get repository properties
         id: repo-props
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
@@ -48,7 +48,7 @@ jobs:
 
       - name: Add to project
         if: steps.repo-props.outputs.enabled == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
