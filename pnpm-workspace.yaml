@@ -2,7 +2,7 @@ packages:
   - .
 autoInstallPeers: true
 configDependencies:
-  "@savvy-web/pnpm-plugin-silk": 0.11.0+sha512-uvL2j/021Je7LsgFjTdO7kGkeE2uFUSWJFtIQJciESAIGXHlKxvFrVQ+PhQ4ScGGeTXfUyoTqHFKTM2UrgpRZA==
+  "@savvy-web/pnpm-plugin-silk": 0.12.0+sha512-bbBogGLls70KhAv0WKTVoADRWlx3C8wVPUpRVtQduFvaWpy4imQDwZo5gsR4/WlaQSmb+h+VdCTNLOehy0NJcg==
 loglevel: info
 onlyBuiltDependencies:
   - protobufjs
