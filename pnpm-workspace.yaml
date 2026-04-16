@@ -6,8 +6,3 @@ configDependencies:
 loglevel: info
 onlyBuiltDependencies:
   - protobufjs
-peerDependencyRules:
-  ignoreMissing:
-    - "@effect/cluster"
-    - "@effect/rpc"
-    - "@effect/sql"
