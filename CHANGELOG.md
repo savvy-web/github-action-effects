@@ -1,5 +1,18 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.13
+
+### Dependencies
+
+* | [`58ec41d`](https://github.com/savvy-web/github-action-effects/commit/58ec41dd5acab2861c38eb812498ad064fb12df9) | Dependency    | Type    | Action  | From    | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :------ | :------ | -- |
+  | @savvy-web/lint-staged                                                                                          | devDependency | updated | ^0.8.0  | ^1.0.0  |    |
+  | @savvy-web/rslib-builder                                                                                        | devDependency | updated | ^0.20.1 | ^0.20.2 |    |
+
+### Other
+
+* [`c1b25f5`](https://github.com/savvy-web/github-action-effects/commit/c1b25f54dbe1f40ef604b7e3373f5873014ab76e) Support for TypeScript v6
+
 ## 0.11.12
 
 ### Other
