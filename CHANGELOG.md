@@ -1,5 +1,13 @@
 # @savvy-web/pnpm-module-template
 
+## 0.11.14
+
+### Dependencies
+
+* | [`d0c42c0`](https://github.com/savvy-web/github-action-effects/commit/d0c42c0e21afa3115768476532a98b9da4c0a38c) | Dependency    | Type    | Action | From   | To |
+  | :-------------------------------------------------------------------------------------------------------------- | :------------ | :------ | :----- | :----- | -- |
+  | @savvy-web/vitest                                                                                               | devDependency | updated | ^1.3.0 | ^1.3.1 |    |
+
 ## 0.11.13
 
 ### Dependencies
