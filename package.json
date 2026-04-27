@@ -62,7 +62,7 @@
 		"@octokit/rest": "^22.0.0",
 		"jsonc-effect": "^0.2.1",
 		"semver-effect": "^0.2.1",
-		"yaml-effect": "^0.2.3"
+		"yaml-effect": "^0.4.0"
 	},
 	"devDependencies": {
 		"@effect/cluster": "catalog:silk",
