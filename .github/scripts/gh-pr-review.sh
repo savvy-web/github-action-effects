@@ -14,6 +14,11 @@
 #       comment (CLAUDE_COMMENT_ID) and any comment that mentions the
 #       current commit SHA.
 #
+#   check-status <commit_sha>
+#       Print filtered validation check-run status for the commit. Wraps
+#       `gh api ... | jq ...` in a single allowlisted command so the
+#       action's bash policy doesn't reject the pipe.
+#
 #   approve-pr <pr_number> <commit_sha> [body]
 #       Submit a formal APPROVE review on the PR. Use only when all
 #       previously reported issues are resolved and no new issues exist.
@@ -207,6 +212,20 @@ cmd_minimize_old_summaries() {
 	return 0
 }
 
+cmd_check_status() {
+	local sha="${1:?commit_sha required}"
+	local owner repo
+	owner=$(_owner)
+	repo=$(_repo)
+
+	log "check-status: $owner/$repo sha=${sha:0:7}"
+
+	# Internal pipe avoids the action's bash policy splitting `gh | jq`.
+	gh api "repos/$owner/$repo/commits/$sha/check-runs" --paginate \
+		| jq --argjson names '["PR Title Validation","Conventional Commits","Code Quality","Markdown","Tests"]' \
+			'.check_runs[] | select([.name] | inside($names)) | {name, status, conclusion, details_url}'
+}
+
 cmd_approve_pr() {
 	local pr="${1:?pr_number required}"
 	local sha="${2:?commit_sha required}"
@@ -238,6 +257,7 @@ Usage:
   gh-pr-review.sh resolve-thread         <comment_id> <pr_number> <commit_sha>
   gh-pr-review.sh minimize-comment       <comment_id>
   gh-pr-review.sh minimize-old-summaries <pr_number>  <current_sha>
+  gh-pr-review.sh check-status           <commit_sha>
   gh-pr-review.sh approve-pr             <pr_number>  <commit_sha> [body]
 
 Environment:
@@ -257,6 +277,7 @@ case "$cmd" in
 	resolve-thread)         cmd_resolve_thread         "$@" ;;
 	minimize-comment)       cmd_minimize_comment       "$@" ;;
 	minimize-old-summaries) cmd_minimize_old_summaries "$@" ;;
+	check-status)           cmd_check_status           "$@" ;;
 	approve-pr)             cmd_approve_pr             "$@" ;;
 	"" | -h | --help | help) usage ;;
 	*) err "Unknown subcommand: $cmd" ;;
