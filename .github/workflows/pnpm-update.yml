@@ -54,6 +54,12 @@ jobs:
             @savvy-web/pnpm-plugin-silk
           dependencies: |
             @savvy-web/*
+            @azure/storage-blob
+            @octokit/auth-app
+            @octokit/rest
+            jsonc-effect
+            semver-effect
+            yaml-effect
           run: |
             pnpm savvy-commit init
             pnpm savvy-lint init
