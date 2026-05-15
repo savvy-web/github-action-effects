@@ -266,13 +266,20 @@ the pre/main/post phases — `provision` in `pre.ts`, `client` in `main.ts`,
 `dispose` in `post.ts` — communicating through an internal `ActionState` key.
 See [services.md](./services.md#githubtoken-lifecycle) for the full data flow.
 
+`provision` and `dispose` require a `GitHubApp` layer in context — provide `GitHubAppLive` composed with `OctokitAuthAppLive` in production (or `GitHubAppTest` when unit-testing the phases). `client` requires `ActionState`, supplied by the runtime.
+
 ```typescript
 import { Layer } from "effect"
-import { Action, GitHubToken, CheckRunLive }
+import { Action, GitHubToken, CheckRunLive, GitHubAppLive, OctokitAuthAppLive }
   from "@savvy-web/github-action-effects"
 
+// GitHubApp layer required by provision/dispose
+const GitHubAppLayer = GitHubAppLive.pipe(Layer.provide(OctokitAuthAppLive))
+
 // pre.ts
-Action.run(GitHubToken.provision({ permissions: { checks: "write" } }))
+Action.run(GitHubToken.provision({ permissions: { checks: "write" } }), {
+  layer: GitHubAppLayer,
+})
 
 // main.ts
 Action.run(program, {
@@ -280,7 +287,7 @@ Action.run(program, {
 })
 
 // post.ts
-Action.run(GitHubToken.dispose())
+Action.run(GitHubToken.dispose(), { layer: GitHubAppLayer })
 ```
 
 ---

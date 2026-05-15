@@ -69,14 +69,19 @@ For permission-sensitive work the repo-scoped token is often too weak. Use `from
 
 A GitHub Action runs in three phases — `pre`, `main` and `post`. The `GitHubToken` namespace generates one installation token in `pre`, hands `main` a client built from it and revokes it in `post`.
 
+`GitHubToken.provision` and `GitHubToken.dispose` require a `GitHubApp` layer. In production, compose `GitHubAppLive` with `OctokitAuthAppLive` and provide the result to those effects.
+
 ```typescript
 // pre.ts — generate and persist the installation token
-import { Action, GitHubToken } from "@savvy-web/github-action-effects";
+import { Effect, Layer } from "effect";
+import { Action, GitHubAppLive, GitHubToken, OctokitAuthAppLive } from "@savvy-web/github-action-effects";
+
+const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive);
 
 Action.run(
   GitHubToken.provision({
     permissions: { contents: "write", pull_requests: "write" },
-  }),
+  }).pipe(Effect.provide(appLayer)),
 );
 ```
 
@@ -98,9 +103,12 @@ Action.run(program);
 
 ```typescript
 // post.ts — revoke the token
-import { Action, GitHubToken } from "@savvy-web/github-action-effects";
+import { Effect, Layer } from "effect";
+import { Action, GitHubAppLive, GitHubToken, OctokitAuthAppLive } from "@savvy-web/github-action-effects";
 
-Action.run(GitHubToken.dispose());
+const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive);
+
+Action.run(GitHubToken.dispose().pipe(Effect.provide(appLayer)));
 ```
 
 `provision` reads App credentials from its options object or, by default, from the `app-client-id` and `app-private-key` action inputs. Passing `permissions` verifies the generated token grants those scopes before it is persisted.

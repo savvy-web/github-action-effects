@@ -168,7 +168,7 @@ Action.run(program)
   (`./testing` subpath export in `package.json`). The `./testing` subpath
   excludes `GitHubClientLive` (which imports `@octokit/rest`),
   `OctokitAuthAppLive` (which imports `@octokit/auth-app`), the `GitHubToken`
-  namespace (which imports both Octokit-backed Live layers), and the `Action`
+  namespace (which imports `GitHubClientLive`), and the `Action`
   namespace (which imports `ActionsRuntime`).
 - **Rationale:** Test environments may not have `@octokit/rest` or
   `@octokit/auth-app` installed. The `./testing` subpath lets test files

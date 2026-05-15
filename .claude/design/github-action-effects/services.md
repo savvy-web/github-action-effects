@@ -683,10 +683,9 @@ interface ActionRunOptions<R = never> {
 
 `GitHubToken` (`src/GitHubToken.ts`) is a namespace object that orchestrates
 the GitHub App installation-token lifecycle across the three phases of a
-multi-phase action. It holds no state of its own — it composes `GitHubApp`,
+multi-phase action. It holds no state of its own — it draws on `GitHubApp`,
 `ActionState` and `TokenPermissionChecker`, and uses `GitHubClientLive.fromToken`
-to build the client. `provision` and `dispose` provide `GitHubAppLive` +
-`OctokitAuthAppLive` internally.
+to build the client. All three helpers expose their dependencies in the `R` channel rather than self-providing them: `provision` and `dispose` require a `GitHubApp` layer in context and `client` requires `ActionState`. Consumers provide `GitHubAppLive` composed with `OctokitAuthAppLive` in production, or `GitHubAppTest` in their own tests.
 
 The three helpers communicate through a single internal `ActionState` key
 (`github-action-effects/installation-token`) carrying the `InstallationToken`
@@ -704,24 +703,11 @@ main.ts  GitHubToken.client()     — read envelope, build GitHubClient layer
 post.ts  GitHubToken.dispose()    — read envelope, revoke token via GitHubApp
 ```
 
-- **`provision(options?)`** — credentials are hybrid: `clientId` defaults to
-  the `app-client-id` action input (`Config.string`) and `privateKey` to
-  `app-private-key` (`Config.redacted`); the options object overrides both.
-  Generates the token via `GitHubApp`, and when `permissions` are given runs
-  `assertSufficient` against the token's own `permissions` (no API call) —
-  failing with `TokenPermissionError` on a missing scope. Persists the envelope
-  and returns the `InstallationToken`. Strict: fails if no credentials resolve.
-- **`client()`** — `Layer.Layer<GitHubClient, ActionStateError, ActionState>`.
-  Reads the persisted envelope and delegates to `GitHubClientLive.fromToken`.
-  Strict: fails with `ActionStateError` if nothing was provisioned.
-- **`dispose()`** — reads the envelope via `ActionState.getOptional` and revokes
-  it via `GitHubApp.revokeToken`. Deliberately a **no-op when nothing was
-  persisted** — `post` steps run even when `pre`/`main` failed, so a cleanup
-  step must not crash because there is nothing to revoke.
+- **`provision(options?)`** — `Effect<InstallationToken, GitHubAppError | TokenPermissionError | ActionStateError | ConfigError, ActionState | GitHubApp>`. Credentials are hybrid: `clientId` defaults to the `app-client-id` action input (`Config.string`) and `privateKey` to `app-private-key` (`Config.redacted`); the options object overrides both. Generates the token via `GitHubApp`, and when `permissions` are given runs `assertSufficient` against the token's own `permissions` (no API call) — failing with `TokenPermissionError` on a missing scope. Persists the envelope and returns the `InstallationToken`. Strict: fails if no credentials resolve.
+- **`client()`** — `Layer.Layer<GitHubClient, ActionStateError, ActionState>`. Reads the persisted envelope and delegates to `GitHubClientLive.fromToken`. Strict: fails with `ActionStateError` if nothing was provisioned.
+- **`dispose()`** — `Effect<void, GitHubAppError | ActionStateError, ActionState | GitHubApp>`. Reads the envelope via `ActionState.getOptional` and revokes it via `GitHubApp.revokeToken`. Deliberately a **no-op when nothing was persisted** — `post` steps run even when `pre`/`main` failed, so a cleanup step must not crash because there is nothing to revoke.
 
-Consumers unit-testing their own `pre.ts`/`post.ts` against a mock token use
-the lower-level `GitHubApp` + `ActionState` + `GitHubClientLive.fromToken`
-directly rather than the namespace.
+`provision` and `dispose` require `GitHubApp` in their requirements channel exactly as `client` requires `ActionState` — the namespace exposes every dependency rather than hiding some. A consumer provides a `GitHubApp` layer alongside the helper: `GitHubAppLive` composed with `OctokitAuthAppLive` in production, or `GitHubAppTest` when unit-testing their own `pre.ts`/`post.ts` against a mock token.
 
 ---
 
