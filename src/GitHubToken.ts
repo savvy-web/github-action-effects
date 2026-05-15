@@ -1,5 +1,5 @@
-import type { ConfigError } from "effect";
-import { Config, Effect, Layer, Option, Redacted } from "effect";
+import type { ConfigError, Redacted } from "effect";
+import { Config, Effect, Exit, Layer, Option } from "effect";
 import type { ActionStateError } from "./errors/ActionStateError.js";
 import type { GitHubAppError } from "./errors/GitHubAppError.js";
 import type { TokenPermissionError } from "./errors/TokenPermissionError.js";
@@ -10,13 +10,10 @@ import { ActionState } from "./services/ActionState.js";
 import { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
 import type { GitHubClient } from "./services/GitHubClient.js";
 import { TokenPermissionChecker } from "./services/TokenPermissionChecker.js";
+import { unwrapRedacted } from "./utils/unwrapRedacted.js";
 
 /** Internal ActionState key for the persisted installation-token envelope. */
 const STATE_KEY = "github-action-effects/installation-token";
-
-/** Unwrap a value that may be plain or Redacted. */
-const unwrap = (value: string | Redacted.Redacted<string>): string =>
-	typeof value === "string" ? value : Redacted.value(value);
 
 /** Options for {@link GitHubToken.provision}. */
 export interface ProvisionOptions {
@@ -39,25 +36,31 @@ const provision = (
 > =>
 	Effect.gen(function* () {
 		const clientId = options?.clientId ?? (yield* Config.string("app-client-id"));
-		const privateKey =
-			options?.privateKey !== undefined
-				? unwrap(options.privateKey)
-				: Redacted.value(yield* Config.redacted("app-private-key"));
+		const privateKey = unwrapRedacted(options?.privateKey ?? (yield* Config.redacted("app-private-key")));
 
 		const app = yield* GitHubApp;
-		const token = yield* app.generateToken(clientId, privateKey, options?.installationId);
 
-		const required = options?.permissions;
-		if (required !== undefined) {
-			yield* Effect.flatMap(TokenPermissionChecker, (checker) => checker.assertSufficient(required)).pipe(
-				Effect.provide(TokenPermissionCheckerLive(token.permissions)),
-			);
-		}
+		// Generate the token, then verify its scopes and persist it. If either
+		// step fails, revoke the token so a rejected token is not left orphaned
+		// (alive until GitHub expires it) — defense-in-depth for retry loops.
+		return yield* Effect.acquireUseRelease(
+			app.generateToken(clientId, privateKey, options?.installationId),
+			(token) =>
+				Effect.gen(function* () {
+					const required = options?.permissions;
+					if (required !== undefined) {
+						yield* Effect.flatMap(TokenPermissionChecker, (checker) => checker.assertSufficient(required)).pipe(
+							Effect.provide(TokenPermissionCheckerLive(token.permissions)),
+						);
+					}
 
-		const state = yield* ActionState;
-		yield* state.save(STATE_KEY, token, InstallationToken);
+					const state = yield* ActionState;
+					yield* state.save(STATE_KEY, token, InstallationToken);
 
-		return token;
+					return token;
+				}),
+			(token, exit) => (Exit.isFailure(exit) ? Effect.ignore(app.revokeToken(token.token)) : Effect.void),
+		);
 	});
 
 const client = (): Layer.Layer<GitHubClient, ActionStateError, ActionState> =>

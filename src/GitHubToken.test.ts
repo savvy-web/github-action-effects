@@ -106,7 +106,7 @@ describe("GitHubToken", () => {
 			expect(token.token).toBe("ghs_ok");
 		});
 
-		it("fails with TokenPermissionError when a required scope is missing", async () => {
+		it("revokes the generated token and fails when a required scope is missing", async () => {
 			const appState = appStateWith({
 				token: "ghs_weak",
 				expiresAt: "2099-01-01T00:00:00Z",
@@ -131,6 +131,7 @@ describe("GitHubToken", () => {
 
 			expect(exit._tag).toBe("Failure");
 			expect(state.entries.has(STATE_KEY)).toBe(false);
+			expect(appState.revokeCalls).toContain("ghs_weak");
 		});
 	});
 

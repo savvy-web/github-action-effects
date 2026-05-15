@@ -1,9 +1,11 @@
 import { Octokit } from "@octokit/rest";
-import { Effect, Layer, Redacted } from "effect";
+import type { Redacted } from "effect";
+import { Effect, Layer } from "effect";
 import type { GitHubAppError } from "../errors/GitHubAppError.js";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
 import { GitHubApp } from "../services/GitHubApp.js";
 import { GitHubClient } from "../services/GitHubClient.js";
+import { unwrapRedacted } from "../utils/unwrapRedacted.js";
 import { GitHubAppLive } from "./GitHubAppLive.js";
 import { OctokitAuthAppLive } from "./OctokitAuthAppLive.js";
 
@@ -27,10 +29,6 @@ const wrapError = (operation: string, error: unknown): GitHubClientError => {
 		retryable: status !== undefined && isRetryableStatus(status),
 	});
 };
-
-/** Unwrap a token that may be plain or Redacted. */
-const unwrapToken = (token: string | Redacted.Redacted<string>): string =>
-	typeof token === "string" ? token : Redacted.value(token);
 
 /** Build the GitHubClient service object from a concrete token. */
 const makeClient = (token: string): typeof GitHubClient.Service => {
@@ -114,7 +112,7 @@ const fromEnv: Layer.Layer<GitHubClient, GitHubClientError> = Layer.effect(
 
 /** Build a client from an explicit token. No `process.env` dependency. */
 const fromToken = (token: string | Redacted.Redacted<string>): Layer.Layer<GitHubClient> =>
-	Layer.sync(GitHubClient, () => makeClient(unwrapToken(token)));
+	Layer.sync(GitHubClient, () => makeClient(unwrapRedacted(token)));
 
 /**
  * Generate a GitHub App installation token from App credentials, then build the
@@ -135,7 +133,7 @@ const fromApp = (options: {
 			const app = yield* GitHubApp;
 			const installationToken = yield* app.generateToken(
 				options.clientId,
-				unwrapToken(options.privateKey),
+				unwrapRedacted(options.privateKey),
 				options.installationId,
 			);
 			return makeClient(installationToken.token);
