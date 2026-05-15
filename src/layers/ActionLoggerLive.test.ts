@@ -90,4 +90,49 @@ describe("ActionLoggerLive", () => {
 			expect(written.some((s: string) => s.includes("Buffered output"))).toBe(true);
 		});
 	});
+
+	describe("per-group buffer flush", () => {
+		let writeSpy: ReturnType<typeof vi.spyOn>;
+
+		beforeEach(() => {
+			writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		});
+
+		afterEach(() => {
+			writeSpy.mockRestore();
+		});
+
+		const failingGroupProgram = Effect.flatMap(ActionLogger, (svc) =>
+			svc.withBuffer(
+				"action",
+				svc.group("install", Effect.log("buffered detail").pipe(Effect.flatMap(() => Effect.fail("boom")))),
+			),
+		).pipe(Logger.withMinimumLogLevel(LogLevel.Info));
+
+		it("flushes the active buffer inside a failing group, before ::endgroup::", async () => {
+			await Effect.runPromise(Effect.exit(Effect.provide(failingGroupProgram, ActionLoggerLive)));
+			const written = writeSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+			const bufferIdx = written.findIndex((s: string) => s.includes("buffered detail"));
+			const endGroupIdx = written.findIndex((s: string) => s.includes("::endgroup::"));
+			expect(bufferIdx).toBeGreaterThanOrEqual(0);
+			expect(endGroupIdx).toBeGreaterThanOrEqual(0);
+			expect(bufferIdx).toBeLessThan(endGroupIdx);
+		});
+
+		it("flushes the buffered output exactly once", async () => {
+			await Effect.runPromise(Effect.exit(Effect.provide(failingGroupProgram, ActionLoggerLive)));
+			const written = writeSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+			const headerCount = written.filter((s: string) => s.includes("--- Buffered output")).length;
+			expect(headerCount).toBe(1);
+		});
+
+		it("still flushes at the withBuffer boundary when the failure is outside any group", async () => {
+			const program = Effect.flatMap(ActionLogger, (svc) =>
+				svc.withBuffer("action", Effect.log("ungrouped detail").pipe(Effect.flatMap(() => Effect.fail("boom")))),
+			).pipe(Logger.withMinimumLogLevel(LogLevel.Info));
+			await Effect.runPromise(Effect.exit(Effect.provide(program, ActionLoggerLive)));
+			const written = writeSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+			expect(written.some((s: string) => s.includes("ungrouped detail"))).toBe(true);
+		});
+	});
 });
