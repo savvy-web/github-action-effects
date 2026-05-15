@@ -1,16 +1,14 @@
 import { ConfigProvider, Effect, Layer } from "effect";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubToken } from "./GitHubToken.js";
 import { ActionStateTest } from "./layers/ActionStateTest.js";
+import type { GitHubAppTestState } from "./layers/GitHubAppTest.js";
+import { GitHubAppTest } from "./layers/GitHubAppTest.js";
 import { ActionState } from "./services/ActionState.js";
 import { InstallationToken } from "./services/GitHubApp.js";
 import { GitHubClient } from "./services/GitHubClient.js";
 
-const { mockAuth, octokitAuthCalls } = vi.hoisted(() => ({
-	mockAuth: vi.fn(),
-	octokitAuthCalls: [] as unknown[],
-}));
-vi.mock("@octokit/auth-app", () => ({ createAppAuth: () => mockAuth }));
+const { octokitAuthCalls } = vi.hoisted(() => ({ octokitAuthCalls: [] as unknown[] }));
 vi.mock("@octokit/rest", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@octokit/rest")>();
 	class RecordingOctokit extends actual.Octokit {
@@ -24,18 +22,21 @@ vi.mock("@octokit/rest", async (importOriginal) => {
 
 const STATE_KEY = "github-action-effects/installation-token";
 
-beforeEach(() => {
-	vi.clearAllMocks();
+/** Build a GitHubApp test state that returns the given installation token. */
+const appStateWith = (token: InstallationToken): GitHubAppTestState => ({
+	generateCalls: [],
+	revokeCalls: [],
+	tokenToReturn: token,
 });
 
-afterEach(() => {
-	vi.unstubAllGlobals();
+beforeEach(() => {
+	octokitAuthCalls.length = 0;
 });
 
 describe("GitHubToken", () => {
 	describe("provision", () => {
 		it("generates a token with explicit credentials and persists it", async () => {
-			mockAuth.mockResolvedValue({
+			const appState = appStateWith({
 				token: "ghs_provisioned",
 				expiresAt: "2099-01-01T00:00:00Z",
 				installationId: 7,
@@ -46,16 +47,17 @@ describe("GitHubToken", () => {
 			const token = await Effect.runPromise(
 				Effect.provide(
 					GitHubToken.provision({ clientId: "Iv1.abc", privateKey: "pk", installationId: 7 }),
-					ActionStateTest.layer(state),
+					Layer.mergeAll(ActionStateTest.layer(state), GitHubAppTest.layer(appState)),
 				),
 			);
 
 			expect(token.token).toBe("ghs_provisioned");
 			expect(state.entries.has(STATE_KEY)).toBe(true);
+			expect(appState.generateCalls).toEqual([{ appId: "Iv1.abc", privateKey: "pk", installationId: 7 }]);
 		});
 
 		it("reads credentials from Config when none are passed", async () => {
-			mockAuth.mockResolvedValue({
+			const appState = appStateWith({
 				token: "ghs_from_config",
 				expiresAt: "2099-01-01T00:00:00Z",
 				installationId: 7,
@@ -72,14 +74,16 @@ describe("GitHubToken", () => {
 			const token = await Effect.runPromise(
 				Effect.provide(
 					GitHubToken.provision({ installationId: 7 }).pipe(Effect.withConfigProvider(configProvider)),
-					ActionStateTest.layer(state),
+					Layer.mergeAll(ActionStateTest.layer(state), GitHubAppTest.layer(appState)),
 				),
 			);
+
 			expect(token.token).toBe("ghs_from_config");
+			expect(appState.generateCalls[0]?.appId).toBe("Iv1.config");
 		});
 
 		it("passes the permission check when scopes are sufficient", async () => {
-			mockAuth.mockResolvedValue({
+			const appState = appStateWith({
 				token: "ghs_ok",
 				expiresAt: "2099-01-01T00:00:00Z",
 				installationId: 7,
@@ -95,14 +99,15 @@ describe("GitHubToken", () => {
 						installationId: 7,
 						permissions: { contents: "write" },
 					}),
-					ActionStateTest.layer(state),
+					Layer.mergeAll(ActionStateTest.layer(state), GitHubAppTest.layer(appState)),
 				),
 			);
+
 			expect(token.token).toBe("ghs_ok");
 		});
 
 		it("fails with TokenPermissionError when a required scope is missing", async () => {
-			mockAuth.mockResolvedValue({
+			const appState = appStateWith({
 				token: "ghs_weak",
 				expiresAt: "2099-01-01T00:00:00Z",
 				installationId: 7,
@@ -119,10 +124,11 @@ describe("GitHubToken", () => {
 							installationId: 7,
 							permissions: { contents: "write" },
 						}),
-						ActionStateTest.layer(state),
+						Layer.mergeAll(ActionStateTest.layer(state), GitHubAppTest.layer(appState)),
 					),
 				),
 			);
+
 			expect(exit._tag).toBe("Failure");
 			expect(state.entries.has(STATE_KEY)).toBe(false);
 		});
@@ -144,7 +150,6 @@ describe("GitHubToken", () => {
 			);
 
 		it("builds a GitHubClient from the persisted token", async () => {
-			octokitAuthCalls.length = 0;
 			const state = ActionStateTest.empty();
 			await persist(state);
 
@@ -154,6 +159,7 @@ describe("GitHubToken", () => {
 					GitHubToken.client().pipe(Layer.provide(ActionStateTest.layer(state))),
 				),
 			);
+
 			expect(result).toBe("ok");
 			expect(octokitAuthCalls).toContain("ghs_persisted");
 		});
@@ -187,27 +193,30 @@ describe("GitHubToken", () => {
 					ActionStateTest.layer(state),
 				),
 			);
+			const appState = GitHubAppTest.empty();
 
-			const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
-			vi.stubGlobal("fetch", fetchMock);
-
-			await Effect.runPromise(Effect.provide(GitHubToken.dispose(), ActionStateTest.layer(state)));
-			expect(fetchMock).toHaveBeenCalledWith(
-				"https://api.github.com/installation/token",
-				expect.objectContaining({
-					method: "DELETE",
-					headers: expect.objectContaining({ Authorization: "token ghs_to_revoke" }),
-				}),
+			await Effect.runPromise(
+				Effect.provide(
+					GitHubToken.dispose(),
+					Layer.mergeAll(ActionStateTest.layer(state), GitHubAppTest.layer(appState)),
+				),
 			);
+
+			expect(appState.revokeCalls).toContain("ghs_to_revoke");
 		});
 
 		it("is a no-op when no token was provisioned", async () => {
 			const state = ActionStateTest.empty();
-			const fetchMock = vi.fn();
-			vi.stubGlobal("fetch", fetchMock);
+			const appState = GitHubAppTest.empty();
 
-			await Effect.runPromise(Effect.provide(GitHubToken.dispose(), ActionStateTest.layer(state)));
-			expect(fetchMock).not.toHaveBeenCalled();
+			await Effect.runPromise(
+				Effect.provide(
+					GitHubToken.dispose(),
+					Layer.mergeAll(ActionStateTest.layer(state), GitHubAppTest.layer(appState)),
+				),
+			);
+
+			expect(appState.revokeCalls).toHaveLength(0);
 		});
 	});
 });

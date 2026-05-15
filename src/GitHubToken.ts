@@ -3,9 +3,7 @@ import { Config, Effect, Layer, Option, Redacted } from "effect";
 import type { ActionStateError } from "./errors/ActionStateError.js";
 import type { GitHubAppError } from "./errors/GitHubAppError.js";
 import type { TokenPermissionError } from "./errors/TokenPermissionError.js";
-import { GitHubAppLive } from "./layers/GitHubAppLive.js";
 import { GitHubClientLive } from "./layers/GitHubClientLive.js";
-import { OctokitAuthAppLive } from "./layers/OctokitAuthAppLive.js";
 import { TokenPermissionCheckerLive } from "./layers/TokenPermissionCheckerLive.js";
 import type { PermissionLevel } from "./schemas/TokenPermission.js";
 import { ActionState } from "./services/ActionState.js";
@@ -15,9 +13,6 @@ import { TokenPermissionChecker } from "./services/TokenPermissionChecker.js";
 
 /** Internal ActionState key for the persisted installation-token envelope. */
 const STATE_KEY = "github-action-effects/installation-token";
-
-/** GitHubApp with its OctokitAuthApp dependency satisfied. */
-const appLayer = GitHubAppLive.pipe(Layer.provide(OctokitAuthAppLive));
 
 /** Unwrap a value that may be plain or Redacted. */
 const unwrap = (value: string | Redacted.Redacted<string>): string =>
@@ -40,7 +35,7 @@ const provision = (
 ): Effect.Effect<
 	InstallationToken,
 	GitHubAppError | TokenPermissionError | ActionStateError | ConfigError.ConfigError,
-	ActionState
+	ActionState | GitHubApp
 > =>
 	Effect.gen(function* () {
 		const clientId = options?.clientId ?? (yield* Config.string("app-client-id"));
@@ -63,7 +58,7 @@ const provision = (
 		yield* state.save(STATE_KEY, token, InstallationToken);
 
 		return token;
-	}).pipe(Effect.provide(appLayer));
+	});
 
 const client = (): Layer.Layer<GitHubClient, ActionStateError, ActionState> =>
 	Layer.unwrapEffect(
@@ -74,7 +69,7 @@ const client = (): Layer.Layer<GitHubClient, ActionStateError, ActionState> =>
 		}),
 	);
 
-const dispose = (): Effect.Effect<void, GitHubAppError | ActionStateError, ActionState> =>
+const dispose = (): Effect.Effect<void, GitHubAppError | ActionStateError, ActionState | GitHubApp> =>
 	Effect.gen(function* () {
 		const state = yield* ActionState;
 		const persisted = yield* state.getOptional(STATE_KEY, InstallationToken);
@@ -83,11 +78,15 @@ const dispose = (): Effect.Effect<void, GitHubAppError | ActionStateError, Actio
 		}
 		const app = yield* GitHubApp;
 		yield* app.revokeToken(persisted.value.token);
-	}).pipe(Effect.provide(appLayer));
+	});
 
 /**
  * Phase-oriented helpers for the GitHub App installation-token lifecycle:
  * `provision` in `pre`, `client` in `main`, `dispose` in `post`.
+ *
+ * `provision` and `dispose` require a `GitHubApp` layer in context — provide
+ * `GitHubAppLive` (composed with `OctokitAuthAppLive`) in production, or
+ * `GitHubAppTest` in tests. `client` requires `ActionState`.
  *
  * @public
  */
