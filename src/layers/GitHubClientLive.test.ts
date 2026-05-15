@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClient } from "../services/GitHubClient.js";
 import { GitHubClientLive } from "./GitHubClientLive.js";
 
-const { octokitAuthCalls } = vi.hoisted(() => ({ octokitAuthCalls: [] as unknown[] }));
+const { octokitAuthCalls, mockAuth } = vi.hoisted(() => ({
+	octokitAuthCalls: [] as unknown[],
+	mockAuth: vi.fn(),
+}));
 vi.mock("@octokit/rest", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@octokit/rest")>();
 	class RecordingOctokit extends actual.Octokit {
@@ -14,6 +17,7 @@ vi.mock("@octokit/rest", async (importOriginal) => {
 	}
 	return { ...actual, Octokit: RecordingOctokit };
 });
+vi.mock("@octokit/auth-app", () => ({ createAppAuth: () => mockAuth }));
 
 beforeEach(() => {
 	process.env.GITHUB_TOKEN = "fake-token";
@@ -235,6 +239,61 @@ describe("GitHubClientLive", () => {
 				),
 			);
 			expect(octokitAuthCalls).toContain("secret-token");
+		});
+	});
+
+	describe("fromApp", () => {
+		it("generates an installation token and builds a client", async () => {
+			mockAuth.mockResolvedValue({
+				token: "app-installation-token",
+				expiresAt: "2099-01-01T00:00:00Z",
+				installationId: 42,
+				permissions: { contents: "write" },
+			});
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: "done" }))),
+					GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+				),
+			);
+			expect(result).toBe("done");
+		});
+
+		it("accepts a Redacted private key", async () => {
+			mockAuth.mockResolvedValue({
+				token: "app-installation-token",
+				expiresAt: "2099-01-01T00:00:00Z",
+				installationId: 42,
+				permissions: {},
+			});
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: 1 }))),
+					GitHubClientLive.fromApp({
+						clientId: "Iv1.abc",
+						privateKey: Redacted.make("key"),
+						installationId: 42,
+					}),
+				),
+			);
+			expect(result).toBe(1);
+		});
+
+		it("propagates GitHubAppError when token generation fails", async () => {
+			mockAuth.mockRejectedValue(new Error("bad credentials"));
+			const exit = await Effect.runPromise(
+				Effect.exit(
+					Effect.provide(
+						Effect.flatMap(GitHubClient, (client) => client.repo),
+						GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+					),
+				),
+			);
+			expect(exit._tag).toBe("Failure");
+			if (Exit.isFailure(exit)) {
+				const err = Cause.squash(exit.cause) as { _tag?: string };
+				expect(err._tag).toBe("GitHubAppError");
+			}
 		});
 	});
 });

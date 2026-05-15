@@ -1,7 +1,11 @@
 import { Octokit } from "@octokit/rest";
 import { Effect, Layer, Redacted } from "effect";
+import type { GitHubAppError } from "../errors/GitHubAppError.js";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
+import { GitHubApp } from "../services/GitHubApp.js";
 import { GitHubClient } from "../services/GitHubClient.js";
+import { GitHubAppLive } from "./GitHubAppLive.js";
+import { OctokitAuthAppLive } from "./OctokitAuthAppLive.js";
 
 const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
 
@@ -113,6 +117,32 @@ const fromToken = (token: string | Redacted.Redacted<string>): Layer.Layer<GitHu
 	Layer.sync(GitHubClient, () => makeClient(unwrapToken(token)));
 
 /**
+ * Generate a GitHub App installation token from App credentials, then build the
+ * client. Composes `OctokitAuthAppLive` + `GitHubAppLive` internally.
+ *
+ * Generates a fresh installation token each time the layer is built. For the
+ * pre/main/post pattern where one token is shared across phases, use the
+ * `GitHubToken` namespace instead.
+ */
+const fromApp = (options: {
+	clientId: string;
+	privateKey: string | Redacted.Redacted<string>;
+	installationId?: number;
+}): Layer.Layer<GitHubClient, GitHubAppError> =>
+	Layer.effect(
+		GitHubClient,
+		Effect.gen(function* () {
+			const app = yield* GitHubApp;
+			const installationToken = yield* app.generateToken(
+				options.clientId,
+				unwrapToken(options.privateKey),
+				options.installationId,
+			);
+			return makeClient(installationToken.token);
+		}),
+	).pipe(Layer.provide(GitHubAppLive), Layer.provide(OctokitAuthAppLive));
+
+/**
  * Live `GitHubClient` layer constructors.
  *
  * @public
@@ -120,4 +150,5 @@ const fromToken = (token: string | Redacted.Redacted<string>): Layer.Layer<GitHu
 export const GitHubClientLive = {
 	fromEnv,
 	fromToken,
+	fromApp,
 } as const;
