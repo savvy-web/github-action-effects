@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-21
-last-synced: 2026-03-21
+updated: 2026-05-15
+last-synced: 2026-05-15
 completeness: 95
 related:
   - ./services.md
@@ -34,7 +34,7 @@ Effect primitives and the GitHub Actions runtime protocol.
 
 ## Current State
 
-The library provides 29 Effect service interfaces plus 5 namespace/utility
+The library provides 29 Effect service interfaces plus 6 namespace/utility
 objects spanning core action I/O, GitHub API integration, git operations,
 build tooling, and a runtime layer that implements the GitHub Actions protocol
 natively (no `@actions/*` packages).
@@ -49,7 +49,7 @@ building blocks.
 
 ### Scope
 
-The library provides 29 service interfaces, 5 utility namespaces, 29 error
+The library provides 29 service interfaces, 6 utility namespaces, 29 error
 types, and 11 schema modules. Services cover five domains:
 
 - **Core action I/O** -- outputs, state, logging, environment, cache
@@ -167,7 +167,8 @@ Action.run(program)
 - **Decision:** Two barrel exports: `index.ts` (main) and `testing.ts`
   (`./testing` subpath export in `package.json`). The `./testing` subpath
   excludes `GitHubClientLive` (which imports `@octokit/rest`),
-  `OctokitAuthAppLive` (which imports `@octokit/auth-app`), and the `Action`
+  `OctokitAuthAppLive` (which imports `@octokit/auth-app`), the `GitHubToken`
+  namespace (which imports both Octokit-backed Live layers), and the `Action`
   namespace (which imports `ActionsRuntime`).
 - **Rationale:** Test environments may not have `@octokit/rest` or
   `@octokit/auth-app` installed. The `./testing` subpath lets test files

@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-21
-last-synced: 2026-03-21
+updated: 2026-05-15
+last-synced: 2026-05-15
 completeness: 95
 related:
   - ./index.md
@@ -156,7 +156,9 @@ Warning to `::warning::`, Error to `::error::`), annotation forwarding.
 ### Core Action I/O
 
 **ActionLogger** -- Group markers (`::group::` / `::endgroup::`), buffer
-capture on success/failure, log level-dependent buffering behavior.
+capture on success/failure, log level-dependent buffering behavior, per-group
+flush regression (failure inside a group flushes within the group; no
+double-flush across nested groups or the outer `withBuffer` boundary).
 
 **ActionOutputs** -- Output setting via RuntimeFile, live layer
 interactions with GITHUB_OUTPUT/GITHUB_ENV/GITHUB_PATH files,
@@ -185,10 +187,16 @@ via `sha: null` entries.
 
 ### GitHub API
 
-**GitHubClient** -- REST callback, GraphQL query execution, pagination
-(page incrementing, empty-page termination, maxPages), repo context from
-GITHUB_REPOSITORY, error wrapping with HTTP status extraction, retryable
-flag for 429/5xx, HTML error page detection.
+**GitHubClient** -- the three `GitHubClientLive` construction modes
+(`fromEnv` with token present/absent, `fromToken` plain + `Redacted`, `fromApp`
+token generation + `GitHubAppError` propagation), REST callback, GraphQL query
+execution, pagination (page incrementing, empty-page termination, maxPages),
+repo context from GITHUB_REPOSITORY, error wrapping with HTTP status
+extraction, retryable flag for 429/5xx, HTML error page detection.
+
+**GitHubToken** -- `provision` (Config defaults + override, permission check
+pass/fail, persistence), `client` (success + missing-state failure), `dispose`
+(revoke + no-op when absent).
 
 **GitHubGraphQL** -- query/mutation delegation to GitHubClient.graphql(),
 error mapping.
@@ -265,9 +273,9 @@ action-builder's `persistLocal` feature to run actions in Docker containers.
 
 ## Current State
 
-Unit tests cover all 29 services, the 4 runtime modules, 4 namespace/utility
-objects, and key schemas. Coverage meets the 80% threshold. Integration tests
-are deferred pending service stabilization.
+Unit tests cover all 29 services, the 4 runtime modules, the namespace and
+utility objects, and key schemas. Coverage meets the 80% threshold. Integration
+tests are deferred pending service stabilization.
 
 ## Rationale
 

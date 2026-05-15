@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-21
-last-synced: 2026-03-21
+updated: 2026-05-15
+last-synced: 2026-05-15
 completeness: 95
 related:
   - ./index.md
@@ -134,7 +134,8 @@ Tier 0 — No service dependencies:
   ToolInstaller             (native fetch + spawn + fs)
   DryRun                    (pure logic)
   OctokitAuthApp            (imports @octokit/auth-app)
-  GitHubClient              (imports @octokit/rest, reads GITHUB_TOKEN)
+  GitHubClient              (imports @octokit/rest; fromEnv/fromToken have no
+                             service deps, fromApp composes GitHubApp internally)
 
 Tier 0.5 — Depends on FileSystem:
   ActionOutputs             -> FileSystem
@@ -189,7 +190,8 @@ ActionsRuntime.Default
 ### Layer Provision for Tier 2+
 
 ```text
-GitHubClientLive           (reads GITHUB_TOKEN from env)
+GitHubClientLive.fromEnv   (reads GITHUB_TOKEN from env; .fromToken / .fromApp
+                            select other identities)
   -> CheckRunLive              (requires GitHubClient in context)
   -> PullRequestLive           (requires GitHubClient + GitHubGraphQL)
   -> PullRequestCommentLive    (requires GitHubClient in context)
@@ -237,7 +239,7 @@ const program = Effect.gen(function* () {
 
 Action.run(program, {
   layer: Layer.mergeAll(CheckRunLive).pipe(
-    Layer.provideMerge(GitHubClientLive),
+    Layer.provideMerge(GitHubClientLive.fromEnv),
   ),
 })
 ```
@@ -252,9 +254,33 @@ import { ActionsRuntime, GitHubClientLive, CheckRunLive }
 const MyLayer = Layer.mergeAll(
   ActionsRuntime.Default,
   CheckRunLive,
-).pipe(Layer.provideMerge(GitHubClientLive))
+).pipe(Layer.provideMerge(GitHubClientLive.fromEnv))
 
 Effect.runPromise(program.pipe(Effect.provide(MyLayer)))
+```
+
+### Multi-Phase Action with a GitHub App Token
+
+The `GitHubToken` namespace wires the App installation-token lifecycle across
+the pre/main/post phases — `provision` in `pre.ts`, `client` in `main.ts`,
+`dispose` in `post.ts` — communicating through an internal `ActionState` key.
+See [services.md](./services.md#githubtoken-lifecycle) for the full data flow.
+
+```typescript
+import { Layer } from "effect"
+import { Action, GitHubToken, CheckRunLive }
+  from "@savvy-web/github-action-effects"
+
+// pre.ts
+Action.run(GitHubToken.provision({ permissions: { checks: "write" } }))
+
+// main.ts
+Action.run(program, {
+  layer: CheckRunLive.pipe(Layer.provideMerge(GitHubToken.client())),
+})
+
+// post.ts
+Action.run(GitHubToken.dispose())
 ```
 
 ---

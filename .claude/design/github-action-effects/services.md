@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-21
-last-synced: 2026-03-21
+updated: 2026-05-15
+last-synced: 2026-05-15
 completeness: 95
 related:
   - ./index.md
@@ -26,7 +26,7 @@ See [layers.md](./layers.md) for live and test layer implementations.
 
 ## Overview
 
-Twenty-nine service modules plus five namespace/utility objects, each
+Twenty-nine service modules plus six namespace/utility objects, each
 independently usable. `Action.run()` automatically provides
 `ActionsRuntime.Default`, which includes `NodeFileSystem.layer` from
 `@effect/platform-node`. Programs also have access to Node.js platform
@@ -59,7 +59,7 @@ by `ActionsLogger`.
 │   └── GitTag              — Tag management via Git refs API
 │
 ├── GitHub API
-│   ├── GitHubClient        — Direct @octokit/rest, self-contained Layer
+│   ├── GitHubClient        — Direct @octokit/rest; namespace layer (fromEnv/fromToken/fromApp)
 │   ├── GitHubGraphQL       — GitHub GraphQL API operations
 │   ├── GitHubRelease       — Create/manage GitHub releases
 │   ├── GitHubIssue         — Issue management + linked issues
@@ -85,6 +85,7 @@ by `ActionsLogger`.
 │
 ├── Namespace Objects
 │   ├── Action.*            — run, resolveLogLevel, formatCause
+│   ├── GitHubToken.*       — provision, client, dispose (App-token lifecycle)
 │   └── GithubMarkdown.*    — table, heading, details, bold, code, etc.
 │
 └── Utility Namespaces
@@ -115,6 +116,16 @@ single export, reducing barrel clutter and improving discoverability.
 - `Action.formatCause(cause)` -- Extract human-readable error message from an
   Effect `Cause` using a `[Tag] message` fallback chain
 
+**`GitHubToken`** (from `src/GitHubToken.ts`) groups phase-oriented helpers for
+the GitHub App installation-token lifecycle. See [GitHubToken Lifecycle](#githubtoken-lifecycle)
+below for the full pre/main/post data flow.
+
+- `GitHubToken.provision(options?)` -- `pre.ts`: generate an installation
+  token, optionally verify scopes, persist it to `ActionState`
+- `GitHubToken.client()` -- `main.ts`: build a `GitHubClient` layer from the
+  persisted token
+- `GitHubToken.dispose()` -- `post.ts`: revoke the persisted token
+
 **`GithubMarkdown`** (from `src/utils/GithubMarkdown.ts`) groups GFM builders:
 
 - `GithubMarkdown.table`, `GithubMarkdown.heading`, `GithubMarkdown.details`,
@@ -140,10 +151,18 @@ additional GitHub Actions-specific operations.
 **Interface:**
 
 - `group(name, effect)` -- Wraps an effect in a collapsible log group
-  (`::group::` / `::endgroup::`)
+  (`::group::` / `::endgroup::`). If the wrapped effect fails and a buffer is
+  active, the buffered diagnostics are flushed *inside* the group, before
+  `::endgroup::`, so a failure's context stays within its own group.
 - `withBuffer(label, effect)` -- Captures verbose output in memory; on
   success the buffer is discarded; on failure the buffer is flushed before
   the error is reported. At Debug log level, passes through without buffering.
+
+The buffer is fiber-scoped (a module-level `FiberRef`), so nested `group`
+calls and the outer `withBuffer` boundary share one buffer. Each buffered chunk
+prints exactly once — the innermost failing boundary flushes it and clears the
+entries; `withBuffer`'s flush is the catch-all for output produced outside any
+group. See [layers.md](./layers.md) for the mechanics.
 
 **Error type:** (none -- logger never fails)
 
@@ -262,8 +281,7 @@ Tag management via the GitHub Git refs API.
 ### GitHubClient Service
 
 Authenticated Octokit provider for GitHub REST and GraphQL API operations.
-Uses `@octokit/rest` directly. Self-contained Layer that reads `GITHUB_TOKEN`
-from `process.env` (not a factory function).
+Uses `@octokit/rest` directly.
 
 **Interface:**
 
@@ -275,6 +293,12 @@ from `process.env` (not a factory function).
   `GITHUB_REPOSITORY` env var
 
 **Error type:** `GitHubClientError` -- includes `retryable` flag for 429/5xx
+
+**Construction.** The `GitHubClientLive` layer is a namespace object, not a
+plain const — the construction surface chooses the client's identity. See
+[layers.md](./layers.md) for `fromEnv` (ambient `GITHUB_TOKEN`), `fromToken`
+(explicit token) and `fromApp` (generates an App installation token). For a
+token shared across pre/main/post phases, use the `GitHubToken` namespace.
 
 ### GitHubGraphQL Service
 
@@ -655,9 +679,55 @@ interface ActionRunOptions<R = never> {
 
 ---
 
+## GitHubToken Lifecycle
+
+`GitHubToken` (`src/GitHubToken.ts`) is a namespace object that orchestrates
+the GitHub App installation-token lifecycle across the three phases of a
+multi-phase action. It holds no state of its own — it composes `GitHubApp`,
+`ActionState` and `TokenPermissionChecker`, and uses `GitHubClientLive.fromToken`
+to build the client. `provision` and `dispose` provide `GitHubAppLive` +
+`OctokitAuthAppLive` internally.
+
+The three helpers communicate through a single internal `ActionState` key
+(`github-action-effects/installation-token`) carrying the `InstallationToken`
+envelope (the schema exported from `GitHubApp.ts`):
+
+```text
+pre.ts   GitHubToken.provision()  — resolve App credentials, generate token,
+                                    optionally verify scopes, persist envelope
+                                          │
+                                          ▼  ActionState (GITHUB_STATE file)
+                                          │
+main.ts  GitHubToken.client()     — read envelope, build GitHubClient layer
+                                    via GitHubClientLive.fromToken
+                                          │
+post.ts  GitHubToken.dispose()    — read envelope, revoke token via GitHubApp
+```
+
+- **`provision(options?)`** — credentials are hybrid: `clientId` defaults to
+  the `app-client-id` action input (`Config.string`) and `privateKey` to
+  `app-private-key` (`Config.redacted`); the options object overrides both.
+  Generates the token via `GitHubApp`, and when `permissions` are given runs
+  `assertSufficient` against the token's own `permissions` (no API call) —
+  failing with `TokenPermissionError` on a missing scope. Persists the envelope
+  and returns the `InstallationToken`. Strict: fails if no credentials resolve.
+- **`client()`** — `Layer.Layer<GitHubClient, ActionStateError, ActionState>`.
+  Reads the persisted envelope and delegates to `GitHubClientLive.fromToken`.
+  Strict: fails with `ActionStateError` if nothing was provisioned.
+- **`dispose()`** — reads the envelope via `ActionState.getOptional` and revokes
+  it via `GitHubApp.revokeToken`. Deliberately a **no-op when nothing was
+  persisted** — `post` steps run even when `pre`/`main` failed, so a cleanup
+  step must not crash because there is nothing to revoke.
+
+Consumers unit-testing their own `pre.ts`/`post.ts` against a mock token use
+the lower-level `GitHubApp` + `ActionState` + `GitHubClientLive.fromToken`
+directly rather than the namespace.
+
+---
+
 ## Current State
 
-All 29 service modules and 5 namespace/utility objects are fully defined with
+All 29 service modules and 6 namespace/utility objects are fully defined with
 interfaces, error types, and live layer implementations. All services also have
 test layer implementations. The runtime layer (`src/runtime/`) provides native
 implementations of the GitHub Actions protocol, eliminating all `@actions/*`
