@@ -1,5 +1,17 @@
 # @savvy-web/pnpm-module-template
 
+## 1.0.0
+
+### Features
+
+* [`8dd0764`](https://github.com/savvy-web/github-action-effects/commit/8dd0764798a3524b482b46906459d4176e699034) Explicit GitHub token construction, an App-token lifecycle convenience, and per-group log flushing.
+* **BREAKING:** `GitHubClientLive` is now a namespace object. Replace `GitHubClientLive` with `GitHubClientLive.fromEnv`. New `GitHubClientLive.fromToken(token)` builds a client from an explicit token (string or `Redacted`); `GitHubClientLive.fromApp({ clientId, privateKey, installationId? })` builds one from GitHub App credentials. Resolves #108 and #109.
+* New `GitHubToken` namespace — `provision` (pre), `client` (main), `dispose` (post) — for the GitHub App installation-token lifecycle, with optional post-generation permission verification.
+
+### Bug Fixes
+
+* [`8dd0764`](https://github.com/savvy-web/github-action-effects/commit/8dd0764798a3524b482b46906459d4176e699034) `ActionLogger` now flushes buffered output inside a failing `group` before `::endgroup::`, instead of only at the outer `withBuffer` boundary. Resolves #86.
+
 ## 0.11.14
 
 ### Dependencies
