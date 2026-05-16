@@ -58,7 +58,16 @@ const provision = (
 
 					// Best-effort identity resolution: a GET hiccup degrades to a
 					// token without identity fields rather than failing the action.
-					const identity = yield* Effect.option(app.resolveAppIdentity(clientId, privateKey));
+					// The failure is logged so a misconfigured App surfaces in the
+					// workflow log instead of silently yielding the default identity.
+					const identity = yield* app.resolveAppIdentity(clientId, privateKey).pipe(
+						Effect.tapError((error) =>
+							Effect.logWarning(
+								`App identity resolution failed (${error.reason}); commits will fall back to the github-actions[bot] identity`,
+							),
+						),
+						Effect.option,
+					);
 					const enriched = Option.isSome(identity) ? { ...token, ...identity.value } : token;
 
 					const state = yield* ActionState;

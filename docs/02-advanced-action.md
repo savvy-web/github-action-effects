@@ -114,7 +114,7 @@ Action.run(program)
 ### What happens in pre.ts
 
 1. **ActionState.save** — persists the start timestamp as a Schema-encoded JSON string. GitHub Actions only carries plain key-value strings between phases; the Schema encode/decode layer serializes the struct for you.
-2. **GitHubToken.provision** — reads the App credentials from the `app-client-id` and `app-private-key` inputs, generates an installation token and saves it to `ActionState` under an internal key. The returned `InstallationToken` carries `token`, `expiresAt`, `installationId` and `permissions`, plus three optional identity fields — `appSlug`, `appUserId` and `appName` — populated best-effort via a `GET /app` call during `provision`. These fields let later phases call `GitHubToken.botIdentity()` without an additional API round-trip.
+2. **GitHubToken.provision** — reads the App credentials from the `app-client-id` and `app-private-key` inputs, generates an installation token and saves it to `ActionState` under an internal key. The returned `InstallationToken` carries `token`, `expiresAt`, `installationId` and `permissions`, plus three optional identity fields — `appSlug`, `appUserId` and `appName` — populated best-effort during `provision` by an App identity lookup (`GET /app` for the slug and name, then `GET /users/<slug>[bot]` for the bot user ID). These fields let later phases call `GitHubToken.botIdentity()` without an additional API round-trip.
 3. **Permission verification** — when you pass `permissions`, `provision` checks the new token against those scopes before it persists anything. A missing scope fails the action with `TokenPermissionError` and revokes the rejected token, so a misconfigured App installation surfaces in `pre` rather than mid-publish.
 
 ## Phase 2: main.ts
