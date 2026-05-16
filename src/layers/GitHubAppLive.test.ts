@@ -316,7 +316,12 @@ describe("GitHubAppLive", () => {
 					headers: expect.objectContaining({ Authorization: "Bearer jwt_for_app" }),
 				}),
 			);
-			expect(mockFetch).toHaveBeenCalledWith("https://api.github.com/users/acme-bot%5Bbot%5D", expect.anything());
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://api.github.com/users/acme-bot%5Bbot%5D",
+				expect.objectContaining({
+					headers: expect.objectContaining({ Authorization: "Bearer jwt_for_app" }),
+				}),
+			);
 		});
 
 		it("fails with GitHubAppError when GET /app errors", async () => {

@@ -108,8 +108,14 @@ const resolveAppIdentity = (
 			const appData = (await appResponse.json()) as { slug: string; name: string };
 
 			const botLogin = `${appData.slug}[bot]`;
+			// Authenticate the public users lookup with the App JWT: an
+			// unauthenticated request shares the 60 req/hour IP rate limit,
+			// the JWT bumps it to 5000/hour at no extra cost.
 			const userResponse = await fetch(`https://api.github.com/users/${encodeURIComponent(botLogin)}`, {
-				headers: { Accept: "application/vnd.github+json" },
+				headers: {
+					Authorization: `Bearer ${jwt}`,
+					Accept: "application/vnd.github+json",
+				},
 			});
 			if (!userResponse.ok) {
 				throw new Error(`GET /users/<slug>[bot] failed: ${userResponse.status}`);
