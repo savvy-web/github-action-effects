@@ -40,6 +40,8 @@ export { TokenPermissionError } from "./errors/TokenPermissionError.js";
 export { ToolInstallerError } from "./errors/ToolInstallerError.js";
 export { WorkflowDispatchError } from "./errors/WorkflowDispatchError.js";
 export { WorkspaceDetectorError } from "./errors/WorkspaceDetectorError.js";
+export type { ProvisionOptions } from "./GitHubToken.js";
+export { GitHubToken } from "./GitHubToken.js";
 // -- Layers --
 export { ActionCacheLive } from "./layers/ActionCacheLive.js";
 export type { ActionCacheTestState } from "./layers/ActionCacheTest.js";

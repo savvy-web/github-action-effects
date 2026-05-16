@@ -1,45 +1,29 @@
-# github-action-effects Documentation
+# github-action-effects documentation
 
-Effect-based utility library for building GitHub Actions with structured
-logging, typed outputs, GitHub API operations, package publishing, and
-composable test layers. Zero `@actions/*` dependencies -- all platform
-interactions use native ESM implementations of the GitHub Actions runtime
-protocol.
+An Effect library for building GitHub Actions. It covers structured logging, typed outputs, GitHub API calls and package publishing, and every service ships a test layer. None of it depends on `@actions/*`: the GitHub Actions runtime protocol is reimplemented in native ESM.
 
-## Installation
+## Install
 
 ```bash
-npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node
+npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
+# or
+pnpm add @savvy-web/github-action-effects effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
 ```
 
-Required peer dependencies:
+## Pages
 
-```bash
-npm install effect @effect/platform @effect/platform-node
-```
+- [Building a GitHub Action with Effect](./01-example-action.md) — An end-to-end walkthrough of one complete action.
+- [Advanced action: three-stage app](./02-advanced-action.md) — A complete pre/main/post action with GitHub App auth, cross-phase state and buffered logging.
+- [Services guide](./03-services.md) — A usage example for every service in the library.
+- [Common patterns](./04-patterns.md) — Dry-run mode, error accumulation, permission checks and workspace detection.
+- [Peer dependencies](./05-peer-dependencies.md) — Which packages to install and why.
+- [Error handling](./06-error-handling.md) — `Action.formatCause`, `Action.run` error handling and the `[Tag] message` format.
+- [Architecture](./07-architecture.md) — The runtime layer, layer composition and the logging pipeline.
+- [Testing GitHub Actions](./08-testing.md) — How to test an action with in-memory test layers.
 
-## Table of Contents
+## How inputs work
 
-- [Example Action](./example-action.md) -- End-to-end walkthrough building a
-  GitHub Action
-- [Advanced Action](./advanced-action.md) -- Three-stage app (pre/main/post)
-  with GitHub App auth, state, and log levels
-- [Services Guide](./services.md) -- Detailed guide for each service with usage
-  examples
-- [Architecture](./architecture.md) -- Runtime layer, layer composition, and
-  logging pipeline
-- [Peer Dependencies](./peer-dependencies.md) -- Required peer
-  dependencies
-- [Testing Guide](./testing.md) -- Testing with in-memory test layers
-- [Patterns](./patterns.md) -- Common patterns: dry-run, error accumulation,
-  permission checking, workspace detection
-- [Error Handling](./error-handling.md) -- `Action.formatCause`, `Action.run`
-  error handling, and the `[Tag] message` format
-
-## How Inputs Work
-
-Inputs use Effect's `Config` API, backed by `ActionsConfigProvider` which reads
-`INPUT_*` environment variables:
+Inputs come through Effect's `Config` API. `ActionsConfigProvider` backs it, reading the `INPUT_*` environment variables GitHub sets for each declared input:
 
 ```typescript
 import { Config, Effect } from "effect"
@@ -51,18 +35,18 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Services at a Glance
+## Services
 
-### Core Services (provided by ActionsRuntime.Default / Action.run)
+### Core services (provided by ActionsRuntime.Default / Action.run)
 
 | Service | Purpose |
 | --- | --- |
-| ActionLogger | Structured logging with group, withBuffer, annotationError/Warning/Notice |
+| ActionLogger | Collapsible log groups (group) and buffer-on-failure logging (withBuffer) |
 | ActionOutputs | Typed outputs (set, setJson, summary, exportVariable, addPath, setFailed, setSecret) |
 | ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
-| ActionEnvironment | Typed access to GITHUB_*and RUNNER_* env vars |
+| ActionEnvironment | Typed access to `GITHUB_*` and `RUNNER_*` env vars |
 
-### Extended Services (provide via additional layers)
+### Extended services (provide via additional layers)
 
 | Service | Purpose |
 | --- | --- |
@@ -91,20 +75,21 @@ const program = Effect.gen(function* () {
 | WorkflowDispatch | Trigger workflows and poll until completion |
 | ToolInstaller | Download, extract, cache tool binaries (archives and standalone binaries) |
 
-## Namespace Objects
+## Namespace objects
 
 | Namespace | Purpose |
 | --- | --- |
 | `Action` | Top-level helpers: `run`, `formatCause`, `resolveLogLevel` |
+| `GitHubToken` | GitHub App installation-token lifecycle: `provision`, `client`, `dispose` |
+| `GitHubClientLive` | `GitHubClient` layer constructors: `fromEnv`, `fromToken`, `fromApp` |
 | `GithubMarkdown` | Pure GFM builder functions: `table`, `heading`, `bold`, `details`, `checklist`, etc. |
 | `AutoMerge` | Enable/disable PR auto-merge via GraphQL |
 | `SemverResolver` | Semver comparison, range satisfaction, increment, parse |
 | `ErrorAccumulator` | Process items collecting all successes and failures |
 | `ReportBuilder` | Fluent builder for markdown reports |
 
-## See Also
+## See also
 
 See the [project README](../README.md) for a quick-start example.
 
-For build tooling and the action runner, see the companion package
-`@savvy-web/github-action-builder`.
+For build tooling and the action runner, see the companion package `@savvy-web/github-action-builder`.

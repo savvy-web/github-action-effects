@@ -1,18 +1,17 @@
-# Common Patterns
+# Common patterns
 
-This guide covers common patterns when building GitHub Actions with
-`@savvy-web/github-action-effects`.
+This guide collects patterns that come up often when you build GitHub Actions with `@savvy-web/github-action-effects`.
 
-## Dry-Run Mode
+## Dry-run mode
 
-The `DryRun` service intercepts mutation effects and returns fallback values
-when dry-run is enabled.
+The `DryRun` service intercepts mutation effects and returns fallback values when dry-run is enabled.
 
 ```typescript
-import { Config, Effect, Schema } from "effect"
+import { Config, Effect, Layer, Schema } from "effect"
 import {
   Action,
   DryRun,
+  DryRunLive,
   GitHubRelease,
   GitHubReleaseLive,
 } from "@savvy-web/github-action-effects"
@@ -40,10 +39,9 @@ const program = Effect.gen(function* () {
 Action.run(program, { layer: Layer.mergeAll(DryRunLive, GitHubReleaseLive) })
 ```
 
-## Error Accumulation
+## Error accumulation
 
-The `ErrorAccumulator` namespace processes all items without short-circuiting
-on first error, collecting both successes and failures.
+The `ErrorAccumulator` namespace processes all items without short-circuiting on first error, collecting both successes and failures.
 
 ```typescript
 import { Effect } from "effect"
@@ -77,10 +75,11 @@ const result = yield* ErrorAccumulator.forEachAccumulateConcurrent(
 )
 ```
 
-## Permission Checking
+## Permission checking
 
-Verify GitHub token permissions before attempting operations that require
-specific scopes.
+Verify GitHub token permissions before attempting operations that require specific scopes.
+
+`TokenPermissionCheckerLive` is a function, not a bare layer — it takes the granted permissions record (typically `InstallationToken.permissions`) and returns a `Layer<TokenPermissionChecker>`. Call it with the granted scopes, then provide the result.
 
 ```typescript
 import { Effect } from "effect"
@@ -89,6 +88,9 @@ import {
   TokenPermissionCheckerLive,
 } from "@savvy-web/github-action-effects"
 
+// `granted` is the permissions record from an installation token
+const granted = { contents: "write", "pull-requests": "write" }
+
 const program = Effect.gen(function* () {
   const checker = yield* TokenPermissionChecker
 
@@ -96,12 +98,12 @@ const program = Effect.gen(function* () {
   yield* checker.assertSufficient({
     contents: "write",
     "pull-requests": "write",
-    checks: "write",
   })
 
   // Or fail if there are missing OR extra permissions (least-privilege)
   yield* checker.assertExact({
-    contents: "read",
+    contents: "write",
+    "pull-requests": "write",
   })
 
   // Or just warn without failing
@@ -113,16 +115,45 @@ const program = Effect.gen(function* () {
   const result = yield* checker.check({
     contents: "write",
   })
-  // result.sufficient: boolean
-  // result.gaps: Array<{ scope, required, granted }>
-  // result.extras: Array<{ scope, granted }>
-})
+  // result.satisfied: boolean
+  // result.missing: Array<{ permission, required, granted }>
+  // result.extra:   Array<{ permission, level }>
+}).pipe(Effect.provide(TokenPermissionCheckerLive(granted)))
 ```
 
-Add this to the beginning of your action to catch permission issues early
-with a clear error message instead of cryptic API failures.
+Add this to the beginning of your action to catch permission issues early with a clear error message instead of cryptic API failures.
 
-## Workspace Detection
+When you provision a GitHub App token with `GitHubToken.provision`, you do not need to wire up `TokenPermissionChecker` yourself — see [App token provisioning](#app-token-provisioning) below.
+
+## App token provisioning
+
+When an action needs more than the repo-scoped workflow token, authenticate as a GitHub App. `GitHubToken.provision` does three things in one effect: it generates an installation token, optionally checks its scopes and persists it for the later phases.
+
+```typescript
+import { Effect, Layer } from "effect"
+import {
+  Action,
+  GitHubAppLive,
+  GitHubToken,
+  OctokitAuthAppLive,
+} from "@savvy-web/github-action-effects"
+
+// provision and dispose need a GitHubApp layer in context
+const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive)
+
+// pre.ts — provision the token, verifying it grants the scopes we need
+Action.run(
+  GitHubToken.provision({
+    permissions: { contents: "write", pull_requests: "write" },
+  }).pipe(Effect.provide(appLayer)),
+)
+```
+
+With `permissions` set, `provision` runs the generated token through `TokenPermissionChecker` for you. A missing scope fails with `TokenPermissionError` and the rejected token is revoked, so you do not wire up the checker by hand.
+
+In `main`, build a `GitHubClient` from the persisted token with `GitHubToken.client()`; in `post`, revoke it with `GitHubToken.dispose()`. See [Advanced action: three-stage app](./02-advanced-action.md) for the full three-phase walkthrough.
+
+## Workspace detection
 
 Detect monorepo structure and iterate over packages.
 
@@ -153,9 +184,9 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Package Publishing Workflow
+## Package publishing workflow
 
-A complete multi-registry publish workflow combining several services.
+This example wires several services together into a multi-registry publish workflow.
 
 ```typescript
 import { Config, Effect, Layer } from "effect"
@@ -173,6 +204,9 @@ import {
   GithubMarkdown,
   ActionOutputs,
 } from "@savvy-web/github-action-effects"
+
+// `granted` is the permissions record from the token in use
+const granted = { contents: "write" }
 
 const program = Effect.gen(function* () {
   const dryRun = yield* DryRun
@@ -220,16 +254,15 @@ Action.run(
       DryRunLive,
       NpmRegistryLive,
       PackagePublishLive,
-      TokenPermissionCheckerLive,
+      TokenPermissionCheckerLive(granted),
     ),
   },
 )
 ```
 
-## Report Builder
+## Report builder
 
-The `ReportBuilder` creates structured markdown reports that can be sent to
-step summaries, PR comments, or check runs.
+`ReportBuilder` builds a markdown report once, then sends it to a step summary, a PR comment or a check run.
 
 ```typescript
 import { Effect } from "effect"
@@ -257,7 +290,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Auto-Merge
+## Auto-merge
 
 Enable auto-merge on pull requests after checks pass.
 
@@ -278,7 +311,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Semver Resolution
+## Semver resolution
 
 Compare and manipulate semantic versions with Effect error handling.
 
@@ -303,11 +336,9 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Composing Additional Layers
+## Composing additional layers
 
-`Action.run` provides `ActionsRuntime.Default` (ConfigProvider, Logger,
-core services, FileSystem). For additional services, pass them in the
-`options.layer` parameter:
+`Action.run` provides `ActionsRuntime.Default` (ConfigProvider, Logger, core services, FileSystem). For additional services, pass them in the `options.layer` parameter:
 
 ```typescript
 import { Layer } from "effect"
@@ -319,8 +350,10 @@ import {
   DryRunLive,
 } from "@savvy-web/github-action-effects"
 
+// GitHubClientLive is a namespace of constructors — call one to get a layer.
+// `fromEnv` reads process.env.GITHUB_TOKEN.
 const ExtendedLayer = Layer.mergeAll(
-  GitHubClientLive,
+  GitHubClientLive.fromEnv,
   GitHubReleaseLive,
   CommandRunnerLive,
   DryRunLive,
@@ -329,7 +362,7 @@ const ExtendedLayer = Layer.mergeAll(
 Action.run(program, { layer: ExtendedLayer })
 ```
 
-## Error Handling
+## Error handling
 
 All errors use `Data.TaggedError` for pattern matching:
 
@@ -348,14 +381,11 @@ const program = Effect.gen(function* () {
 )
 ```
 
-`Action.run` catches all uncaught errors and emits `::error::` workflow
-commands automatically, so you only need explicit error handling when you
-want custom behavior.
+`Action.run` catches all uncaught errors and emits `::error::` workflow commands automatically, so you only need explicit error handling when you want custom behavior.
 
 ### Action.formatCause
 
-For custom error handlers that need a human-readable message from an Effect
-`Cause`, use `Action.formatCause`:
+For custom error handlers that need a human-readable message from an Effect `Cause`, use `Action.formatCause`:
 
 ```typescript
 import { Effect, Cause } from "effect"
@@ -372,12 +402,8 @@ const program = myEffect.pipe(
 
 `formatCause` uses a fallback chain that always produces a non-empty string:
 
-1. **`Cause.squash`** -- extracts the underlying error. If it is a
-   `TaggedError`, formats as `[Tag] reason`. If it is a standard `Error`,
-   formats as `[Error] message`.
-2. **`Cause.pretty`** -- fallback for interrupts and other cause types.
-3. **Sentinel** -- `"Unknown error (no diagnostic information available)"`
-   as a last resort.
+1. **`Cause.squash`** — extracts the underlying error. If it is a `TaggedError`, formats as `[Tag] reason`. If it is a standard `Error`, formats as `[Error] message`.
+2. **`Cause.pretty`** — fallback for interrupts and other cause types.
+3. **Sentinel** — `"Unknown error (no diagnostic information available)"` as a last resort.
 
-The `[Tag] message` format is designed for consistent parseability by both
-humans and AI systems.
+The `[Tag] message` format stays consistent across every error, so log scrapers and humans can both parse it the same way.

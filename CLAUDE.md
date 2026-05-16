@@ -63,13 +63,17 @@ pnpm vitest run src/services/ActionOutputs.test.ts
 
 ```text
 src/
-  runtime/     -- ConfigProvider, Logger, WorkflowCommand, RuntimeFile, ActionsRuntime
-  services/    -- Effect service interfaces (27 services)
-  layers/      -- Live and Test layer implementations
-  errors/      -- Tagged error types (Data.TaggedError)
-  schemas/     -- Effect Schema definitions (LogLevel, Changeset, PackageManager, etc.)
-  utils/       -- GithubMarkdown, ReportBuilder
+  Action.ts        -- Action namespace (run, resolveLogLevel, formatCause)
+  GitHubToken.ts   -- GitHubToken namespace (App installation-token lifecycle)
+  runtime/         -- ConfigProvider, Logger, WorkflowCommand, RuntimeFile, ActionsRuntime
+  services/        -- Effect service interfaces (27 services)
+  layers/          -- Live and Test layer implementations
+  errors/          -- Tagged error types (Data.TaggedError)
+  schemas/         -- Effect Schema definitions (LogLevel, Changeset, PackageManager, etc.)
+  utils/           -- GithubMarkdown, ReportBuilder
 ```
+
+`Action`, `GitHubToken`, and `GithubMarkdown` are top-level namespace objects (not Effect services) grouping helper functions.
 
 ### Runtime Layer
 
@@ -98,6 +102,8 @@ Inputs use Effect's `Config` API:
 const name = yield* Config.string("name")      // reads INPUT_NAME
 const count = yield* Config.integer("count")    // reads INPUT_COUNT
 ```
+
+For GitHub App actions, `GitHubToken` provides phase-oriented installation-token helpers: `provision` (pre), `client` (main), `dispose` (post), with optional post-generation permission verification.
 
 ### Services
 
@@ -137,9 +143,10 @@ const count = yield* Config.integer("count")    // reads INPUT_COUNT
 - Services use `class Foo extends Context.Tag("github-action-effects/Foo")<Foo, { ... }>() {}`
 - Errors use `class FooError extends Data.TaggedError("FooError")<{ ... }> {}`
 - Live layers use native APIs (no @actions/* wrappers)
+- Live layers are usually a single `Layer`; some are namespace objects with multiple constructors — `GitHubClientLive` exposes `fromEnv` (ambient `GITHUB_TOKEN`), `fromToken(token)`, and `fromApp({ clientId, privateKey, installationId? })`
 - Test layers use namespace object pattern: `ActionLoggerTest.empty()` / `ActionLoggerTest.layer(state)`
 - Inputs via `Config.*` backed by `ActionsConfigProvider`
-- Logging via Effect `Logger` backed by `ActionsLogger`
+- Logging via Effect `Logger` backed by `ActionsLogger`; `ActionLogger.group` flushes buffered verbose logs inside a failing group before `::endgroup::`
 
 ### Code Quality
 

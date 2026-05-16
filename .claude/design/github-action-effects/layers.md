@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-21
-last-synced: 2026-03-21
+updated: 2026-05-15
+last-synced: 2026-05-15
 completeness: 95
 related:
   - ./index.md
@@ -83,9 +83,9 @@ Git Operations:
   GitTagTest               — in-memory tag state Map<tag, sha>
 
 GitHub API:
-  GitHubClientLive         — Layer.effect; reads GITHUB_TOKEN from process.env,
-                             creates Octokit instance directly from @octokit/rest.
-                             Self-contained Layer (not a factory function).
+  GitHubClientLive         — Namespace object with three construction modes
+                             (fromEnv/fromToken/fromApp); all share an internal
+                             makeClient builder over @octokit/rest.
   GitHubClientTest         — Map-based recorded REST/GraphQL responses; default test repo
 
   GitHubGraphQLLive        — Layer.effect depending on GitHubClient
@@ -210,6 +210,16 @@ Then pipes through `Layer.provideMerge(NodeFileSystem.layer)` to satisfy the
 for `::group::` / `::endgroup::` markers. Buffer management uses Effect's
 `Logger.replace` to install a buffering logger scoped to the effect.
 
+The active buffer is held in a module-level `FiberRef<BufferState | null>`
+(`activeBuffer`) so both `withBuffer` and `group` see the same fiber-scoped
+state. `withBuffer` creates the state, installs the buffering logger and binds
+the state via `Effect.locally`; `group` reads `activeBuffer` in a
+`tapErrorCause` so a failing group flushes its buffered diagnostics *inside*
+the group, before `::endgroup::`. Flushing clears the entries, so each buffered
+chunk prints exactly once — the innermost failing boundary wins, and the outer
+`withBuffer` flush stays as the catch-all for output produced outside any
+group. See `src/layers/ActionLoggerLive.ts`.
+
 ### ActionOutputsLive
 
 `Layer.Layer<ActionOutputs, never, FileSystem>`. Uses `RuntimeFile.append`
@@ -241,12 +251,32 @@ its own retries internally.
 
 ### GitHubClientLive
 
-`Layer.Layer<GitHubClient, GitHubClientError>`. Self-contained layer that
-reads `GITHUB_TOKEN` from `process.env` and creates an `Octokit` instance
-from `@octokit/rest`. REST calls use `Effect.tryPromise`, GraphQL uses
-`octokit.graphql()`. Pagination handles page incrementing and empty-page
-termination. Error mapping extracts HTTP status and sets the `retryable`
-flag for 429/5xx. Detects HTML error pages (GitHub "Unicorn" pages).
+A namespace object with three construction modes — the only layer with more
+than one way to be built, so the only one that gets a namespace rather than a
+plain const (the `GitHubClientTest = { layer, empty }` pattern, chosen
+project-wide for api-extractor compatibility). All three modes resolve a token,
+then call a shared internal `makeClient(token)` builder that wraps an `Octokit`
+instance from `@octokit/rest`. See `src/layers/GitHubClientLive.ts`.
+
+- `fromEnv` — `Layer.Layer<GitHubClient, GitHubClientError>`. Reads the ambient
+  `process.env.GITHUB_TOKEN`, the weak repo-scoped default; fails when it is
+  unset. The self-describing call site is the explicit opt-in to ambient
+  credentials.
+- `fromToken(token)` — `Layer.Layer<GitHubClient>`. Builds from an explicit
+  token (`string` or `Redacted<string>`); no `process.env` dependency and no
+  failure channel — a provided token cannot be missing.
+- `fromApp({ clientId, privateKey, installationId? })` —
+  `Layer.Layer<GitHubClient, GitHubAppError>`. Generates a fresh GitHub App
+  installation token, composing `OctokitAuthAppLive` + `GitHubAppLive`
+  internally. Suits single-phase actions; for a token shared across pre/main/post
+  phases use the `GitHubToken` namespace instead.
+
+REST calls use `Effect.tryPromise`, GraphQL uses `octokit.graphql()`.
+Pagination handles page incrementing and empty-page termination. Error mapping
+extracts HTTP status and sets the `retryable` flag for 429/5xx. Detects HTML
+error pages (GitHub "Unicorn" pages). The `repo` accessor still resolves
+`GITHUB_REPOSITORY` at call time and fails with `GitHubClientError` regardless
+of construction mode.
 
 ### GitHubAppLive
 
@@ -374,7 +404,9 @@ Tier 0 — No service dependencies (use Node.js built-ins / native APIs directly
 
 Tier 0 — External package import (no service dependencies):
   OctokitAuthApp            <- imports @octokit/auth-app
-  GitHubClient              <- imports @octokit/rest, reads GITHUB_TOKEN from env
+  GitHubClient              <- imports @octokit/rest; fromEnv/fromToken have no
+                               service deps, fromApp composes GitHubAppLive +
+                               OctokitAuthAppLive internally
   ActionCache               <- imports @azure/storage-blob, reads ACTIONS_RESULTS_URL from env
 
 Tier 0.5 — Depends on FileSystem (from @effect/platform):
@@ -425,7 +457,7 @@ import { Action, GitHubClientLive, CheckRunLive }
 Action.run(program, {
   layer: Layer.mergeAll(
     CheckRunLive,
-    GitHubClientLive,
+    GitHubClientLive.fromEnv,
   ),
 })
 ```
@@ -439,8 +471,13 @@ import { ActionsRuntime, GitHubClientLive, CheckRunLive }
 const MyActionLayer = Layer.mergeAll(
   ActionsRuntime.Default,
   CheckRunLive,
-).pipe(Layer.provideMerge(GitHubClientLive))
+).pipe(Layer.provideMerge(GitHubClientLive.fromEnv))
 ```
+
+`GitHubClientLive` is a namespace object: pick `.fromEnv`, `.fromToken(token)`
+or `.fromApp(options)` for the construction mode. Every Tier 2 service
+(`CheckRunLive`, `PullRequestLive`, …) consumes whichever `GitHubClient`
+identity is provided.
 
 ---
 

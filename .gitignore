@@ -35,3 +35,4 @@ pnpm-release.json
 .claude/plugins-debug.log
 .playwright-mcp
 .mcp.json
+docs/superpowers/

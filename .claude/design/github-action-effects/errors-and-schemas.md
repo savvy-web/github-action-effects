@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-03-21
-last-synced: 2026-03-21
+updated: 2026-05-15
+last-synced: 2026-05-15
 completeness: 95
 related:
   - ./index.md
@@ -214,11 +214,15 @@ Effect.log*() calls in user program
   -> annotations (file, line, col) become command properties
 
 ActionLogger.withBuffer(label, effect):
-  -> At Info level: capture in buffer
+  -> At Info level: capture verbose entries in a fiber-scoped buffer
      -> on success: discard buffer
-     -> on failure: flush buffer to stdout, then error
+     -> on failure inside a group: ActionLogger.group flushes the buffer
+        before ::endgroup::, then clears it
+     -> on failure outside any group: withBuffer flushes at its own boundary
   -> At Debug level: pass through without buffering
 ```
+
+Each buffered chunk prints exactly once — the innermost failing boundary wins.
 
 ### Output Flow
 

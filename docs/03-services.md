@@ -1,18 +1,13 @@
-# Services Guide
+# Services guide
 
-This guide covers each service in `@savvy-web/github-action-effects` with
-usage examples. For architecture and layer composition, see
-[architecture.md](./architecture.md). For testing, see
-[testing.md](./testing.md).
+This guide walks through each service in `@savvy-web/github-action-effects` with a usage example. For architecture and layer composition, see [architecture](./07-architecture.md). For testing, see [testing](./08-testing.md).
 
 ## Inputs via Config API
 
-Inputs are read using Effect's `Config` API, backed by `ActionsConfigProvider`
-which reads `INPUT_*` environment variables. This replaces the previous
-`ActionInputs` service.
+Inputs are read using Effect's `Config` API, backed by `ActionsConfigProvider` which reads `INPUT_*` environment variables.
 
 ```typescript
-import { Config, Effect, Schema } from "effect"
+import { Config, Effect, Redacted } from "effect"
 
 const program = Effect.gen(function* () {
   // Required string input
@@ -27,19 +22,19 @@ const program = Effect.gen(function* () {
   // Boolean input
   const dryRun = yield* Config.boolean("dry-run").pipe(Config.withDefault(false))
 
-  // Secret input (Config.secret returns a Secret that can be unwrapped)
-  const token = yield* Config.secret("token")
+  // Redacted input — Config.redacted wraps the value so it is not printed
+  const token = yield* Config.redacted("token")
+  const raw = Redacted.value(token) // unwrap when you need the plain string
 })
 ```
 
-## Core Services
+## Core services
 
-These services are provided automatically by `ActionsRuntime.Default` and
-`Action.run`.
+These services are provided automatically by `ActionsRuntime.Default` and `Action.run`.
 
 ### ActionLogger
 
-Structured logging beyond the built-in Effect logger.
+`ActionLogger` adds two operations on top of the built-in Effect logger: collapsible log groups and buffer-on-failure logging. It has exactly two methods, `group` and `withBuffer`.
 
 ```typescript
 import { Effect } from "effect"
@@ -62,17 +57,24 @@ const program = Effect.gen(function* () {
     // If this succeeds, buffered logs are discarded
     // If this fails, buffered logs flush for debugging
   }))
+})
+```
 
-  // File/line annotations (appear inline on PR diffs)
-  yield* logger.annotationError("Check failed", {
-    file: "src/index.ts",
-    startLine: 10,
-  })
-  yield* logger.annotationWarning("Deprecated API", {
-    file: "src/helpers.ts",
-    startLine: 42,
-  })
-  yield* logger.annotationNotice("New feature available")
+Workflow annotations are not a method on `ActionLogger`. Log through Effect at warning or error level instead — the `ActionsLogger` installed by `ActionsRuntime.Default` maps `Effect.logWarning` to a `::warning::` command and `Effect.logError` to a `::error::` command. Log annotations such as `file` and `line` become command properties, so an annotation lands inline on the PR diff.
+
+```typescript
+import { Effect } from "effect"
+
+const program = Effect.gen(function* () {
+  // A warning annotation pinned to a file and line
+  yield* Effect.logWarning("Deprecated API").pipe(
+    Effect.annotateLogs({ file: "src/helpers.ts", line: "42" }),
+  )
+
+  // An error annotation
+  yield* Effect.logError("Check failed").pipe(
+    Effect.annotateLogs({ file: "src/index.ts", line: "10" }),
+  )
 })
 ```
 
@@ -110,7 +112,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## State and Environment
+## State and environment
 
 ### ActionState
 
@@ -166,7 +168,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## GitHub API Services
+## GitHub API services
 
 These services use `@octokit/rest` directly (a regular dependency).
 
@@ -193,8 +195,16 @@ const program = Effect.gen(function* () {
 
   // Repository context
   const { owner, repo } = yield* client.repo
-})
+}).pipe(Effect.provide(GitHubClientLive.fromEnv))
 ```
+
+`GitHubClientLive` is a namespace of three layer constructors, not a bare layer:
+
+- `GitHubClientLive.fromEnv` — a `Layer<GitHubClient, GitHubClientError>` that reads the ambient `process.env.GITHUB_TOKEN`, the repo-scoped workflow token.
+- `GitHubClientLive.fromToken(token)` — a `Layer<GitHubClient>` built from an explicit token, a plain `string` or a `Redacted`, with no `process.env` dependency.
+- `GitHubClientLive.fromApp({ clientId, privateKey, installationId? })` — a `Layer<GitHubClient, GitHubAppError>` that generates a fresh installation token from GitHub App credentials each time the layer is built.
+
+For the pre/main/post pattern where one token is shared across phases, use the [`GitHubToken`](#githubtoken) namespace instead of `fromApp`.
 
 ### GitHubRelease
 
@@ -284,8 +294,7 @@ const program = Effect.gen(function* () {
 
 ### PullRequest
 
-Full pull request lifecycle management: get, list, create, update, merge,
-and the idempotent `getOrCreate` pattern.
+Full pull request lifecycle management: get, list, create, update, merge and the idempotent `getOrCreate` pattern.
 
 ```typescript
 import { Effect } from "effect"
@@ -388,24 +397,42 @@ const program = Effect.gen(function* () {
 
 ### GitHubApp
 
-GitHub App authentication with automatic token revocation.
+GitHub App authentication: generate, use and revoke installation tokens. `GitHubAppLive` requires an `OctokitAuthApp` layer, so compose it with `OctokitAuthAppLive`.
 
 ```typescript
-import { Effect } from "effect"
-import { GitHubApp, GitHubAppLive } from "@savvy-web/github-action-effects"
+import { Effect, Layer } from "effect"
+import {
+  GitHubApp,
+  GitHubAppLive,
+  OctokitAuthAppLive,
+} from "@savvy-web/github-action-effects"
+
+const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive)
 
 const program = Effect.gen(function* () {
   const app = yield* GitHubApp
 
-  // Bracket pattern: token is always revoked, even on failure
-  yield* app.withToken(appId, privateKey, (token) =>
+  // Generate an installation token explicitly
+  const installation = yield* app.generateToken(clientId, privateKey)
+  // installation.token, installation.expiresAt, installation.installationId
+  yield* Effect.log(`Generated token for installation ${installation.installationId}`)
+
+  // ... use installation.token for API calls ...
+
+  // Revoke it when done
+  yield* app.revokeToken(installation.token)
+
+  // Or use the bracket form: the callback receives the bare token string,
+  // and the token is always revoked afterwards, even on failure
+  yield* app.withToken(clientId, privateKey, (token) =>
     Effect.gen(function* () {
-      // Use token for API calls
-      yield* Effect.log(`Token expires at ${token}`)
+      yield* Effect.log("Using installation token for API calls")
     })
   )
-})
+}).pipe(Effect.provide(appLayer))
 ```
+
+For the three-phase pre/main/post pattern, prefer the [`GitHubToken`](#githubtoken) namespace, which provisions one token in `pre` and revokes it in `post`.
 
 ### GitHubGraphQL
 
@@ -425,7 +452,69 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Command Execution
+### OctokitAuthApp
+
+`OctokitAuthApp` wraps `@octokit/auth-app`. `GitHubAppLive` depends on it, so in practice you provide `OctokitAuthAppLive` as the layer underneath `GitHubAppLive` rather than reaching for `OctokitAuthApp` directly.
+
+```typescript
+import { Layer } from "effect"
+import {
+  GitHubAppLive,
+  OctokitAuthAppLive,
+} from "@savvy-web/github-action-effects"
+
+// OctokitAuthAppLive satisfies the OctokitAuthApp requirement of GitHubAppLive
+const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive)
+```
+
+`OctokitAuthAppLive` is a bare `Layer<OctokitAuthApp>` — provide it as-is. Use the service tag directly only when you need raw `createAppAuth` access.
+
+## GitHub App token lifecycle
+
+### GitHubToken
+
+`GitHubToken` is a top-level namespace, like `Action`, not an injected service. It coordinates one GitHub App installation token across the three action phases: `provision` in `pre`, `client` in `main`, `dispose` in `post`. It persists the token to `ActionState` internally, so you do not define a token schema yourself.
+
+```typescript
+import { Effect, Layer } from "effect"
+import {
+  Action,
+  GitHubAppLive,
+  GitHubClient,
+  GitHubToken,
+  OctokitAuthAppLive,
+} from "@savvy-web/github-action-effects"
+
+const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive)
+
+// pre.ts — provision and persist the installation token
+Action.run(
+  GitHubToken.provision({
+    permissions: { contents: "write", pull_requests: "write" },
+  }).pipe(Effect.provide(appLayer)),
+)
+
+// main.ts — build a GitHubClient from the persisted token
+const main = Effect.gen(function* () {
+  const client = yield* GitHubClient
+  const { owner, repo } = yield* client.repo
+}).pipe(Effect.provide(GitHubToken.client()))
+
+Action.run(main)
+
+// post.ts — revoke the token
+Action.run(GitHubToken.dispose().pipe(Effect.provide(appLayer)))
+```
+
+The three members:
+
+- `provision(options?)` — generates an installation token and saves it. `clientId` defaults to the `app-client-id` action input and `privateKey` to `app-private-key`; pass them in `options` to override. With `permissions` set, the generated token is verified to grant those scopes before it is persisted — a missing scope fails with `TokenPermissionError` and revokes the rejected token. Returns the `InstallationToken`. Requires a `GitHubApp` layer and `ActionState`.
+- `client()` — a `Layer<GitHubClient, ActionStateError, ActionState>` that reads the persisted token and builds a `GitHubClient` from it.
+- `dispose()` — revokes the persisted token. A no-op if none was persisted. Requires a `GitHubApp` layer and `ActionState`.
+
+`provision` and `dispose` require a `GitHubApp` layer in context. Compose it once as `Layer.provide(GitHubAppLive, OctokitAuthAppLive)` and provide it to each effect. In tests, provide `GitHubAppTest.layer(GitHubAppTest.empty())` instead.
+
+## Command execution
 
 ### CommandRunner
 
@@ -455,7 +544,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Package Management
+## Package management
 
 ### NpmRegistry
 
@@ -568,12 +657,11 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Infrastructure Services
+## Infrastructure services
 
 ### ActionCache
 
-GitHub Actions cache using V2 Twirp RPC protocol at ACTIONS_RESULTS_URL
-with Azure Blob Storage (`@azure/storage-blob`) for uploads/downloads.
+GitHub Actions cache using V2 Twirp RPC protocol at ACTIONS_RESULTS_URL with Azure Blob Storage (`@azure/storage-blob`) for uploads/downloads.
 
 ```typescript
 import { Effect } from "effect"
@@ -712,11 +800,7 @@ const program = Effect.gen(function* () {
 
 ### ToolInstaller
 
-Download, cache, and install tool binaries using node:https/http and
-child_process. Supports both archived tools (tar.gz, tar.xz, zip) and
-standalone binary files. Includes socket timeout, redirect following,
-retry with exponential backoff, and cross-platform zip extraction
-(PowerShell on Windows, unzip on other platforms).
+Download, cache and install tool binaries using `node:https`/`node:http` and `child_process`. It handles archived tools (tar.gz, tar.xz, zip) and standalone binary files alike. Downloads follow redirects, time out a stuck socket and retry with exponential backoff; zip extraction works cross-platform (PowerShell on Windows, `unzip` elsewhere).
 
 ```typescript
 import { Effect } from "effect"
@@ -742,5 +826,106 @@ const program = Effect.gen(function* () {
     "https://github.com/biomejs/biome/releases/download/cli%2Fv1.9.0/biome-linux-x64",
     { binaryName: "biome" },
   )
+})
+```
+
+## Utility namespaces
+
+These are top-level namespace objects, not injected services. Call them directly — there is no service tag to `yield*` first.
+
+### ErrorAccumulator
+
+Process every item in a collection and collect both successes and failures, instead of short-circuiting on the first error. The result's error channel is `never`; failures land in the `failures` array.
+
+```typescript
+import { Effect } from "effect"
+import { ErrorAccumulator } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const result = yield* ErrorAccumulator.forEachAccumulate(
+    ["pkg-a", "pkg-b", "pkg-c"],
+    (pkg) => publishPackage(pkg), // may fail for some packages
+  )
+  yield* Effect.log(`Published ${result.successes.length}, failed ${result.failures.length}`)
+
+  // Concurrent variant with a parallelism limit
+  const concurrent = yield* ErrorAccumulator.forEachAccumulateConcurrent(
+    ["pkg-a", "pkg-b", "pkg-c"],
+    (pkg) => publishPackage(pkg),
+    4, // max 4 in flight
+  )
+})
+```
+
+### AutoMerge
+
+Enable or disable pull request auto-merge through the GitHub GraphQL API. Both operations need a `GitHubGraphQL` layer and take the PR's GraphQL node ID, not its number.
+
+```typescript
+import { Effect } from "effect"
+import {
+  AutoMerge,
+  GitHubGraphQL,
+  GitHubGraphQLLive,
+} from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  // prNodeId comes from the GraphQL API, not the PR number
+  yield* AutoMerge.enable(prNodeId, "SQUASH")
+  yield* AutoMerge.disable(prNodeId)
+}).pipe(Effect.provide(GitHubGraphQLLive))
+```
+
+### SemverResolver
+
+Compare and manipulate semantic versions with Effect error handling. Each operation fails with `SemverResolverError` on invalid input.
+
+```typescript
+import { Effect } from "effect"
+import { SemverResolver } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const cmp = yield* SemverResolver.compare("1.0.0", "2.0.0")
+  // -1
+
+  const ok = yield* SemverResolver.satisfies("1.5.0", "^1.0.0")
+  // true
+
+  const best = yield* SemverResolver.latestInRange(
+    ["1.0.0", "1.1.0", "2.0.0"],
+    "^1.0.0",
+  )
+  // "1.1.0"
+
+  const next = yield* SemverResolver.increment("1.0.0", "minor")
+  // "1.1.0"
+
+  const parts = yield* SemverResolver.parse("1.2.3-beta.1")
+  // { major: 1, minor: 2, patch: 3, prerelease: "beta.1" }
+})
+```
+
+### ReportBuilder
+
+Build a markdown report with a fluent, immutable builder, then send it to a step summary, a PR comment or a check run.
+
+```typescript
+import { Effect } from "effect"
+import { ReportBuilder } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const report = ReportBuilder.create("Build report")
+    .stat("Duration", "1.5s")
+    .stat("Packages", 12)
+    .section("Details", "All packages compiled successfully.")
+    .details("Full log", longLogOutput)
+
+  // Render to a markdown string
+  const md = report.toMarkdown()
+
+  // Or send it somewhere — each target needs the matching layer
+  yield* report.toSummary() // requires ActionOutputs
+  yield* report.toComment(prNumber, "build-report") // requires PullRequestComment
+  yield* report.toCheckRun(checkRunId) // requires CheckRun
 })
 ```
