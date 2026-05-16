@@ -422,6 +422,21 @@ const program = Effect.gen(function* () {
   // Revoke it when done
   yield* app.revokeToken(installation.token)
 
+  // Resolve the App's public identity (slug, bot user ID, display name)
+  const identity = yield* app.resolveAppIdentity(clientId, privateKey)
+  // identity.appSlug, identity.appUserId, identity.appName
+
+  // Derive a commit-attribution identity.
+  // With appSlug + appUserId, the email uses GitHub's verified-attribution format.
+  const bot = app.botIdentity({ appSlug: identity.appSlug, appUserId: identity.appUserId })
+  // bot.name  → "<appSlug>[bot]"
+  // bot.email → "<appUserId>+<appSlug>[bot]@users.noreply.github.com"
+
+  // Without source fields, falls back to the well-known github-actions[bot] identity
+  const fallback = app.botIdentity()
+  // fallback.name  → "github-actions[bot]"
+  // fallback.email → "41898282+github-actions[bot]@users.noreply.github.com"
+
   // Or use the bracket form: the callback receives the bare token string,
   // and the token is always revoked afterwards, even on failure
   yield* app.withToken(clientId, privateKey, (token) =>
@@ -473,7 +488,7 @@ const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive)
 
 ### GitHubToken
 
-`GitHubToken` is a top-level namespace, like `Action`, not an injected service. It coordinates one GitHub App installation token across the three action phases: `provision` in `pre`, `client` in `main`, `dispose` in `post`. It persists the token to `ActionState` internally, so you do not define a token schema yourself.
+`GitHubToken` is a top-level namespace, like `Action`, not an injected service. It coordinates one GitHub App installation token across the three action phases: `provision` in `pre`, `client` in `main`, `dispose` in `post`. Two additional accessors — `read` and `botIdentity` — are available in any phase after `provision`. The namespace persists the token to `ActionState` internally, so you do not define a token schema yourself.
 
 ```typescript
 import { Effect, Layer } from "effect"
@@ -506,10 +521,31 @@ Action.run(main)
 Action.run(GitHubToken.dispose().pipe(Effect.provide(appLayer)))
 ```
 
-The three members:
+Use `read` and `botIdentity` in any phase that runs after `provision`:
 
-- `provision(options?)` — generates an installation token and saves it. `clientId` defaults to the `app-client-id` action input and `privateKey` to `app-private-key`; pass them in `options` to override. With `permissions` set, the generated token is verified to grant those scopes before it is persisted — a missing scope fails with `TokenPermissionError` and revokes the rejected token. Returns the `InstallationToken`. Requires a `GitHubApp` layer and `ActionState`.
+```typescript
+import { Effect } from "effect"
+import { Action, ActionState, GitHubToken } from "@savvy-web/github-action-effects"
+
+// main.ts — read the full token envelope and derive a commit identity
+const main = Effect.gen(function* () {
+  const token = yield* GitHubToken.read()
+  // token.appSlug, token.appUserId, token.appName (populated best-effort)
+
+  const identity = yield* GitHubToken.botIdentity()
+  // identity.name  → "<appSlug>[bot]" or "github-actions[bot]"
+  // identity.email → "<appUserId>+<appSlug>[bot]@users.noreply.github.com" or fallback
+}).pipe(Effect.provide(GitHubToken.client()))
+
+Action.run(main)
+```
+
+The five members:
+
+- `provision(options?)` — generates an installation token and saves it. `clientId` defaults to the `app-client-id` action input and `privateKey` to `app-private-key`; pass them in `options` to override. With `permissions` set, the generated token is verified to grant those scopes before it is persisted — a missing scope fails with `TokenPermissionError` and revokes the rejected token. Also resolves the App's public identity (slug, bot user ID, name) best-effort and stores those fields on the token. Returns the `InstallationToken`. Requires a `GitHubApp` layer and `ActionState`.
 - `client()` — a `Layer<GitHubClient, ActionStateError, ActionState>` that reads the persisted token and builds a `GitHubClient` from it.
+- `read()` — an `Effect<InstallationToken, ActionStateError, ActionState>` that returns the full persisted token envelope, including the optional `appSlug`, `appUserId` and `appName` fields. Requires `ActionState`.
+- `botIdentity()` — an `Effect<BotIdentity, ActionStateError, ActionState>` that derives a commit-attribution identity from the persisted token. When `appSlug` and `appUserId` were resolved, the email uses the `<userId>+<slug>[bot]@users.noreply.github.com` format GitHub recognises for verified attribution; otherwise it falls back to the well-known `github-actions[bot]` identity. Requires `ActionState`.
 - `dispose()` — revokes the persisted token. A no-op if none was persisted. Requires a `GitHubApp` layer and `ActionState`.
 
 `provision` and `dispose` require a `GitHubApp` layer in context. Compose it once as `Layer.provide(GitHubAppLive, OctokitAuthAppLive)` and provide it to each effect. In tests, provide `GitHubAppTest.layer(GitHubAppTest.empty())` instead.

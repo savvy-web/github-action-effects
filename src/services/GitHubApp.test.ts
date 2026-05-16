@@ -1,8 +1,8 @@
-import { Data, Effect, Exit } from "effect";
+import { Data, Effect, Exit, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { GitHubAppError } from "../errors/GitHubAppError.js";
 import { GitHubAppTest } from "../layers/GitHubAppTest.js";
-import { GitHubApp } from "./GitHubApp.js";
+import { GitHubApp, InstallationToken } from "./GitHubApp.js";
 
 // -- Shared provide helper --
 
@@ -101,17 +101,17 @@ describe("GitHubApp", () => {
 	});
 
 	describe("botIdentity", () => {
-		it("returns bot identity for a custom app slug", async () => {
+		it("returns a verified identity when both appSlug and appUserId are provided", async () => {
 			const state = GitHubAppTest.empty();
 			const result = await run(
 				state,
-				Effect.flatMap(GitHubApp, (svc) => Effect.succeed(svc.botIdentity("my-app"))),
+				Effect.flatMap(GitHubApp, (svc) => Effect.succeed(svc.botIdentity({ appSlug: "my-app", appUserId: 99 }))),
 			);
 			expect(result.name).toBe("my-app[bot]");
-			expect(result.email).toBe("my-app[bot]@users.noreply.github.com");
+			expect(result.email).toBe("99+my-app[bot]@users.noreply.github.com");
 		});
 
-		it("returns default github-actions bot when no slug", async () => {
+		it("returns default github-actions bot when no source is given", async () => {
 			const state = GitHubAppTest.empty();
 			const result = await run(
 				state,
@@ -132,5 +132,38 @@ describe("GitHubApp", () => {
 			expect(error.operation).toBe("token");
 			expect(error.reason).toBe("invalid key");
 		});
+	});
+});
+
+describe("InstallationToken schema", () => {
+	const decode = Schema.decodeUnknownSync(InstallationToken);
+
+	it("retains the optional identity fields when present", () => {
+		const result = decode({
+			token: "ghs_abc",
+			expiresAt: "2099-01-01T00:00:00Z",
+			installationId: 7,
+			appSlug: "acme-bot",
+			appUserId: 123456,
+			appName: "Acme Bot",
+			permissions: { contents: "write" },
+		});
+
+		expect(result.appSlug).toBe("acme-bot");
+		expect(result.appUserId).toBe(123456);
+		expect(result.appName).toBe("Acme Bot");
+	});
+
+	it("decodes a token with no identity fields (backward compatible)", () => {
+		const result = decode({
+			token: "ghs_abc",
+			expiresAt: "2099-01-01T00:00:00Z",
+			installationId: 7,
+		});
+
+		expect(result.appSlug).toBeUndefined();
+		expect(result.appUserId).toBeUndefined();
+		expect(result.appName).toBeUndefined();
+		expect(result.permissions).toEqual({});
 	});
 });

@@ -6,7 +6,7 @@ setup, project structure, and conventions you need to get started.
 ## Prerequisites
 
 - **Node.js 24** (24.11.0 or later)
-- **pnpm 10.32.1** -- enforced via the `packageManager` field in package.json
+- **pnpm 10.33.4** -- enforced via the `packageManager` field in package.json
 
 ## Getting Started
 

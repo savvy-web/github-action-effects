@@ -5,7 +5,7 @@ category: architecture
 created: 2026-03-06
 updated: 2026-05-15
 last-synced: 2026-05-15
-completeness: 95
+completeness: 97
 related:
   - ./index.md
   - ./layers.md
@@ -120,11 +120,11 @@ single export, reducing barrel clutter and improving discoverability.
 the GitHub App installation-token lifecycle. See [GitHubToken Lifecycle](#githubtoken-lifecycle)
 below for the full pre/main/post data flow.
 
-- `GitHubToken.provision(options?)` -- `pre.ts`: generate an installation
-  token, optionally verify scopes, persist it to `ActionState`
-- `GitHubToken.client()` -- `main.ts`: build a `GitHubClient` layer from the
-  persisted token
-- `GitHubToken.dispose()` -- `post.ts`: revoke the persisted token
+- `GitHubToken.provision(options?)` -- `pre.ts`: generate an installation token, best-effort resolve App identity (wrapped in `Effect.option` so a network hiccup degrades gracefully), enrich the token with identity fields, persist it to `ActionState`.
+- `GitHubToken.client()` -- `main.ts`: build a `GitHubClient` layer from the persisted token.
+- `GitHubToken.dispose()` -- `post.ts`: revoke the persisted token.
+- `GitHubToken.read()` -- `Effect<InstallationToken, ActionStateError, ActionState>`: read the raw persisted token from `ActionState`. Available in any phase after `provision`.
+- `GitHubToken.botIdentity()` -- `Effect<BotIdentity, ActionStateError, ActionState>`: read the token and derive a `BotIdentity` via `formatBotIdentity`. Produces a verified identity when `appSlug` and `appUserId` were resolved by `provision`; falls back to `github-actions[bot]` otherwise.
 
 **`GithubMarkdown`** (from `src/utils/GithubMarkdown.ts`) groups GFM builders:
 
@@ -345,17 +345,16 @@ Issue management and linked issue queries.
 ### GitHubApp Service
 
 GitHub App authentication lifecycle. Uses `OctokitAuthApp` for JWT-based
-app auth and native `fetch` for installation resolution and token revocation.
+app auth and native `fetch` for installation resolution, identity lookup and
+token revocation.
 
 **Interface:**
 
-- `generateToken(appId, privateKey, installationId?)` -- Generate an
-  installation token. Auto-resolves installation ID from `GITHUB_REPOSITORY`
-  if not provided. Returns `InstallationToken`
-- `revokeToken(token)` -- Revoke a previously generated token via REST API
-- `botIdentity(appSlug?)` -- Get bot identity for commit attribution. Returns
-  `BotIdentity` (`{ name, email }`)
-- `withToken(appId, privateKey, effect)` -- Bracket: generate, run, revoke
+- `generateToken(appId, privateKey, installationId?)` -- Generate an installation token. Auto-resolves installation ID from `GITHUB_REPOSITORY` if not provided. Returns `InstallationToken` (without identity fields; call `resolveAppIdentity` separately to enrich).
+- `revokeToken(token)` -- Revoke a previously generated token via REST API.
+- `resolveAppIdentity(appId, privateKey)` -- Resolve the App's public identity via `GET /app` (App JWT) then `GET /users/<slug>[bot]` (public). Returns `{ appSlug, appUserId, appName }`. Fails with `GitHubAppError { operation: "identity" }` on HTTP error.
+- `botIdentity(source?)` -- Derive a `BotIdentity` for commit/tag attribution. `source` is `{ appSlug?, appUserId? }`. When both are present returns a verified identity with the numeric-ID email prefix GitHub recognises; otherwise falls back to the well-known `github-actions[bot]` identity. Delegates to `formatBotIdentity` from `src/utils/botIdentity.ts`.
+- `withToken(appId, privateKey, effect)` -- Bracket: generate, run, revoke.
 
 **Types:** `InstallationToken` (Schema), `BotIdentity` (interface)
 
@@ -687,24 +686,30 @@ multi-phase action. It holds no state of its own — it draws on `GitHubApp`,
 `ActionState` and `TokenPermissionChecker`, and uses `GitHubClientLive.fromToken`
 to build the client. All three helpers expose their dependencies in the `R` channel rather than self-providing them: `provision` and `dispose` require a `GitHubApp` layer in context and `client` requires `ActionState`. Consumers provide `GitHubAppLive` composed with `OctokitAuthAppLive` in production, or `GitHubAppTest` in their own tests.
 
-The three helpers communicate through a single internal `ActionState` key
+The helpers communicate through a single internal `ActionState` key
 (`github-action-effects/installation-token`) carrying the `InstallationToken`
 envelope (the schema exported from `GitHubApp.ts`):
 
 ```text
 pre.ts   GitHubToken.provision()  — resolve App credentials, generate token,
-                                    optionally verify scopes, persist envelope
+                                    best-effort resolve App identity, enrich
+                                    token with identity fields, optionally verify
+                                    scopes, persist enriched envelope
                                           │
                                           ▼  ActionState (GITHUB_STATE file)
                                           │
 main.ts  GitHubToken.client()     — read envelope, build GitHubClient layer
                                     via GitHubClientLive.fromToken
+         GitHubToken.read()       — read raw InstallationToken from state
+         GitHubToken.botIdentity() — derive BotIdentity from persisted token
                                           │
 post.ts  GitHubToken.dispose()    — read envelope, revoke token via GitHubApp
 ```
 
-- **`provision(options?)`** — `Effect<InstallationToken, GitHubAppError | TokenPermissionError | ActionStateError | ConfigError, ActionState | GitHubApp>`. Credentials are hybrid: `clientId` defaults to the `app-client-id` action input (`Config.string`) and `privateKey` to `app-private-key` (`Config.redacted`); the options object overrides both. Generates the token via `GitHubApp`, and when `permissions` are given runs `assertSufficient` against the token's own `permissions` (no API call) — failing with `TokenPermissionError` on a missing scope. Persists the envelope and returns the `InstallationToken`. Strict: fails if no credentials resolve.
+- **`provision(options?)`** — `Effect<InstallationToken, GitHubAppError | TokenPermissionError | ActionStateError | ConfigError, ActionState | GitHubApp>`. Credentials are hybrid: `clientId` defaults to the `app-client-id` action input (`Config.string`) and `privateKey` to `app-private-key` (`Config.redacted`); the options object overrides both. Generates the token via `GitHubApp.generateToken`, then calls `GitHubApp.resolveAppIdentity` wrapped in `Effect.option` — a failure degrades to a token without identity fields rather than crashing the action. When `permissions` are given runs `assertSufficient` against the token's own `permissions` (no API call). Persists the enriched envelope and returns it. Strict: fails if no credentials resolve.
 - **`client()`** — `Layer.Layer<GitHubClient, ActionStateError, ActionState>`. Reads the persisted envelope and delegates to `GitHubClientLive.fromToken`. Strict: fails with `ActionStateError` if nothing was provisioned.
+- **`read()`** — `Effect<InstallationToken, ActionStateError, ActionState>`. Reads the persisted envelope from `ActionState`. Available in any phase after `provision`.
+- **`botIdentity()`** — `Effect<BotIdentity, ActionStateError, ActionState>`. Reads the token via `read()` and derives a `BotIdentity` via `formatBotIdentity`. Produces a verified identity (with numeric user-ID email prefix) when `appSlug` and `appUserId` were resolved; falls back to `github-actions[bot]` otherwise.
 - **`dispose()`** — `Effect<void, GitHubAppError | ActionStateError, ActionState | GitHubApp>`. Reads the envelope via `ActionState.getOptional` and revokes it via `GitHubApp.revokeToken`. Deliberately a **no-op when nothing was persisted** — `post` steps run even when `pre`/`main` failed, so a cleanup step must not crash because there is nothing to revoke.
 
 `provision` and `dispose` require `GitHubApp` in their requirements channel exactly as `client` requires `ActionState` — the namespace exposes every dependency rather than hiding some. A consumer provides a `GitHubApp` layer alongside the helper: `GitHubAppLive` composed with `OctokitAuthAppLive` in production, or `GitHubAppTest` when unit-testing their own `pre.ts`/`post.ts` against a mock token.

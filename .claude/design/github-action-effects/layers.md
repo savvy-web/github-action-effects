@@ -98,8 +98,12 @@ GitHub API:
   GitHubIssueTest          — in-memory issue state
 
   GitHubAppLive            — Layer.effect depending on OctokitAuthApp; uses native fetch
-                             for installation resolution and token revocation
-  GitHubAppTest            — in-memory token state
+                             for installation resolution, App identity lookup and token
+                             revocation. Implements resolveAppIdentity via GET /app (App
+                             JWT) and GET /users/<slug>[bot].
+  GitHubAppTest            — in-memory token state; appIdentity field controls whether
+                             resolveAppIdentity succeeds (defaults to a test identity in
+                             .empty(), absent field causes controlled failure)
 
   OctokitAuthAppLive       — Layer.succeed; imports @octokit/auth-app directly
                              (one of only two layers importing external packages)
@@ -280,10 +284,7 @@ of construction mode.
 
 ### GitHubAppLive
 
-`Layer.Layer<GitHubApp, never, OctokitAuthApp>`. Uses `Layer.effect` to yield
-`OctokitAuthApp` for JWT-based auth. Uses native `fetch` for listing
-installations and resolving installation IDs from `GITHUB_REPOSITORY`.
-Token revocation also uses native `fetch`.
+`Layer.Layer<GitHubApp, never, OctokitAuthApp>`. Uses `Layer.effect` to yield `OctokitAuthApp` for JWT-based auth. Uses native `fetch` for listing installations, resolving installation IDs from `GITHUB_REPOSITORY` and token revocation. `resolveAppIdentity` makes two requests: `GET /app` with an App JWT to get the slug and name, then `GET /users/<slug>[bot]` to get the bot user ID. The users endpoint is public, but the request is sent with the same App JWT so it draws on the 5000 req/hour authenticated limit rather than the 60 req/hour unauthenticated IP limit. Fails with `GitHubAppError { operation: "identity" }` on any HTTP error. `botIdentity` delegates to `formatBotIdentity` from `src/utils/botIdentity.ts`.
 
 ### OctokitAuthAppLive
 

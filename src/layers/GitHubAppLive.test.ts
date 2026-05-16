@@ -1,5 +1,6 @@
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { GitHubAppError } from "../errors/GitHubAppError.js";
 import { GitHubApp } from "../services/GitHubApp.js";
 import { OctokitAuthApp } from "../services/OctokitAuthApp.js";
 import { GitHubAppLive } from "./GitHubAppLive.js";
@@ -265,6 +266,101 @@ describe("GitHubAppLive", () => {
 			mockFetch.mockResolvedValue({ ok: false, status: 401 });
 			const exit = await runExit(Effect.flatMap(GitHubApp, (svc) => svc.revokeToken("ghs_bad")));
 			expect(exit._tag).toBe("Failure");
+		});
+	});
+
+	describe("botIdentity", () => {
+		it("returns a verified identity when slug and user ID are present", async () => {
+			const result = await run(
+				Effect.map(GitHubApp, (svc) => svc.botIdentity({ appSlug: "acme-bot", appUserId: 123456 })),
+			);
+			expect(result).toEqual({
+				name: "acme-bot[bot]",
+				email: "123456+acme-bot[bot]@users.noreply.github.com",
+			});
+		});
+
+		it("falls back to github-actions[bot] when no source is given", async () => {
+			const result = await run(Effect.map(GitHubApp, (svc) => svc.botIdentity()));
+			expect(result).toEqual({
+				name: "github-actions[bot]",
+				email: "41898282+github-actions[bot]@users.noreply.github.com",
+			});
+		});
+	});
+
+	describe("resolveAppIdentity", () => {
+		it("resolves slug, name, and bot user ID", async () => {
+			// GET /app
+			mockAuth.mockResolvedValueOnce({ token: "jwt_for_app" });
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ slug: "acme-bot", name: "Acme Bot" }),
+			});
+			// GET /users/acme-bot[bot]
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ id: 123456 }),
+			});
+
+			const result = await run(Effect.flatMap(GitHubApp, (svc) => svc.resolveAppIdentity("app-1", "pk")));
+
+			expect(result).toEqual({ appSlug: "acme-bot", appUserId: 123456, appName: "Acme Bot" });
+			expect(mockAuth).toHaveBeenCalledWith({ type: "app" });
+			expect(mockFetch).toHaveBeenCalledTimes(2);
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://api.github.com/app",
+				expect.objectContaining({
+					headers: expect.objectContaining({ Authorization: "Bearer jwt_for_app" }),
+				}),
+			);
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://api.github.com/users/acme-bot%5Bbot%5D",
+				expect.objectContaining({
+					headers: expect.objectContaining({ Authorization: "Bearer jwt_for_app" }),
+				}),
+			);
+		});
+
+		it("fails with GitHubAppError when GET /app errors", async () => {
+			mockAuth.mockResolvedValueOnce({ token: "jwt_for_app" });
+			mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+
+			const exit = await runExit(Effect.flatMap(GitHubApp, (svc) => svc.resolveAppIdentity("app-1", "pk")));
+			expect(Exit.isFailure(exit)).toBe(true);
+			if (Exit.isFailure(exit)) {
+				const error = Cause.failureOption(exit.cause);
+				expect(error._tag).toBe("Some");
+				if (error._tag === "Some") {
+					expect(error.value).toBeInstanceOf(GitHubAppError);
+					expect((error.value as GitHubAppError).operation).toBe("identity");
+				}
+			}
+		});
+
+		it("fails with GitHubAppError when GET /users/<slug>[bot] errors", async () => {
+			mockAuth.mockResolvedValueOnce({ token: "jwt_for_app" });
+			// GET /app succeeds
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ slug: "acme-bot", name: "Acme Bot" }),
+			});
+			// GET /users/acme-bot[bot] fails
+			mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+
+			const exit = await runExit(Effect.flatMap(GitHubApp, (svc) => svc.resolveAppIdentity("app-1", "pk")));
+			expect(Exit.isFailure(exit)).toBe(true);
+			if (Exit.isFailure(exit)) {
+				const error = Cause.failureOption(exit.cause);
+				expect(error._tag).toBe("Some");
+				if (error._tag === "Some") {
+					expect(error.value).toBeInstanceOf(GitHubAppError);
+					expect((error.value as GitHubAppError).operation).toBe("identity");
+				}
+			}
 		});
 	});
 
