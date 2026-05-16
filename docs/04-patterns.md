@@ -1,6 +1,6 @@
 # Common patterns
 
-This guide covers common patterns when building GitHub Actions with `@savvy-web/github-action-effects`.
+This guide collects patterns that come up often when you build GitHub Actions with `@savvy-web/github-action-effects`.
 
 ## Dry-run mode
 
@@ -127,7 +127,7 @@ When you provision a GitHub App token with `GitHubToken.provision`, you do not n
 
 ## App token provisioning
 
-When an action needs more than the repo-scoped workflow token, authenticate as a GitHub App. `GitHubToken.provision` generates an installation token, optionally verifies its scopes and persists it for later phases — all in one effect.
+When an action needs more than the repo-scoped workflow token, authenticate as a GitHub App. `GitHubToken.provision` does three things in one effect: it generates an installation token, optionally checks its scopes and persists it for the later phases.
 
 ```typescript
 import { Effect, Layer } from "effect"
@@ -186,7 +186,7 @@ const program = Effect.gen(function* () {
 
 ## Package publishing workflow
 
-A complete multi-registry publish workflow combining several services.
+This example wires several services together into a multi-registry publish workflow.
 
 ```typescript
 import { Config, Effect, Layer } from "effect"
@@ -262,7 +262,7 @@ Action.run(
 
 ## Report builder
 
-The `ReportBuilder` creates structured markdown reports that can be sent to step summaries, PR comments or check runs.
+`ReportBuilder` builds a markdown report once, then sends it to a step summary, a PR comment or a check run.
 
 ```typescript
 import { Effect } from "effect"
@@ -406,4 +406,4 @@ const program = myEffect.pipe(
 2. **`Cause.pretty`** — fallback for interrupts and other cause types.
 3. **Sentinel** — `"Unknown error (no diagnostic information available)"` as a last resort.
 
-The `[Tag] message` format is designed for consistent parseability by both humans and AI systems.
+The `[Tag] message` format stays consistent across every error, so log scrapers and humans can both parse it the same way.

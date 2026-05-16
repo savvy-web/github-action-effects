@@ -1,6 +1,6 @@
 # Building a GitHub Action with Effect
 
-This tutorial walks through building a complete GitHub Action using `@savvy-web/github-action-effects`. By the end you will have a working action with validated inputs, structured logging, a step summary and typed outputs.
+This tutorial builds one complete GitHub Action with `@savvy-web/github-action-effects`. By the end you have a working action that validates its inputs, logs through Effect, writes a step summary and sets typed outputs.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ runs:
 
 ## The main.ts
 
-Here is the complete action. Each section is explained below.
+Below is the whole action. The numbered comments map to the explanations after the code.
 
 ```typescript
 import { Config, Effect, Schema } from "effect"
@@ -139,7 +139,7 @@ Action.run(program)
 
 ## Adding multi-phase state
 
-Some actions run in multiple phases — `pre`, `main` and `post`. The `ActionState` service transfers typed data between them using Schema encode/decode under the hood.
+Some actions run in multiple phases — `pre`, `main` and `post`. The `ActionState` service moves typed data between them, encoding and decoding each value through a Schema.
 
 ### action.yml with phases
 

@@ -1,6 +1,6 @@
 # Error handling
 
-`@savvy-web/github-action-effects` provides structured error handling at multiple levels: tagged errors for pattern matching, `Action.formatCause` for human-readable extraction and `Action.run` for automatic top-level handling.
+Error handling in `@savvy-web/github-action-effects` works at three layers. Tagged errors let you match on a specific failure with `Effect.catchTag`. `Action.formatCause` pulls a readable message out of an Effect `Cause`. `Action.run` catches whatever reaches the top of your program so the action still exits cleanly.
 
 ## Tagged errors
 
@@ -19,11 +19,11 @@ const program = Effect.gen(function* () {
 )
 ```
 
-Each error type carries structured fields (e.g. `outputName`, `reason`, `operation`) that provide context about what went wrong. See [architecture](./07-architecture.md#error-types) for the full error catalog.
+Each error type carries structured fields — `outputName`, `reason`, `operation` and so on — so the handler knows exactly what failed. See [architecture](./07-architecture.md#error-types) for the full error catalog.
 
 ## Action.formatCause
 
-`Action.formatCause` extracts a human-readable error message from an Effect `Cause` object. It is exported on the `Action` namespace for use in custom error handlers.
+`Action.formatCause` takes an Effect `Cause` and returns a readable error message. It lives on the `Action` namespace, so you can call it from your own error handlers.
 
 ```typescript
 import { Effect, Cause } from "effect"
@@ -40,7 +40,7 @@ const program = myEffect.pipe(
 
 ### Fallback chain
 
-`formatCause` always produces a non-empty string. It uses a three-step fallback chain:
+`formatCause` always returns a non-empty string. It tries three things in turn:
 
 1. **`Cause.squash`** — Extracts the underlying error from the `Cause`. If the error is a `TaggedError` (has `_tag`), formats as `[Tag] reason` (or `[Tag] message` if no `reason` field). If the error is a standard `Error`, formats as `[Error] message`. If the error is an unknown shape, formats as `[UnknownError] <json>`.
 2. **`Cause.pretty`** — Fallback for interrupts, empty causes and other cause types that `squash` cannot handle.
@@ -48,11 +48,7 @@ const program = myEffect.pipe(
 
 ### The `[Tag] message` format
 
-The output format `[Tag] message` is designed for consistent parseability:
-
-- **Humans** can quickly identify the error type from the bracketed tag.
-- **AI systems** (e.g. LLMs analyzing CI logs) can extract the tag for classification and the message for context.
-- **Log parsers** can use a simple regex like `\[(\w+)\] (.+)` to extract structured data from error lines.
+The `[Tag] message` shape stays the same for every error, which makes the line easy to scan and easy to parse. A reader spots the error type at a glance from the bracketed tag. A log parser pulls the same two fields out with a regex like `\[(\w+)\] (.+)` — tag first, message second.
 
 Examples:
 
@@ -75,7 +71,7 @@ Examples:
 5. `process.exitCode` is set to `1`.
 6. A last-resort `.catch()` on the promise sets `process.exitCode = 1` if even the error handler fails.
 
-This means action authors do not need to handle errors at the top level — `Action.run` ensures the action always exits cleanly with a failure message visible in the GitHub Actions UI.
+So you do not have to handle errors at the top level yourself. Whatever goes wrong, the action exits cleanly and the failure message shows up in the GitHub Actions UI.
 
 For custom error handling, use `Effect.catchTag` or `Effect.catchAllCause` within your program before `Action.run` catches it:
 
@@ -107,7 +103,7 @@ Action.run(program)
 
 ## Using formatCause in custom error handlers
 
-`Action.formatCause` is useful beyond `Action.run`. Any consumer code that catches an Effect `Cause` can use it:
+`Action.formatCause` is not tied to `Action.run`. Anywhere you catch an Effect `Cause`, you can format it the same way:
 
 ```typescript
 import { Effect } from "effect"

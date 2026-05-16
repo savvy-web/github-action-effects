@@ -1,6 +1,6 @@
 # Advanced action: three-stage app
 
-This tutorial builds a complete three-stage GitHub Action with `pre`, `main` and `post` phases. It demonstrates three key library features:
+This tutorial builds a GitHub Action with `pre`, `main` and `post` phases. Along the way it uses a few library features that only matter once an action spans multiple phases:
 
 - **GitHub App authentication** — provision one installation token in `pre`, use it in `main`, revoke it in `post`
 - **ActionState** — transfer typed data between phases
@@ -8,7 +8,7 @@ This tutorial builds a complete three-stage GitHub Action with `pre`, `main` and
 
 ## The action.yml
 
-A three-stage action declares separate entry points for each phase. GitHub runs `pre` before checkout, `main` for the primary logic and `post` for cleanup (always runs, even on failure).
+A multi-phase action declares a separate entry point for each phase. GitHub runs `pre` before checkout, `main` for the primary logic and `post` for cleanup. The `post` phase runs even when `main` fails.
 
 ```yaml
 name: 'Release Publisher'
@@ -72,7 +72,7 @@ export const PublishState = Schema.Struct({
 
 The `pre` phase runs before the repository is checked out. Use it to authenticate, provision the installation token and record the start time.
 
-`GitHubToken.provision` generates an installation token from App credentials and persists it to `ActionState` so the later phases can use it. Passing `permissions` verifies the generated token actually grants those scopes — if a scope is missing the effect fails with `TokenPermissionError` and the token is revoked before it leaks. `provision` requires a `GitHubApp` layer, composed from `GitHubAppLive` and `OctokitAuthAppLive`.
+`GitHubToken.provision` generates an installation token from App credentials and persists it to `ActionState` so the later phases can use it. Pass `permissions` and it also verifies the generated token grants those scopes — if a scope is missing, the effect fails with `TokenPermissionError` and revokes the token before it leaks. `provision` needs a `GitHubApp` layer, which you compose from `GitHubAppLive` and `OctokitAuthAppLive`.
 
 ```typescript
 // src/pre.ts
@@ -113,15 +113,15 @@ Action.run(program)
 
 ### What happens in pre.ts
 
-1. **ActionState.save** — persists the start timestamp as a Schema-encoded JSON string. GitHub Actions stores state as key-value string pairs between phases; the Schema encode/decode layer handles serialization transparently.
+1. **ActionState.save** — persists the start timestamp as a Schema-encoded JSON string. GitHub Actions only carries plain key-value strings between phases; the Schema encode/decode layer serializes the struct for you.
 2. **GitHubToken.provision** — reads the App credentials from the `app-client-id` and `app-private-key` inputs, generates an installation token and saves it to `ActionState` under an internal key. The returned `InstallationToken` carries `token`, `expiresAt`, `installationId` and `permissions`.
-3. **Permission verification** — with `permissions` set, `provision` checks the generated token against those required scopes before persisting it. A missing scope fails the action with `TokenPermissionError` and the rejected token is revoked, so configuration errors surface in `pre` instead of mid-publish.
+3. **Permission verification** — when you pass `permissions`, `provision` checks the new token against those scopes before it persists anything. A missing scope fails the action with `TokenPermissionError` and revokes the rejected token, so a misconfigured App installation surfaces in `pre` rather than mid-publish.
 
 ## Phase 2: main.ts
 
-The main phase performs the actual work. It reads timing state saved by `pre`, builds a `GitHubClient` from the persisted token, publishes packages and saves results for `post`.
+The main phase does the real work. It reads the timing state saved by `pre`, builds a `GitHubClient` from the persisted token, publishes packages and saves results for `post`.
 
-`GitHubToken.client()` is a `Layer` that reads the token persisted by `provision` and builds a `GitHubClient` from it — no App credentials needed in this phase.
+`GitHubToken.client()` is a `Layer` that reads the token `provision` persisted and builds a `GitHubClient` from it. This phase needs no App credentials of its own.
 
 ```typescript
 // src/main.ts
@@ -242,17 +242,17 @@ Action.run(
 
 ### What happens in main.ts
 
-1. **State from pre** — `state.get("timing", TimingState)` reads and Schema-decodes the timing data saved by `pre.ts`. If the state is missing or invalid, it fails with an `ActionStateError`.
-2. **GitHubToken.client()** — builds a `GitHubClient` from the token `provision` persisted in `pre`. It is merged into the action layer alongside the other Live layers.
-3. **ErrorAccumulator** — `forEachAccumulate` processes all packages without short-circuiting. Failed publishes are collected alongside successes, allowing a complete summary.
-4. **Buffer-on-failure** — `logger.withBuffer` captures verbose output per package. On success the buffer is discarded; on failure it flushes for debugging context.
-5. **DryRun.guard** — when `dry-run` is `"true"`, the `publisher.publish` call is skipped and the fallback value (`undefined`) is returned instead.
+1. **State from pre** — `state.get("timing", TimingState)` reads and Schema-decodes the timing data `pre.ts` saved. A missing or invalid key fails with an `ActionStateError`.
+2. **GitHubToken.client()** — builds a `GitHubClient` from the token `provision` persisted in `pre`. It merges into the action layer alongside the other Live layers.
+3. **ErrorAccumulator** — `forEachAccumulate` runs every package without short-circuiting. It collects failed publishes next to the successes, so the summary covers all of them.
+4. **Buffer-on-failure** — `logger.withBuffer` captures verbose output per package. A successful package discards its buffer; a failed one flushes it so you can see what happened.
+5. **DryRun.guard** — when `dry-run` is `"true"`, the `publisher.publish` call is skipped and the fallback value (`undefined`) takes its place.
 
 ## Phase 3: post.ts
 
 The `post` phase always runs, even if `main` fails. Use it for cleanup, timing reports and revoking the installation token.
 
-`GitHubToken.dispose` revokes the token `provision` persisted. It is a no-op if no token was persisted (for example, when `pre` failed before provisioning). Like `provision`, it requires the `GitHubApp` layer.
+`GitHubToken.dispose` revokes the token `provision` persisted. If no token was persisted — say `pre` failed before it got that far — `dispose` does nothing. Like `provision`, it needs the `GitHubApp` layer.
 
 ```typescript
 // src/post.ts
@@ -317,9 +317,9 @@ Action.run(program)
 
 ### What happens in post.ts
 
-1. **GitHubToken.dispose** — revokes the installation token so it cannot be used after the action finishes. If `pre` never persisted a token, it returns without making a request.
-2. **state.getOptional** — unlike `state.get` which fails on missing keys, `getOptional` returns `Option.none()` when the key does not exist. This handles the case where `main` failed before saving publish results.
-3. **Timing summary** — `outputs.summary` appends markdown to the existing step summary written by `main`. Each call appends rather than replacing.
+1. **GitHubToken.dispose** — revokes the installation token so nothing can use it after the action finishes. If `pre` never persisted a token, `dispose` returns without making a request.
+2. **state.getOptional** — `state.get` fails on a missing key; `getOptional` returns `Option.none()` instead. Use it here because `main` may have failed before it saved any publish results.
+3. **Timing summary** — `outputs.summary` appends markdown to the step summary `main` already wrote. Each call appends; it never replaces.
 
 ## Workflow usage
 
@@ -344,19 +344,19 @@ jobs:
           dry-run: false
 ```
 
-## Key takeaways
+## What to remember
 
-**State is the bridge between phases.** Each phase runs as a separate Node.js process. `ActionState` with Effect Schemas provides type-safe serialization across the process boundary, and `GitHubToken` uses it internally to carry the installation token from `pre` to `main` and `post`.
+Each phase runs as a separate Node.js process, so nothing in memory survives between them. `ActionState` is the only bridge — it serializes typed structs through GitHub's key-value state store, and `GitHubToken` uses it internally to carry the installation token from `pre` through to `post`.
 
-**Provision once, dispose once.** `GitHubToken.provision` in `pre` and `GitHubToken.dispose` in `post` bracket the token lifecycle across the whole action. The `post` phase always runs, so the token is revoked even when `main` fails.
+The token has a clear lifecycle. `GitHubToken.provision` opens it in `pre` and `GitHubToken.dispose` closes it in `post`. Since `post` always runs, the token gets revoked even on a failed `main`.
 
-**Verify permissions in `pre`.** Passing `permissions` to `provision` fails the action before any work happens if the App installation lacks a required scope, with a clear `TokenPermissionError` instead of a mid-publish API failure.
+Passing `permissions` to `provision` is worth the extra line. If the App installation is missing a scope, the action fails in `pre` with a `TokenPermissionError` that names the missing scope — far easier to debug than an opaque 403 halfway through a publish.
 
 ## Testing
 
-Test each phase independently using test layers from the `/testing` subpath. Each phase is a pure Effect program that requires injected services — test layers replace all live dependencies without any mocking framework.
+Test each phase on its own with the test layers from the `/testing` subpath. Each phase is a plain Effect program that asks for injected services, so a test layer can stand in for every live dependency — no mocking framework involved.
 
-`GitHubAppTest` provides a `GitHubApp` implementation that returns a fixed token and records every `generateToken` and `revokeToken` call. `ActionStateTest` captures saved state in an in-memory `Map`. Provide both to test the `provision` and `dispose` phases.
+`GitHubAppTest` is a `GitHubApp` implementation that returns a fixed token and records every `generateToken` and `revokeToken` call. `ActionStateTest` keeps saved state in an in-memory `Map`. Provide both to exercise the `provision` and `dispose` phases.
 
 ### Testing the pre phase
 

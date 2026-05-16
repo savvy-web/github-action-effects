@@ -1,10 +1,10 @@
 # Peer dependencies
 
-`@savvy-web/github-action-effects` uses peer dependencies so that consumers can resolve a single copy of each package. This avoids version duplication and ensures compatibility between your action code and the library.
+`@savvy-web/github-action-effects` declares the Effect packages as peer dependencies. Your action and the library then share one copy of each — no duplicate `effect` in `node_modules`, no two layer registries that disagree about types.
 
 ## Zero @actions/* dependencies
 
-All `@actions/*` packages have been removed. The library implements the GitHub Actions runtime protocol natively using:
+The library carries no `@actions/*` packages. It speaks the GitHub Actions runtime protocol directly:
 
 - `WorkflowCommand` — `::command::` protocol formatter
 - `RuntimeFile` — environment file appender (GITHUB_OUTPUT, GITHUB_ENV and so on)
@@ -53,4 +53,4 @@ These are regular dependencies bundled with the library:
 npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
 ```
 
-No optional peers are required — all services work with the base installation.
+There are no optional peers. Every service works with the packages listed above.

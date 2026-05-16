@@ -1,6 +1,6 @@
 # github-action-effects documentation
 
-Effect-based utility library for building GitHub Actions with structured logging, typed outputs, GitHub API operations, package publishing and composable test layers. Zero `@actions/*` dependencies — all platform interactions use native ESM implementations of the GitHub Actions runtime protocol.
+An Effect library for building GitHub Actions. It covers structured logging, typed outputs, GitHub API calls and package publishing, and every service ships a test layer. None of it depends on `@actions/*`: the GitHub Actions runtime protocol is reimplemented in native ESM.
 
 ## Install
 
@@ -12,19 +12,18 @@ pnpm add @savvy-web/github-action-effects effect @effect/platform @effect/platfo
 
 ## Pages
 
-- [Building a GitHub Action with Effect](./01-example-action.md) — End-to-end walkthrough building a GitHub Action.
+- [Building a GitHub Action with Effect](./01-example-action.md) — An end-to-end walkthrough of one complete action.
 - [Advanced action: three-stage app](./02-advanced-action.md) — A complete pre/main/post action with GitHub App auth, cross-phase state and buffered logging.
-- [Services guide](./03-services.md) — Usage examples for every service in the library.
-- [Common patterns](./04-patterns.md) — Dry-run, error accumulation, permission checking and workspace detection.
+- [Services guide](./03-services.md) — A usage example for every service in the library.
+- [Common patterns](./04-patterns.md) — Dry-run mode, error accumulation, permission checks and workspace detection.
 - [Peer dependencies](./05-peer-dependencies.md) — Which packages to install and why.
 - [Error handling](./06-error-handling.md) — `Action.formatCause`, `Action.run` error handling and the `[Tag] message` format.
-- [Architecture](./07-architecture.md) — Runtime layer, layer composition and the logging pipeline.
-- [Testing GitHub Actions](./08-testing.md) — Testing with in-memory test layers.
+- [Architecture](./07-architecture.md) — The runtime layer, layer composition and the logging pipeline.
+- [Testing GitHub Actions](./08-testing.md) — How to test an action with in-memory test layers.
 
 ## How inputs work
 
-Inputs use Effect's `Config` API, backed by `ActionsConfigProvider` which reads
-`INPUT_*` environment variables:
+Inputs come through Effect's `Config` API. `ActionsConfigProvider` backs it, reading the `INPUT_*` environment variables GitHub sets for each declared input:
 
 ```typescript
 import { Config, Effect } from "effect"
@@ -36,7 +35,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Services at a glance
+## Services
 
 ### Core services (provided by ActionsRuntime.Default / Action.run)
 

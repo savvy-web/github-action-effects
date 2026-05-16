@@ -1,10 +1,10 @@
 # Architecture
 
-`@savvy-web/github-action-effects` is an Effect-based utility library for building GitHub Actions. It follows the Effect services and layers pattern: each capability is defined as an abstract service interface, with separate live implementations (using native runtime protocol) and test implementations (capturing calls in memory). This separation makes action logic fully testable without mocking.
+`@savvy-web/github-action-effects` is an Effect-based utility library for building GitHub Actions. It follows the Effect services and layers pattern: every capability is an abstract service interface with two implementations behind it. The live layer talks to the real runtime protocol; the test layer records calls in memory. Because your action code depends on the interface and not the implementation, you can test it against the in-memory layer without mocking anything.
 
 ## Zero @actions/* dependencies
 
-All `@actions/*` packages have been replaced with native ESM implementations. The library implements the GitHub Actions runtime protocol directly:
+Native ESM code replaces every `@actions/*` package. The library implements the GitHub Actions runtime protocol directly:
 
 - `WorkflowCommand` — formats `::command::` protocol strings with value/property escaping
 - `RuntimeFile` — appends to environment files (`GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_STATE`, `GITHUB_PATH`)
@@ -30,7 +30,7 @@ src/
 
 ## Runtime layer
 
-The `src/runtime/` directory is the foundation of the library. It implements the GitHub Actions runtime protocol natively, with no CJS dependencies.
+Everything else in the library sits on top of `src/runtime/`. It implements the GitHub Actions runtime protocol natively, with no CJS dependencies.
 
 ### WorkflowCommand
 
@@ -104,7 +104,7 @@ Provides:
 
 ## Action.run helper
 
-`Action.run` is a top-level convenience function that eliminates boilerplate for wiring Effect programs into GitHub Action entry points. It is accessed via the `Action` namespace.
+`Action.run` is the convenience function for wiring an Effect program into a GitHub Action entry point. Without it you would repeat the same setup in every `main.ts`. It lives on the `Action` namespace.
 
 ```typescript
 // Simplest form -- provides ActionsRuntime.Default automatically
@@ -128,7 +128,7 @@ Each service is defined as a TypeScript interface paired with a `Context.Tag` fo
 
 ### ActionLogger
 
-Provides the two GitHub Actions-specific logging operations that the Effect Logger does not handle on its own — collapsible groups and buffer-on-failure:
+Covers the two GitHub Actions logging operations the Effect Logger leaves out — collapsible groups and buffer-on-failure:
 
 | Method | Signature | Description |
 | --- | --- | --- |
@@ -163,11 +163,11 @@ Schema-serialized state passing for multi-phase GitHub Actions (pre/main/post). 
 
 ## Logging system
 
-The logging architecture uses `ActionsLogger`, an Effect Logger that maps log levels to GitHub Actions workflow commands.
+Logging runs through `ActionsLogger`, an Effect Logger that maps each log level to a GitHub Actions workflow command.
 
 ### withBuffer
 
-The buffer-on-failure pattern optimizes output:
+The buffer-on-failure pattern keeps the log quiet on success and verbose on failure:
 
 1. A temporary logger is installed that writes everything to `::debug::` and captures messages in an in-memory buffer.
 2. Warning and above messages are emitted immediately.
@@ -218,7 +218,7 @@ Three schemas in `src/schemas/GithubMarkdown.ts` support the builders:
 
 ## Extended services
 
-Beyond the core services, the library includes a comprehensive set of services for GitHub API operations, package management and infrastructure. Each follows the same pattern: interface + `Context.Tag` in `src/services/`, live layer in `src/layers/*Live.ts`, test layer in `src/layers/*Test.ts`.
+Past the core services, the library ships services for GitHub API calls, package management and infrastructure. They all follow the same pattern: interface plus `Context.Tag` in `src/services/`, live layer in `src/layers/*Live.ts`, test layer in `src/layers/*Test.ts`.
 
 See [services guide](./03-services.md) for usage examples of each service.
 
@@ -238,7 +238,7 @@ See [services guide](./03-services.md) for usage examples of each service.
 | GitBranch | GitBranchLive | Branch CRUD via Git Data API |
 | GitCommit | GitCommitLive | Tree/commit creation, ref updates, file deletions |
 
-Unlike the other services in this table, `GitHubClientLive` is not a bare `Layer`. It is a namespace object with three constructors, each producing a `GitHubClient` layer from a different credential source. This is covered in [Building a GitHubClient layer](#building-a-githubclient-layer) below.
+`GitHubClientLive` is the exception in this table — it is not a bare `Layer`. It is a namespace object with three constructors, each building a `GitHubClient` layer from a different credential source. See [Building a GitHubClient layer](#building-a-githubclient-layer) below.
 
 `GitHubApp` authenticates as a GitHub App. Its live layer, `GitHubAppLive`, depends on `OctokitAuthApp` — the wrapper around `@octokit/auth-app`. In production you compose the two: `Layer.provide(GitHubAppLive, OctokitAuthAppLive)`.
 

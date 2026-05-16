@@ -1,6 +1,6 @@
 # Testing GitHub Actions
 
-This guide covers how to test GitHub Actions built with `@savvy-web/github-action-effects`. Every service in the library ships with a companion test layer that captures operations in memory, so your tests never need a real GitHub Actions runner environment.
+This guide covers testing GitHub Actions built with `@savvy-web/github-action-effects`. Every service ships with a test layer that records operations in memory, so your tests run without a real GitHub Actions runner.
 
 ## Overview
 
@@ -24,7 +24,7 @@ import {
 } from "@savvy-web/github-action-effects/testing"
 ```
 
-The `/testing` entry point exports all service tags, test layers, live layers, errors, schemas and utilities — but **excludes the `Action` namespace**. `Action` statically imports runtime components that emit workflow commands, which is inappropriate in test environments.
+The `/testing` entry point exports every service tag, test layer, live layer, error, schema and utility — but **not the `Action` namespace**. `Action` statically imports runtime components that emit workflow commands, and you do not want those firing during a test run.
 
 In production entry points (`main.ts`, `pre.ts`, `post.ts`), import from the main package:
 
@@ -352,7 +352,7 @@ describe("rest calls", () => {
 })
 ```
 
-A `rest`, `graphql` or `paginate` call with no recorded entry fails with a `GitHubClientError`, so a missing stub surfaces as a clear test failure rather than a silent `undefined`.
+A `rest`, `graphql` or `paginate` call with no recorded entry fails with a `GitHubClientError`. A missing stub becomes an obvious test failure instead of a silent `undefined`.
 
 ## Testing GitHub App token lifecycle
 
@@ -504,7 +504,7 @@ describe("GFM builders", () => {
 
 ## Helper patterns
 
-Reduce boilerplate by extracting a helper that creates all test layers and returns both the merged layer and the state containers:
+If several test files need the same set of services, pull the setup into one helper that builds the test layers and hands back the merged layer alongside the state containers:
 
 ```typescript
 import { Layer } from "effect"

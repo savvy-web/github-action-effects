@@ -1,6 +1,6 @@
 # Services guide
 
-This guide covers each service in `@savvy-web/github-action-effects` with usage examples. For architecture and layer composition, see [architecture](./07-architecture.md). For testing, see [testing](./08-testing.md).
+This guide walks through each service in `@savvy-web/github-action-effects` with a usage example. For architecture and layer composition, see [architecture](./07-architecture.md). For testing, see [testing](./08-testing.md).
 
 ## Inputs via Config API
 
@@ -454,7 +454,7 @@ const program = Effect.gen(function* () {
 
 ### OctokitAuthApp
 
-`OctokitAuthApp` is a thin wrapper service around `@octokit/auth-app`. `GitHubAppLive` depends on it, so in practice you provide `OctokitAuthAppLive` as the layer underneath `GitHubAppLive` rather than calling `OctokitAuthApp` directly.
+`OctokitAuthApp` wraps `@octokit/auth-app`. `GitHubAppLive` depends on it, so in practice you provide `OctokitAuthAppLive` as the layer underneath `GitHubAppLive` rather than reaching for `OctokitAuthApp` directly.
 
 ```typescript
 import { Layer } from "effect"
@@ -800,7 +800,7 @@ const program = Effect.gen(function* () {
 
 ### ToolInstaller
 
-Download, cache and install tool binaries using node:https/http and child_process. Supports both archived tools (tar.gz, tar.xz, zip) and standalone binary files. Includes socket timeout, redirect following, retry with exponential backoff and cross-platform zip extraction (PowerShell on Windows, unzip on other platforms).
+Download, cache and install tool binaries using `node:https`/`node:http` and `child_process`. It handles archived tools (tar.gz, tar.xz, zip) and standalone binary files alike. Downloads follow redirects, time out a stuck socket and retry with exponential backoff; zip extraction works cross-platform (PowerShell on Windows, `unzip` elsewhere).
 
 ```typescript
 import { Effect } from "effect"
@@ -831,11 +831,11 @@ const program = Effect.gen(function* () {
 
 ## Utility namespaces
 
-These are top-level namespace objects, not injected services. Call them directly without a `yield*` to resolve a service tag.
+These are top-level namespace objects, not injected services. Call them directly — there is no service tag to `yield*` first.
 
 ### ErrorAccumulator
 
-Process every item in a collection, collecting both successes and failures instead of short-circuiting on the first error. The result's error channel is `never` — failures land in the `failures` array.
+Process every item in a collection and collect both successes and failures, instead of short-circuiting on the first error. The result's error channel is `never`; failures land in the `failures` array.
 
 ```typescript
 import { Effect } from "effect"
@@ -859,7 +859,7 @@ const program = Effect.gen(function* () {
 
 ### AutoMerge
 
-Enable or disable pull request auto-merge through the GitHub GraphQL API. Both operations require a `GitHubGraphQL` layer and take the PR's GraphQL node ID, not its number.
+Enable or disable pull request auto-merge through the GitHub GraphQL API. Both operations need a `GitHubGraphQL` layer and take the PR's GraphQL node ID, not its number.
 
 ```typescript
 import { Effect } from "effect"
@@ -907,7 +907,7 @@ const program = Effect.gen(function* () {
 
 ### ReportBuilder
 
-Build a structured markdown report with a fluent, immutable builder, then send it to a step summary, a PR comment or a check run.
+Build a markdown report with a fluent, immutable builder, then send it to a step summary, a PR comment or a check run.
 
 ```typescript
 import { Effect } from "effect"
