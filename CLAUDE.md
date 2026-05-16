@@ -1,22 +1,17 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with
-code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Status
 
-Effect-based utility library for building robust, well-logged, and
-schema-validated GitHub Actions. Zero CJS dependencies — all `@actions/*`
-packages replaced with native ESM implementations using Effect primitives
-and the GitHub Actions runtime protocol.
+Effect-based utility library for building robust, well-logged, and schema-validated GitHub Actions. Zero CJS dependencies — all `@actions/*` packages replaced with native ESM implementations using Effect primitives and the GitHub Actions runtime protocol.
 
 ## Design Documentation
 
 **For architecture, service interfaces, and data flow:**
 -> `@./.claude/design/github-action-effects/index.md`
 
-Load when making architectural changes, adding new services, modifying layer
-composition, or understanding design decisions.
+Load when making architectural changes, adding new services, modifying layer composition, or understanding design decisions.
 
 **Do NOT load unless directly relevant to your task.**
 
@@ -77,8 +72,7 @@ src/
 
 ### Runtime Layer
 
-The `src/runtime/` directory contains the GitHub Actions runtime protocol
-implementations that replace `@actions/core`, `@actions/exec`, etc.:
+The `src/runtime/` directory contains the GitHub Actions runtime protocol implementations that replace `@actions/core`, `@actions/exec`, etc.:
 
 - `WorkflowCommand` — `::command::` protocol formatter with escaping
 - `RuntimeFile` — Env file appender (GITHUB_OUTPUT, GITHUB_ENV, etc.)
@@ -103,7 +97,7 @@ const name = yield* Config.string("name")      // reads INPUT_NAME
 const count = yield* Config.integer("count")    // reads INPUT_COUNT
 ```
 
-For GitHub App actions, `GitHubToken` provides phase-oriented installation-token helpers: `provision` (pre), `client` (main), `dispose` (post), with optional post-generation permission verification.
+For GitHub App actions, `GitHubToken` provides phase-oriented installation-token helpers: `provision` (pre), `client` (main), `dispose` (post), plus `read()` and `botIdentity()` accessors available in any phase after provisioning, with optional post-generation permission verification.
 
 ### Services
 

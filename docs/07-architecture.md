@@ -271,19 +271,21 @@ const program = Effect.gen(function* () {
 
 ### GitHubToken namespace
 
-`GitHubToken` (in `src/GitHubToken.ts`) coordinates a single GitHub App installation token across the three phases of an action — `pre`, `main` and `post`. It is a namespace object with three members:
+`GitHubToken` (in `src/GitHubToken.ts`) coordinates a single GitHub App installation token across the three phases of an action — `pre`, `main` and `post`. It is a namespace object with five members:
 
 | Member | Signature | Phase |
 | --- | --- | --- |
 | `provision` | `(options?: ProvisionOptions) => Effect<InstallationToken, ..., ActionState \| GitHubApp>` | `pre` |
 | `client` | `() => Layer<GitHubClient, ActionStateError, ActionState>` | `main` |
+| `read` | `() => Effect<InstallationToken, ActionStateError, ActionState>` | any post-provision |
+| `botIdentity` | `() => Effect<BotIdentity, ActionStateError, ActionState>` | any post-provision |
 | `dispose` | `() => Effect<void, ..., ActionState \| GitHubApp>` | `post` |
 
-`provision` generates an installation token, optionally verifies its `permissions` against a required set, then persists the token envelope to `ActionState` under an internal key. By default it reads App credentials from the `app-client-id` and `app-private-key` action inputs; pass `clientId` and `privateKey` on the options object to override. If verification or persistence fails the token is revoked, so a rejected token is never left orphaned.
+`provision` generates an installation token, optionally verifies its `permissions` against a required set, then persists the token envelope to `ActionState` under an internal key. It also calls `GET /app` best-effort to resolve the App's public identity (slug, bot user ID, display name) and stores those fields — `appSlug`, `appUserId`, `appName` — on the persisted token. By default it reads App credentials from the `app-client-id` and `app-private-key` action inputs; pass `clientId` and `privateKey` on the options object to override. If verification or persistence fails the token is revoked, so a rejected token is never left orphaned.
 
-`client` reads the persisted token back out of `ActionState` and returns a `GitHubClient` layer built via `GitHubClientLive.fromToken`. `dispose` reads the token and revokes it, doing nothing if no token was persisted.
+`client` reads the persisted token back out of `ActionState` and returns a `GitHubClient` layer built via `GitHubClientLive.fromToken`. `read` returns the full `InstallationToken` envelope including the optional identity fields. `botIdentity` derives a `BotIdentity` (name + email) suitable for Git commit attribution — using the App-specific verified format when `appSlug` and `appUserId` are present, falling back to the well-known `github-actions[bot]` identity otherwise. `dispose` reads the token and revokes it, doing nothing if no token was persisted.
 
-`provision` and `dispose` need a `GitHubApp` layer in their requirements channel — `GitHubAppLive` composed with `OctokitAuthAppLive` in production, `GitHubAppTest` in tests. `client` needs only `ActionState`, which `ActionsRuntime.Default` already provides.
+`provision` and `dispose` need a `GitHubApp` layer in their requirements channel — `GitHubAppLive` composed with `OctokitAuthAppLive` in production, `GitHubAppTest` in tests. `client`, `read` and `botIdentity` need only `ActionState`, which `ActionsRuntime.Default` already provides.
 
 ### Package management services
 

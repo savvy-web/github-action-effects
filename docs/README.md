@@ -80,7 +80,7 @@ const program = Effect.gen(function* () {
 | Namespace | Purpose |
 | --- | --- |
 | `Action` | Top-level helpers: `run`, `formatCause`, `resolveLogLevel` |
-| `GitHubToken` | GitHub App installation-token lifecycle: `provision`, `client`, `dispose` |
+| `GitHubToken` | GitHub App installation-token lifecycle: `provision`, `client`, `read`, `botIdentity`, `dispose` |
 | `GitHubClientLive` | `GitHubClient` layer constructors: `fromEnv`, `fromToken`, `fromApp` |
 | `GithubMarkdown` | Pure GFM builder functions: `table`, `heading`, `bold`, `details`, `checklist`, etc. |
 | `AutoMerge` | Enable/disable PR auto-merge via GraphQL |

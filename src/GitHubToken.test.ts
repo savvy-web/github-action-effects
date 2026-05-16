@@ -5,6 +5,7 @@ import { ActionStateTest } from "./layers/ActionStateTest.js";
 import type { GitHubAppTestState } from "./layers/GitHubAppTest.js";
 import { GitHubAppTest } from "./layers/GitHubAppTest.js";
 import { ActionState } from "./services/ActionState.js";
+import type { BotIdentity } from "./services/GitHubApp.js";
 import { InstallationToken } from "./services/GitHubApp.js";
 import { GitHubClient } from "./services/GitHubClient.js";
 
@@ -23,10 +24,14 @@ vi.mock("@octokit/rest", async (importOriginal) => {
 const STATE_KEY = "github-action-effects/installation-token";
 
 /** Build a GitHubApp test state that returns the given installation token. */
-const appStateWith = (token: InstallationToken): GitHubAppTestState => ({
+const appStateWith = (
+	token: InstallationToken,
+	appIdentity?: { appSlug: string; appUserId: number; appName: string },
+): GitHubAppTestState => ({
 	generateCalls: [],
 	revokeCalls: [],
 	tokenToReturn: token,
+	...(appIdentity !== undefined ? { appIdentity } : {}),
 });
 
 beforeEach(() => {
@@ -133,6 +138,55 @@ describe("GitHubToken", () => {
 			expect(state.entries.has(STATE_KEY)).toBe(false);
 			expect(appState.revokeCalls).toContain("ghs_weak");
 		});
+
+		it("resolves and persists the App identity", async () => {
+			const appState = appStateWith(
+				{
+					token: "ghs_with_identity",
+					expiresAt: "2099-01-01T00:00:00Z",
+					installationId: 7,
+					permissions: {},
+				},
+				{ appSlug: "acme-bot", appUserId: 123456, appName: "Acme Bot" },
+			);
+			const state = ActionStateTest.empty();
+
+			const token = await Effect.runPromise(
+				Effect.provide(
+					GitHubToken.provision({ clientId: "Iv1.abc", privateKey: "pk", installationId: 7 }),
+					Layer.mergeAll(ActionStateTest.layer(state), GitHubAppTest.layer(appState)),
+				),
+			);
+
+			expect(token.appSlug).toBe("acme-bot");
+			expect(token.appUserId).toBe(123456);
+			expect(token.appName).toBe("Acme Bot");
+
+			const persisted = JSON.parse(state.entries.get(STATE_KEY) ?? "{}");
+			expect(persisted.appSlug).toBe("acme-bot");
+			expect(persisted.appUserId).toBe(123456);
+		});
+
+		it("persists the token without identity when resolution fails", async () => {
+			const appState = appStateWith({
+				token: "ghs_no_identity",
+				expiresAt: "2099-01-01T00:00:00Z",
+				installationId: 7,
+				permissions: {},
+			});
+			const state = ActionStateTest.empty();
+
+			const token = await Effect.runPromise(
+				Effect.provide(
+					GitHubToken.provision({ clientId: "Iv1.abc", privateKey: "pk", installationId: 7 }),
+					Layer.mergeAll(ActionStateTest.layer(state), GitHubAppTest.layer(appState)),
+				),
+			);
+
+			expect(token.token).toBe("ghs_no_identity");
+			expect(token.appSlug).toBeUndefined();
+			expect(state.entries.has(STATE_KEY)).toBe(true);
+		});
 	});
 
 	describe("client", () => {
@@ -218,6 +272,96 @@ describe("GitHubToken", () => {
 			);
 
 			expect(appState.revokeCalls).toHaveLength(0);
+		});
+	});
+
+	describe("read", () => {
+		it("returns the persisted installation token with identity fields", async () => {
+			const state = ActionStateTest.empty();
+			await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(ActionState, (s) =>
+						s.save(
+							STATE_KEY,
+							{
+								token: "ghs_persisted",
+								expiresAt: "2099-01-01T00:00:00Z",
+								installationId: 7,
+								appSlug: "acme-bot",
+								appUserId: 123456,
+								appName: "Acme Bot",
+								permissions: {},
+							},
+							InstallationToken,
+						),
+					),
+					ActionStateTest.layer(state),
+				),
+			);
+
+			const token = await Effect.runPromise(Effect.provide(GitHubToken.read(), ActionStateTest.layer(state)));
+
+			expect(token.token).toBe("ghs_persisted");
+			expect(token.appSlug).toBe("acme-bot");
+			expect(token.appUserId).toBe(123456);
+			expect(token.appName).toBe("Acme Bot");
+		});
+
+		it("fails when no token was provisioned", async () => {
+			const state = ActionStateTest.empty();
+			const exit = await Effect.runPromise(
+				Effect.exit(Effect.provide(GitHubToken.read(), ActionStateTest.layer(state))),
+			);
+			expect(exit._tag).toBe("Failure");
+		});
+	});
+
+	describe("botIdentity", () => {
+		const persist = (state: ReturnType<typeof ActionStateTest.empty>, token: InstallationToken) =>
+			Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(ActionState, (s) => s.save(STATE_KEY, token, InstallationToken)),
+					ActionStateTest.layer(state),
+				),
+			);
+
+		it("derives a verified identity from the persisted token", async () => {
+			const state = ActionStateTest.empty();
+			await persist(state, {
+				token: "ghs_persisted",
+				expiresAt: "2099-01-01T00:00:00Z",
+				installationId: 7,
+				appSlug: "acme-bot",
+				appUserId: 123456,
+				appName: "Acme Bot",
+				permissions: {},
+			});
+
+			const identity: BotIdentity = await Effect.runPromise(
+				Effect.provide(GitHubToken.botIdentity(), ActionStateTest.layer(state)),
+			);
+
+			expect(identity).toEqual({
+				name: "acme-bot[bot]",
+				email: "123456+acme-bot[bot]@users.noreply.github.com",
+			});
+		});
+
+		it("falls back to github-actions[bot] when identity fields are absent", async () => {
+			const state = ActionStateTest.empty();
+			await persist(state, {
+				token: "ghs_persisted",
+				expiresAt: "2099-01-01T00:00:00Z",
+				installationId: 7,
+				permissions: {},
+			});
+
+			const identity = await Effect.runPromise(Effect.provide(GitHubToken.botIdentity(), ActionStateTest.layer(state)));
+
+			expect(identity).toEqual({
+				name: "github-actions[bot]",
+				email: "41898282+github-actions[bot]@users.noreply.github.com",
+			});
 		});
 	});
 });

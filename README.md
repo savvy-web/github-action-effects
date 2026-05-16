@@ -110,7 +110,12 @@ const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive);
 Action.run(GitHubToken.dispose().pipe(Effect.provide(appLayer)));
 ```
 
-`provision` reads App credentials from its options object or, by default, from the `app-client-id` and `app-private-key` action inputs. Passing `permissions` verifies the generated token grants those scopes before it is persisted.
+`provision` reads App credentials from its options object or, by default, from the `app-client-id` and `app-private-key` action inputs. Passing `permissions` verifies the generated token grants those scopes before it is persisted. It also resolves the App's public identity (slug, bot user ID, name) best-effort and stores it on the token, so later phases can call `GitHubToken.botIdentity()` without an extra API call.
+
+Two additional accessors are available in any phase after `provision`:
+
+- `GitHubToken.read()` — an `Effect<InstallationToken, ActionStateError, ActionState>` that reads the full persisted token envelope, including the optional `appSlug`, `appUserId` and `appName` fields resolved during `provision`.
+- `GitHubToken.botIdentity()` — an `Effect<BotIdentity, ActionStateError, ActionState>` that derives a commit-attribution identity from the persisted token. When the App's slug and user ID were resolved, the returned email uses the `<userId>+<slug>[bot]@users.noreply.github.com` format that GitHub recognises for verified attribution; otherwise it falls back to the well-known `github-actions[bot]` identity.
 
 ## Documentation
 

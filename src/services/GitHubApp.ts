@@ -21,6 +21,9 @@ export const InstallationToken = Schema.Struct({
 	token: Schema.String,
 	expiresAt: Schema.String,
 	installationId: Schema.Number,
+	appSlug: Schema.optional(Schema.String),
+	appUserId: Schema.optional(Schema.Number),
+	appName: Schema.optional(Schema.String),
 	permissions: Schema.optionalWith(Schema.Record({ key: Schema.String, value: Schema.String }), {
 		default: () => ({}),
 	}),
@@ -52,15 +55,27 @@ export class GitHubApp extends Context.Tag("github-action-effects/GitHubApp")<
 		readonly revokeToken: (token: string) => Effect.Effect<void, GitHubAppError>;
 
 		/**
-		 * Get bot identity for commit attribution from an app slug.
-		 *
-		 * When a custom `appSlug` is provided, the email uses the format
-		 * `appSlug[bot]@users.noreply.github.com` (without a numeric user-ID prefix).
-		 * This may prevent commits from appearing as "verified" on GitHub.
-		 * The default `github-actions[bot]` identity includes the well-known numeric
-		 * ID prefix (`41898282+`) that GitHub recognises for verified attribution.
+		 * Resolve the App's public identity — slug, bot user ID, and name —
+		 * via `GET /app` (App JWT) and `GET /users/<slug>[bot]`.
 		 */
-		readonly botIdentity: (appSlug?: string) => BotIdentity;
+		readonly resolveAppIdentity: (
+			appId: string,
+			privateKey: string,
+		) => Effect.Effect<{ appSlug: string; appUserId: number; appName: string }, GitHubAppError>;
+
+		/**
+		 * Derive a bot identity for commit/tag attribution.
+		 *
+		 * When both `appSlug` and `appUserId` are supplied, returns a verified
+		 * identity whose email carries the numeric user-ID prefix GitHub
+		 * recognises. Otherwise returns the well-known `github-actions[bot]`
+		 * identity. Read the persisted token via `GitHubToken.read()` to obtain
+		 * the resolved `appSlug` / `appUserId`.
+		 */
+		readonly botIdentity: (source?: {
+			readonly appSlug?: string | undefined;
+			readonly appUserId?: number | undefined;
+		}) => BotIdentity;
 
 		/**
 		 * Bracket pattern: generate token, run effect, then revoke.

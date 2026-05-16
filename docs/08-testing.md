@@ -356,17 +356,18 @@ A `rest`, `graphql` or `paginate` call with no recorded entry fails with a `GitH
 
 ## Testing GitHub App token lifecycle
 
-Actions that use `GitHubToken` need `GitHubApp` and `ActionState` in context. Provide `GitHubAppTest` and `ActionStateTest` to exercise `provision`, `client` and `dispose` without a real GitHub App.
+Actions that use `GitHubToken` need `GitHubApp` and `ActionState` in context. Provide `GitHubAppTest` and `ActionStateTest` to exercise `provision`, `client`, `read`, `botIdentity` and `dispose` without a real GitHub App.
 
-`GitHubAppTest` follows the `empty()`/`layer()` pattern. Its state has three fields:
+`GitHubAppTest` follows the `empty()`/`layer()` pattern. Its state has four fields:
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `generateCalls` | `Array<{ appId, privateKey, installationId? }>` | Recorded `generateToken` calls |
 | `revokeCalls` | `Array<string>` | Tokens passed to `revokeToken` |
 | `tokenToReturn` | `InstallationToken` | The token every `generateToken` call returns |
+| `appIdentity` | `{ appSlug, appUserId, appName } \| undefined` | Identity returned by `resolveAppIdentity`; when omitted, `resolveAppIdentity` fails — exercising `provision`'s best-effort degradation path |
 
-`GitHubAppTest.empty()` seeds `tokenToReturn` with a default token (`ghs_test_token_123`, empty `permissions`). Override `tokenToReturn` to test permission verification.
+`GitHubAppTest.empty()` seeds `tokenToReturn` with a default token (`ghs_test_token_123`, empty `permissions`) and `appIdentity` with `{ appSlug: "test-app", appUserId: 99999, appName: "Test App" }`. Override either field to test specific scenarios — for example, omit `appIdentity` to verify that `provision` still succeeds when identity resolution fails, or set `tokenToReturn.permissions` to exercise scope verification.
 
 Testing `provision` — supply the App credentials and assert the token was generated and persisted:
 

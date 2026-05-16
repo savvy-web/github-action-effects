@@ -1,6 +1,8 @@
 import { Effect, Layer } from "effect";
+import { GitHubAppError } from "../errors/GitHubAppError.js";
 import type { InstallationToken } from "../services/GitHubApp.js";
 import { GitHubApp } from "../services/GitHubApp.js";
+import { formatBotIdentity } from "../utils/botIdentity.js";
 
 /**
  * Test state for GitHubApp.
@@ -11,6 +13,11 @@ export interface GitHubAppTestState {
 	readonly generateCalls: Array<{ appId: string; privateKey: string; installationId?: number }>;
 	readonly revokeCalls: Array<string>;
 	readonly tokenToReturn: InstallationToken;
+	/**
+	 * Identity returned by `resolveAppIdentity`. When omitted, `resolveAppIdentity`
+	 * fails — exercising `provision`'s best-effort degradation path.
+	 */
+	readonly appIdentity?: { appSlug: string; appUserId: number; appName: string };
 }
 
 const makeTestGitHubApp = (state: GitHubAppTestState): typeof GitHubApp.Service => {
@@ -30,13 +37,17 @@ const makeTestGitHubApp = (state: GitHubAppTestState): typeof GitHubApp.Service 
 				state.revokeCalls.push(token);
 			}),
 
-		botIdentity: (appSlug) => {
-			const name = appSlug ? `${appSlug}[bot]` : "github-actions[bot]";
-			const email = appSlug
-				? `${name}@users.noreply.github.com`
-				: "41898282+github-actions[bot]@users.noreply.github.com";
-			return { name, email };
-		},
+		resolveAppIdentity: (_appId, _privateKey) =>
+			state.appIdentity !== undefined
+				? Effect.succeed(state.appIdentity)
+				: Effect.fail(
+						new GitHubAppError({
+							operation: "identity",
+							reason: "GitHubAppTest: no appIdentity configured in test state",
+						}),
+					),
+
+		botIdentity: formatBotIdentity,
 
 		withToken: (appId, privateKey, effect) =>
 			Effect.flatMap(impl.generateToken(appId, privateKey), (tokenInfo) =>
@@ -68,5 +79,6 @@ export const GitHubAppTest = {
 			installationId: 12345,
 			permissions: {},
 		},
+		appIdentity: { appSlug: "test-app", appUserId: 99999, appName: "Test App" },
 	}),
 } as const;

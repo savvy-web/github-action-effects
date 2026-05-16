@@ -7,9 +7,11 @@ import { GitHubClientLive } from "./layers/GitHubClientLive.js";
 import { TokenPermissionCheckerLive } from "./layers/TokenPermissionCheckerLive.js";
 import type { PermissionLevel } from "./schemas/TokenPermission.js";
 import { ActionState } from "./services/ActionState.js";
+import type { BotIdentity } from "./services/GitHubApp.js";
 import { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
 import type { GitHubClient } from "./services/GitHubClient.js";
 import { TokenPermissionChecker } from "./services/TokenPermissionChecker.js";
+import { formatBotIdentity } from "./utils/botIdentity.js";
 import { unwrapRedacted } from "./utils/unwrapRedacted.js";
 
 /** Internal ActionState key for the persisted installation-token envelope. */
@@ -54,10 +56,15 @@ const provision = (
 						);
 					}
 
-					const state = yield* ActionState;
-					yield* state.save(STATE_KEY, token, InstallationToken);
+					// Best-effort identity resolution: a GET hiccup degrades to a
+					// token without identity fields rather than failing the action.
+					const identity = yield* Effect.option(app.resolveAppIdentity(clientId, privateKey));
+					const enriched = Option.isSome(identity) ? { ...token, ...identity.value } : token;
 
-					return token;
+					const state = yield* ActionState;
+					yield* state.save(STATE_KEY, enriched, InstallationToken);
+
+					return enriched;
 				}),
 			(token, exit) => (Exit.isFailure(exit) ? Effect.ignore(app.revokeToken(token.token)) : Effect.void),
 		);
@@ -83,18 +90,29 @@ const dispose = (): Effect.Effect<void, GitHubAppError | ActionStateError, Actio
 		yield* app.revokeToken(persisted.value.token);
 	});
 
+const read = (): Effect.Effect<InstallationToken, ActionStateError, ActionState> =>
+	Effect.flatMap(ActionState, (state) => state.get(STATE_KEY, InstallationToken));
+
+const botIdentity = (): Effect.Effect<BotIdentity, ActionStateError, ActionState> =>
+	Effect.map(read(), (token) => formatBotIdentity({ appSlug: token.appSlug, appUserId: token.appUserId }));
+
 /**
  * Phase-oriented helpers for the GitHub App installation-token lifecycle:
- * `provision` in `pre`, `client` in `main`, `dispose` in `post`.
+ * `provision` in `pre`, `client` in `main`, `dispose` in `post`. `read` and
+ * `botIdentity` surface the persisted token (and a verified commit identity)
+ * to any phase after `provision`.
  *
  * `provision` and `dispose` require a `GitHubApp` layer in context — provide
  * `GitHubAppLive` (composed with `OctokitAuthAppLive`) in production, or
- * `GitHubAppTest` in tests. `client` requires `ActionState`.
+ * `GitHubAppTest` in tests. `client`, `read`, and `botIdentity` require
+ * `ActionState`.
  *
  * @public
  */
 export const GitHubToken = {
 	provision,
 	client,
+	read,
+	botIdentity,
 	dispose,
 } as const;

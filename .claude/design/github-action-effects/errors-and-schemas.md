@@ -59,7 +59,7 @@ No separate `Base` export is needed.
 | `ChangesetError` | ChangesetAnalyzer | operation, reason |
 | `GitHubClientError` | GitHubClient | operation, status (HTTP), reason, retryable (boolean) |
 | `GitHubGraphQLError` | GitHubGraphQL | operation, reason, errors array |
-| `GitHubAppError` | GitHubApp | operation, reason |
+| `GitHubAppError` | GitHubApp | operation (`"jwt"` \| `"token"` \| `"revoke"` \| `"identity"`), reason |
 | `GitBranchError` | GitBranch | operation, name, reason |
 | `GitCommitError` | GitCommit | operation, reason |
 | `GitTagError` | GitTag | operation, tag, reason |
@@ -173,7 +173,7 @@ TypeScript interfaces exported from service files:
 | `WorkspaceType` | `schemas/Workspace.ts` | Workspace type enum |
 | `WorkspaceInfo` | `schemas/Workspace.ts` | Detected workspace metadata |
 | `WorkspacePackage` | `schemas/Workspace.ts` | Individual workspace package |
-| `InstallationToken` | `services/GitHubApp.ts` | GitHub App installation token (Schema.Struct) |
+| `InstallationToken` | `services/GitHubApp.ts` | GitHub App installation token (Schema.Struct). Required fields: `token`, `expiresAt`, `installationId`. Optional identity fields: `appSlug`, `appUserId`, `appName` — populated by `GitHubToken.provision` when `resolveAppIdentity` succeeds. |
 
 ### Shared Decode Helpers
 
@@ -186,6 +186,10 @@ and shared by both `ActionStateLive` and `ActionStateTest`.
 `environmentMaps` in `layers/internal/environmentMaps.ts` provides shared
 environment variable mapping logic for `ActionEnvironmentLive` and
 `ActionEnvironmentTest`.
+
+### formatBotIdentity utility
+
+`formatBotIdentity` in `src/utils/botIdentity.ts` is a pure function that derives a `BotIdentity` from an optional `{ appSlug?, appUserId? }` source. When both fields are present it returns a verified identity (`<appSlug>[bot]` / `<appUserId>+<appSlug>[bot]@users.noreply.github.com`); otherwise it returns the well-known `github-actions[bot]` fallback. Both `GitHubApp.botIdentity` and `GitHubToken.botIdentity` delegate to this function.
 
 ---
 

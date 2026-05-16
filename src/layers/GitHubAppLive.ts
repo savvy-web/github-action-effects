@@ -4,6 +4,7 @@ import type { InstallationToken } from "../services/GitHubApp.js";
 import { GitHubApp } from "../services/GitHubApp.js";
 import type { AppAuth } from "../services/OctokitAuthApp.js";
 import { OctokitAuthApp } from "../services/OctokitAuthApp.js";
+import { formatBotIdentity } from "../utils/botIdentity.js";
 
 interface Installation {
 	readonly id: number;
@@ -85,6 +86,41 @@ const generateToken = (
 		catch: (error) => new GitHubAppError({ operation: "token", reason: String(error) }),
 	});
 
+const resolveAppIdentity = (
+	authApp: OctokitAuthApp["Type"],
+	appId: string,
+	privateKey: string,
+): Effect.Effect<{ appSlug: string; appUserId: number; appName: string }, GitHubAppError> =>
+	Effect.tryPromise({
+		try: async () => {
+			const auth = authApp.createAppAuth({ appId, privateKey });
+			const { token: jwt } = await auth({ type: "app" });
+
+			const appResponse = await fetch("https://api.github.com/app", {
+				headers: {
+					Authorization: `Bearer ${jwt}`,
+					Accept: "application/vnd.github+json",
+				},
+			});
+			if (!appResponse.ok) {
+				throw new Error(`GET /app failed: ${appResponse.status}`);
+			}
+			const appData = (await appResponse.json()) as { slug: string; name: string };
+
+			const botLogin = `${appData.slug}[bot]`;
+			const userResponse = await fetch(`https://api.github.com/users/${encodeURIComponent(botLogin)}`, {
+				headers: { Accept: "application/vnd.github+json" },
+			});
+			if (!userResponse.ok) {
+				throw new Error(`GET /users/<slug>[bot] failed: ${userResponse.status}`);
+			}
+			const userData = (await userResponse.json()) as { id: number };
+
+			return { appSlug: appData.slug, appUserId: userData.id, appName: appData.name };
+		},
+		catch: (error) => new GitHubAppError({ operation: "identity", reason: String(error) }),
+	});
+
 const revokeToken = (token: string): Effect.Effect<void, GitHubAppError> =>
 	Effect.tryPromise({
 		try: async () => {
@@ -115,15 +151,11 @@ export const GitHubAppLive: Layer.Layer<GitHubApp, never, OctokitAuthApp> = Laye
 		return {
 			generateToken: (appId, privateKey, installationId) => generateToken(authApp, appId, privateKey, installationId),
 
+			resolveAppIdentity: (appId, privateKey) => resolveAppIdentity(authApp, appId, privateKey),
+
 			revokeToken,
 
-			botIdentity: (appSlug) => {
-				const name = appSlug ? `${appSlug}[bot]` : "github-actions[bot]";
-				const email = appSlug
-					? `${name}@users.noreply.github.com`
-					: "41898282+github-actions[bot]@users.noreply.github.com";
-				return { name, email };
-			},
+			botIdentity: formatBotIdentity,
 
 			withToken: (appId, privateKey, effect) =>
 				Effect.acquireUseRelease(
