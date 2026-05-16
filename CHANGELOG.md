@@ -1,5 +1,17 @@
 # @savvy-web/pnpm-module-template
 
+## 1.1.0
+
+### Breaking Changes
+
+* [`5b3b5b6`](https://github.com/savvy-web/github-action-effects/commit/5b3b5b6fbc07d5bda7d781dd206af489b3978497) `GitHubApp.botIdentity` now takes `{ appSlug?, appUserId? }` instead of a bare slug string. Call sites passing a string must pass an object; it produces verified identities when both fields are present.
+
+### Features
+
+* [`5b3b5b6`](https://github.com/savvy-web/github-action-effects/commit/5b3b5b6fbc07d5bda7d781dd206af489b3978497) `GitHubToken` now resolves and persists the GitHub App identity during the `pre` phase — best-effort, so a lookup failure degrades gracefully instead of failing the action.
+* New `GitHubToken.read()` exposes the persisted installation token, and `GitHubToken.botIdentity()` derives a verified commit identity (numeric-ID-prefixed email) from it.
+* New `GitHubApp.resolveAppIdentity` method performs the App slug and bot-user-ID lookup.
+
 ## 1.0.0
 
 ### Features
