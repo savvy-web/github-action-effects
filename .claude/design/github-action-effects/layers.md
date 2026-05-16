@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-15
-last-synced: 2026-05-15
+updated: 2026-05-16
+last-synced: 2026-05-16
 completeness: 95
 related:
   - ./index.md
@@ -284,7 +284,7 @@ of construction mode.
 
 ### GitHubAppLive
 
-`Layer.Layer<GitHubApp, never, OctokitAuthApp>`. Uses `Layer.effect` to yield `OctokitAuthApp` for JWT-based auth. Uses native `fetch` for listing installations, resolving installation IDs from `GITHUB_REPOSITORY` and token revocation. `resolveAppIdentity` makes two requests: `GET /app` with an App JWT to get the slug and name, then `GET /users/<slug>[bot]` to get the bot user ID. The users endpoint is public, but the request is sent with the same App JWT so it draws on the 5000 req/hour authenticated limit rather than the 60 req/hour unauthenticated IP limit. Fails with `GitHubAppError { operation: "identity" }` on any HTTP error. `botIdentity` delegates to `formatBotIdentity` from `src/utils/botIdentity.ts`.
+`Layer.Layer<GitHubApp, never, OctokitAuthApp>`. Uses `Layer.effect` to yield `OctokitAuthApp` for JWT-based auth. Uses native `fetch` for listing installations, resolving installation IDs from `GITHUB_REPOSITORY` and token revocation. `resolveAppIdentity` makes two requests: `GET /app` with an App JWT to get the slug and name, then `GET /users/<slug>[bot]` to get the bot user ID. `GET /users` is a public endpoint that rejects the App JWT with 401; when an `installationToken` is provided it is used as `Bearer` auth (5000 req/hr), otherwise the lookup runs unauthenticated (60 req/hr per IP). Fails with `GitHubAppError { operation: "identity" }` on any HTTP error or when `GET /app` returns no slug (skips the `/users/` lookup in that case). `botIdentity` delegates to `formatBotIdentity` from `src/utils/botIdentity.ts`.
 
 ### OctokitAuthAppLive
 

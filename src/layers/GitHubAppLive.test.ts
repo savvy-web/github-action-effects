@@ -290,7 +290,13 @@ describe("GitHubAppLive", () => {
 	});
 
 	describe("resolveAppIdentity", () => {
-		it("resolves slug, name, and bot user ID", async () => {
+		/** Find the `fetch` call whose URL targets the `/users/` endpoint. */
+		const usersCall = () =>
+			mockFetch.mock.calls.find(([url]) => String(url).includes("/users/")) as
+				| [string, RequestInit | undefined]
+				| undefined;
+
+		it("authenticates GET /app with the App JWT but leaves GET /users unauthenticated when no installation token is given", async () => {
 			// GET /app
 			mockAuth.mockResolvedValueOnce({ token: "jwt_for_app" });
 			mockFetch.mockResolvedValueOnce({
@@ -316,12 +322,50 @@ describe("GitHubAppLive", () => {
 					headers: expect.objectContaining({ Authorization: "Bearer jwt_for_app" }),
 				}),
 			);
-			expect(mockFetch).toHaveBeenCalledWith(
-				"https://api.github.com/users/acme-bot%5Bbot%5D",
-				expect.objectContaining({
-					headers: expect.objectContaining({ Authorization: "Bearer jwt_for_app" }),
-				}),
+			// The App JWT is not a valid credential on the public /users endpoint
+			// (it 401s); with no installation token the lookup must be unauthenticated.
+			const call = usersCall();
+			expect(call?.[0]).toBe("https://api.github.com/users/acme-bot%5Bbot%5D");
+			expect(call?.[1]?.headers ?? {}).not.toHaveProperty("Authorization");
+		});
+
+		it("authenticates GET /users with the installation token when one is provided", async () => {
+			mockAuth.mockResolvedValueOnce({ token: "jwt_for_app" });
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ slug: "acme-bot", name: "Acme Bot" }),
+			});
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ id: 123456 }),
+			});
+
+			const result = await run(
+				Effect.flatMap(GitHubApp, (svc) => svc.resolveAppIdentity("app-1", "pk", "ghs_installation_token")),
 			);
+
+			expect(result).toEqual({ appSlug: "acme-bot", appUserId: 123456, appName: "Acme Bot" });
+			const call = usersCall();
+			expect(call?.[0]).toBe("https://api.github.com/users/acme-bot%5Bbot%5D");
+			expect(call?.[1]?.headers).toMatchObject({ Authorization: "Bearer ghs_installation_token" });
+		});
+
+		it("skips the bot-user lookup and fails when GET /app returns no slug", async () => {
+			mockAuth.mockResolvedValueOnce({ token: "jwt_for_app" });
+			mockFetch.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ slug: "", name: "Acme Bot" }),
+			});
+
+			const exit = await runExit(Effect.flatMap(GitHubApp, (svc) => svc.resolveAppIdentity("app-1", "pk")));
+
+			expect(Exit.isFailure(exit)).toBe(true);
+			// Only GET /app was attempted — no request to /users/<slug>[bot].
+			expect(mockFetch).toHaveBeenCalledTimes(1);
+			expect(usersCall()).toBeUndefined();
 		});
 
 		it("fails with GitHubAppError when GET /app errors", async () => {
@@ -340,7 +384,7 @@ describe("GitHubAppLive", () => {
 			}
 		});
 
-		it("fails with GitHubAppError when GET /users/<slug>[bot] errors", async () => {
+		it("fails with GitHubAppError naming the resolved bot login when GET /users errors", async () => {
 			mockAuth.mockResolvedValueOnce({ token: "jwt_for_app" });
 			// GET /app succeeds
 			mockFetch.mockResolvedValueOnce({
@@ -359,6 +403,9 @@ describe("GitHubAppLive", () => {
 				if (error._tag === "Some") {
 					expect(error.value).toBeInstanceOf(GitHubAppError);
 					expect((error.value as GitHubAppError).operation).toBe("identity");
+					// The error names the resolved login, not a literal "<slug>" placeholder.
+					expect((error.value as GitHubAppError).reason).toContain("acme-bot[bot]");
+					expect((error.value as GitHubAppError).reason).not.toContain("<slug>");
 				}
 			}
 		});

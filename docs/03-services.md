@@ -422,8 +422,10 @@ const program = Effect.gen(function* () {
   // Revoke it when done
   yield* app.revokeToken(installation.token)
 
-  // Resolve the App's public identity (slug, bot user ID, display name)
-  const identity = yield* app.resolveAppIdentity(clientId, privateKey)
+  // Resolve the App's public identity (slug, bot user ID, display name).
+  // Pass the installation token as the third argument to authenticate the
+  // /users/{slug}[bot] lookup (5000 req/hr); omit it to run unauthenticated (60 req/hr).
+  const identity = yield* app.resolveAppIdentity(clientId, privateKey, installation.token)
   // identity.appSlug, identity.appUserId, identity.appName
 
   // Derive a commit-attribution identity.

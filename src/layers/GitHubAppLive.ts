@@ -90,6 +90,7 @@ const resolveAppIdentity = (
 	authApp: OctokitAuthApp["Type"],
 	appId: string,
 	privateKey: string,
+	installationToken?: string,
 ): Effect.Effect<{ appSlug: string; appUserId: number; appName: string }, GitHubAppError> =>
 	Effect.tryPromise({
 		try: async () => {
@@ -105,24 +106,32 @@ const resolveAppIdentity = (
 			if (!appResponse.ok) {
 				throw new Error(`GET /app failed: ${appResponse.status}`);
 			}
-			const appData = (await appResponse.json()) as { slug: string; name: string };
+			const appData = (await appResponse.json()) as { slug?: string; name?: string };
+
+			if (!appData.slug) {
+				throw new Error("GET /app returned no slug; cannot resolve the bot user identity");
+			}
 
 			const botLogin = `${appData.slug}[bot]`;
-			// Authenticate the public users lookup with the App JWT: an
-			// unauthenticated request shares the 60 req/hour IP rate limit,
-			// the JWT bumps it to 5000/hour at no extra cost.
+			// `GET /users/{username}` is a public endpoint, but the App JWT is
+			// NOT a valid credential there — only the App-management endpoints
+			// (`/app`, `/app/installations`) accept it, so a JWT-authenticated
+			// request 401s. Authenticate with the installation token when one
+			// is available (5000 req/hour); otherwise fall back to an
+			// unauthenticated request (60 req/hour, shared per runner IP).
+			const userHeaders: Record<string, string> = { Accept: "application/vnd.github+json" };
+			if (installationToken) {
+				userHeaders.Authorization = `Bearer ${installationToken}`;
+			}
 			const userResponse = await fetch(`https://api.github.com/users/${encodeURIComponent(botLogin)}`, {
-				headers: {
-					Authorization: `Bearer ${jwt}`,
-					Accept: "application/vnd.github+json",
-				},
+				headers: userHeaders,
 			});
 			if (!userResponse.ok) {
-				throw new Error(`GET /users/<slug>[bot] failed: ${userResponse.status}`);
+				throw new Error(`GET /users/${botLogin} failed: ${userResponse.status}`);
 			}
 			const userData = (await userResponse.json()) as { id: number };
 
-			return { appSlug: appData.slug, appUserId: userData.id, appName: appData.name };
+			return { appSlug: appData.slug, appUserId: userData.id, appName: appData.name ?? appData.slug };
 		},
 		catch: (error) => new GitHubAppError({ operation: "identity", reason: String(error) }),
 	});
@@ -157,7 +166,8 @@ export const GitHubAppLive: Layer.Layer<GitHubApp, never, OctokitAuthApp> = Laye
 		return {
 			generateToken: (appId, privateKey, installationId) => generateToken(authApp, appId, privateKey, installationId),
 
-			resolveAppIdentity: (appId, privateKey) => resolveAppIdentity(authApp, appId, privateKey),
+			resolveAppIdentity: (appId, privateKey, installationToken) =>
+				resolveAppIdentity(authApp, appId, privateKey, installationToken),
 
 			revokeToken,
 

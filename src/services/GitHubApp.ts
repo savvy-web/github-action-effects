@@ -57,10 +57,15 @@ export class GitHubApp extends Context.Tag("github-action-effects/GitHubApp")<
 		/**
 		 * Resolve the App's public identity — slug, bot user ID, and name —
 		 * via `GET /app` (App JWT) and `GET /users/<slug>[bot]`.
+		 *
+		 * `GET /users` is a public endpoint that rejects the App JWT. Pass an
+		 * `installationToken` to authenticate that lookup (5000 req/hour);
+		 * when omitted, the lookup runs unauthenticated (60 req/hour per IP).
 		 */
 		readonly resolveAppIdentity: (
 			appId: string,
 			privateKey: string,
+			installationToken?: string,
 		) => Effect.Effect<{ appSlug: string; appUserId: number; appName: string }, GitHubAppError>;
 
 		/**
