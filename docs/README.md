@@ -45,7 +45,7 @@ const program = Effect.gen(function* () {
 | ActionLogger | Collapsible log groups (group) and buffer-on-failure logging (withBuffer) |
 | ActionOutputs | Typed outputs (set, setJson, summary, exportVariable, addPath, setFailed, setSecret) |
 | ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
-| ActionEnvironment | Typed access to GITHUB_*and RUNNER_* env vars |
+| ActionEnvironment | Typed access to `GITHUB_*` and `RUNNER_*` env vars |
 
 ### Extended services (provide via additional layers)
 
