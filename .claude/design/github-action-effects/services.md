@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-15
-last-synced: 2026-05-15
+updated: 2026-05-16
+last-synced: 2026-05-16
 completeness: 97
 related:
   - ./index.md
@@ -120,7 +120,7 @@ single export, reducing barrel clutter and improving discoverability.
 the GitHub App installation-token lifecycle. See [GitHubToken Lifecycle](#githubtoken-lifecycle)
 below for the full pre/main/post data flow.
 
-- `GitHubToken.provision(options?)` -- `pre.ts`: generate an installation token, best-effort resolve App identity (wrapped in `Effect.option` so a network hiccup degrades gracefully), enrich the token with identity fields, persist it to `ActionState`.
+- `GitHubToken.provision(options?)` -- `pre.ts`: generate an installation token, best-effort resolve App identity by passing the token to `resolveAppIdentity` (so `GET /users` runs authenticated at 5000 req/hr rather than unauthenticated), enrich the token with identity fields, persist it to `ActionState`. Failure of identity resolution is wrapped in `Effect.option` so a network hiccup degrades gracefully.
 - `GitHubToken.client()` -- `main.ts`: build a `GitHubClient` layer from the persisted token.
 - `GitHubToken.dispose()` -- `post.ts`: revoke the persisted token.
 - `GitHubToken.read()` -- `Effect<InstallationToken, ActionStateError, ActionState>`: read the raw persisted token from `ActionState`. Available in any phase after `provision`.
@@ -352,7 +352,7 @@ token revocation.
 
 - `generateToken(appId, privateKey, installationId?)` -- Generate an installation token. Auto-resolves installation ID from `GITHUB_REPOSITORY` if not provided. Returns `InstallationToken` (without identity fields; call `resolveAppIdentity` separately to enrich).
 - `revokeToken(token)` -- Revoke a previously generated token via REST API.
-- `resolveAppIdentity(appId, privateKey)` -- Resolve the App's public identity via `GET /app` (App JWT) then `GET /users/<slug>[bot]` (public). Returns `{ appSlug, appUserId, appName }`. Fails with `GitHubAppError { operation: "identity" }` on HTTP error.
+- `resolveAppIdentity(appId, privateKey, installationToken?)` -- Resolve the App's public identity via `GET /app` (App JWT) then `GET /users/<slug>[bot]`. Returns `{ appSlug, appUserId, appName }`. Fails with `GitHubAppError { operation: "identity" }` on HTTP error or when `GET /app` returns no slug. `GET /users` is a public endpoint that rejects the App JWT; when `installationToken` is supplied it is used as `Bearer` auth (5000 req/hr), otherwise the lookup runs unauthenticated (60 req/hr per IP).
 - `botIdentity(source?)` -- Derive a `BotIdentity` for commit/tag attribution. `source` is `{ appSlug?, appUserId? }`. When both are present returns a verified identity with the numeric-ID email prefix GitHub recognises; otherwise falls back to the well-known `github-actions[bot]` identity. Delegates to `formatBotIdentity` from `src/utils/botIdentity.ts`.
 - `withToken(appId, privateKey, effect)` -- Bracket: generate, run, revoke.
 
@@ -706,7 +706,7 @@ main.ts  GitHubToken.client()     — read envelope, build GitHubClient layer
 post.ts  GitHubToken.dispose()    — read envelope, revoke token via GitHubApp
 ```
 
-- **`provision(options?)`** — `Effect<InstallationToken, GitHubAppError | TokenPermissionError | ActionStateError | ConfigError, ActionState | GitHubApp>`. Credentials are hybrid: `clientId` defaults to the `app-client-id` action input (`Config.string`) and `privateKey` to `app-private-key` (`Config.redacted`); the options object overrides both. Generates the token via `GitHubApp.generateToken`, then calls `GitHubApp.resolveAppIdentity` wrapped in `Effect.option` — a failure degrades to a token without identity fields rather than crashing the action. When `permissions` are given runs `assertSufficient` against the token's own `permissions` (no API call). Persists the enriched envelope and returns it. Strict: fails if no credentials resolve.
+- **`provision(options?)`** — `Effect<InstallationToken, GitHubAppError | TokenPermissionError | ActionStateError | ConfigError, ActionState | GitHubApp>`. Credentials are hybrid: `clientId` defaults to the `app-client-id` action input (`Config.string`) and `privateKey` to `app-private-key` (`Config.redacted`); the options object overrides both. Generates the token via `GitHubApp.generateToken`, then calls `GitHubApp.resolveAppIdentity(clientId, privateKey, token.token)` — passing the freshly-minted installation token as the third argument so the `GET /users` lookup runs authenticated at 5000 req/hr rather than unauthenticated. The call is wrapped in `Effect.option` so a failure degrades to a token without identity fields rather than crashing the action. When `permissions` are given runs `assertSufficient` against the token's own `permissions` (no API call). Persists the enriched envelope and returns it. Strict: fails if no credentials resolve.
 - **`client()`** — `Layer.Layer<GitHubClient, ActionStateError, ActionState>`. Reads the persisted envelope and delegates to `GitHubClientLive.fromToken`. Strict: fails with `ActionStateError` if nothing was provisioned.
 - **`read()`** — `Effect<InstallationToken, ActionStateError, ActionState>`. Reads the persisted envelope from `ActionState`. Available in any phase after `provision`.
 - **`botIdentity()`** — `Effect<BotIdentity, ActionStateError, ActionState>`. Reads the token via `read()` and derives a `BotIdentity` via `formatBotIdentity`. Produces a verified identity (with numeric user-ID email prefix) when `appSlug` and `appUserId` were resolved; falls back to `github-actions[bot]` otherwise.

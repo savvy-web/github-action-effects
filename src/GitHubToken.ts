@@ -60,7 +60,7 @@ const provision = (
 					// token without identity fields rather than failing the action.
 					// The failure is logged so a misconfigured App surfaces in the
 					// workflow log instead of silently yielding the default identity.
-					const identity = yield* app.resolveAppIdentity(clientId, privateKey).pipe(
+					const identity = yield* app.resolveAppIdentity(clientId, privateKey, token.token).pipe(
 						Effect.tapError((error) =>
 							Effect.logWarning(
 								`App identity resolution failed (${error.reason}); commits will fall back to the github-actions[bot] identity`,
