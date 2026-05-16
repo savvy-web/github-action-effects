@@ -1,18 +1,17 @@
-# Common Patterns
+# Common patterns
 
-This guide covers common patterns when building GitHub Actions with
-`@savvy-web/github-action-effects`.
+This guide covers common patterns when building GitHub Actions with `@savvy-web/github-action-effects`.
 
-## Dry-Run Mode
+## Dry-run mode
 
-The `DryRun` service intercepts mutation effects and returns fallback values
-when dry-run is enabled.
+The `DryRun` service intercepts mutation effects and returns fallback values when dry-run is enabled.
 
 ```typescript
-import { Config, Effect, Schema } from "effect"
+import { Config, Effect, Layer, Schema } from "effect"
 import {
   Action,
   DryRun,
+  DryRunLive,
   GitHubRelease,
   GitHubReleaseLive,
 } from "@savvy-web/github-action-effects"
@@ -40,10 +39,9 @@ const program = Effect.gen(function* () {
 Action.run(program, { layer: Layer.mergeAll(DryRunLive, GitHubReleaseLive) })
 ```
 
-## Error Accumulation
+## Error accumulation
 
-The `ErrorAccumulator` namespace processes all items without short-circuiting
-on first error, collecting both successes and failures.
+The `ErrorAccumulator` namespace processes all items without short-circuiting on first error, collecting both successes and failures.
 
 ```typescript
 import { Effect } from "effect"
@@ -77,10 +75,9 @@ const result = yield* ErrorAccumulator.forEachAccumulateConcurrent(
 )
 ```
 
-## Permission Checking
+## Permission checking
 
-Verify GitHub token permissions before attempting operations that require
-specific scopes.
+Verify GitHub token permissions before attempting operations that require specific scopes.
 
 ```typescript
 import { Effect } from "effect"
@@ -119,10 +116,9 @@ const program = Effect.gen(function* () {
 })
 ```
 
-Add this to the beginning of your action to catch permission issues early
-with a clear error message instead of cryptic API failures.
+Add this to the beginning of your action to catch permission issues early with a clear error message instead of cryptic API failures.
 
-## Workspace Detection
+## Workspace detection
 
 Detect monorepo structure and iterate over packages.
 
@@ -153,7 +149,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Package Publishing Workflow
+## Package publishing workflow
 
 A complete multi-registry publish workflow combining several services.
 
@@ -226,10 +222,9 @@ Action.run(
 )
 ```
 
-## Report Builder
+## Report builder
 
-The `ReportBuilder` creates structured markdown reports that can be sent to
-step summaries, PR comments, or check runs.
+The `ReportBuilder` creates structured markdown reports that can be sent to step summaries, PR comments or check runs.
 
 ```typescript
 import { Effect } from "effect"
@@ -257,7 +252,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Auto-Merge
+## Auto-merge
 
 Enable auto-merge on pull requests after checks pass.
 
@@ -278,7 +273,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Semver Resolution
+## Semver resolution
 
 Compare and manipulate semantic versions with Effect error handling.
 
@@ -303,11 +298,9 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Composing Additional Layers
+## Composing additional layers
 
-`Action.run` provides `ActionsRuntime.Default` (ConfigProvider, Logger,
-core services, FileSystem). For additional services, pass them in the
-`options.layer` parameter:
+`Action.run` provides `ActionsRuntime.Default` (ConfigProvider, Logger, core services, FileSystem). For additional services, pass them in the `options.layer` parameter:
 
 ```typescript
 import { Layer } from "effect"
@@ -329,7 +322,7 @@ const ExtendedLayer = Layer.mergeAll(
 Action.run(program, { layer: ExtendedLayer })
 ```
 
-## Error Handling
+## Error handling
 
 All errors use `Data.TaggedError` for pattern matching:
 
@@ -348,14 +341,11 @@ const program = Effect.gen(function* () {
 )
 ```
 
-`Action.run` catches all uncaught errors and emits `::error::` workflow
-commands automatically, so you only need explicit error handling when you
-want custom behavior.
+`Action.run` catches all uncaught errors and emits `::error::` workflow commands automatically, so you only need explicit error handling when you want custom behavior.
 
 ### Action.formatCause
 
-For custom error handlers that need a human-readable message from an Effect
-`Cause`, use `Action.formatCause`:
+For custom error handlers that need a human-readable message from an Effect `Cause`, use `Action.formatCause`:
 
 ```typescript
 import { Effect, Cause } from "effect"
@@ -372,12 +362,8 @@ const program = myEffect.pipe(
 
 `formatCause` uses a fallback chain that always produces a non-empty string:
 
-1. **`Cause.squash`** -- extracts the underlying error. If it is a
-   `TaggedError`, formats as `[Tag] reason`. If it is a standard `Error`,
-   formats as `[Error] message`.
-2. **`Cause.pretty`** -- fallback for interrupts and other cause types.
-3. **Sentinel** -- `"Unknown error (no diagnostic information available)"`
-   as a last resort.
+1. **`Cause.squash`** — extracts the underlying error. If it is a `TaggedError`, formats as `[Tag] reason`. If it is a standard `Error`, formats as `[Error] message`.
+2. **`Cause.pretty`** — fallback for interrupts and other cause types.
+3. **Sentinel** — `"Unknown error (no diagnostic information available)"` as a last resort.
 
-The `[Tag] message` format is designed for consistent parseability by both
-humans and AI systems.
+The `[Tag] message` format is designed for consistent parseability by both humans and AI systems.

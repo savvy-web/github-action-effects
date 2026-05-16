@@ -1,17 +1,14 @@
-# Advanced Action: Three-Stage App
+# Advanced action: three-stage app
 
-This tutorial builds a complete three-stage GitHub Action with `pre`, `main`,
-and `post` phases. It demonstrates three key library features:
+This tutorial builds a complete three-stage GitHub Action with `pre`, `main` and `post` phases. It demonstrates three key library features:
 
-- **GitHub App authentication** -- generate and revoke installation tokens
-- **ActionState** -- transfer typed data between phases
-- **Buffer-on-failure logging** -- capture verbose output, flush only on error
+- **GitHub App authentication** — generate and revoke installation tokens
+- **ActionState** — transfer typed data between phases
+- **Buffer-on-failure logging** — capture verbose output, flush only on error
 
 ## The action.yml
 
-A three-stage action declares separate entry points for each phase. GitHub
-runs `pre` before checkout, `main` for the primary logic, and `post` for
-cleanup (always runs, even on failure).
+A three-stage action declares separate entry points for each phase. GitHub runs `pre` before checkout, `main` for the primary logic and `post` for cleanup (always runs, even on failure).
 
 ```yaml
 name: 'Release Publisher'
@@ -44,7 +41,7 @@ runs:
   post: 'dist/post.js'
 ```
 
-## Shared Types
+## Shared types
 
 Define schemas and types shared across all three phases in a single module.
 
@@ -80,8 +77,7 @@ export const TokenState = Schema.Struct({
 
 ## Phase 1: pre.ts
 
-The `pre` phase runs before the repository is checked out. Use it to
-authenticate, validate permissions, and record the start time.
+The `pre` phase runs before the repository is checked out. Use it to authenticate, validate permissions and record the start time.
 
 ```typescript
 // src/pre.ts
@@ -149,26 +145,14 @@ Action.run(
 
 ### What happens in pre.ts
 
-1. **ActionState.save** -- Persists the start timestamp as a Schema-encoded
-   JSON string. GitHub Actions stores state as key-value string pairs between
-   phases; the Schema encode/decode layer handles serialization transparently.
-
-2. **Config API** -- `Config.integer("app-id")` reads `INPUT_APP-ID` from
-   the environment. `Config.secret("private-key")` reads `INPUT_PRIVATE-KEY`
-   and wraps it in a `Secret` type.
-
-3. **GitHubApp.withToken** -- Bracket pattern that generates an installation
-   token and automatically revokes it when the callback completes (or fails).
-   The token object includes `installationId` and `permissions`.
-
-4. **TokenPermissionChecker.assertSufficient** -- Fails the action
-   immediately if the token lacks the required permission scopes. This
-   catches configuration errors before the main phase runs.
+1. **ActionState.save** — Persists the start timestamp as a Schema-encoded JSON string. GitHub Actions stores state as key-value string pairs between phases; the Schema encode/decode layer handles serialization transparently.
+2. **Config API** — `Config.integer("app-id")` reads `INPUT_APP-ID` from the environment. `Config.secret("private-key")` reads `INPUT_PRIVATE-KEY` and wraps it in a `Secret` type.
+3. **GitHubApp.withToken** — Bracket pattern that generates an installation token and automatically revokes it when the callback completes (or fails). The token object includes `installationId` and `permissions`.
+4. **TokenPermissionChecker.assertSufficient** — Fails the action immediately if the token lacks the required permission scopes. This catches configuration errors before the main phase runs.
 
 ## Phase 2: main.ts
 
-The main phase performs the actual work. It reads state saved by `pre`,
-publishes packages, and saves results for `post`.
+The main phase performs the actual work. It reads state saved by `pre`, publishes packages and saves results for `post`.
 
 ```typescript
 // src/main.ts
@@ -289,25 +273,14 @@ Action.run(
 
 ### What happens in main.ts
 
-1. **State from pre** -- `state.get("timing", TimingState)` reads and
-   Schema-decodes the timing data saved by `pre.ts`. If the state is missing
-   or invalid, it fails with an `ActionStateError`.
-
-2. **ErrorAccumulator** -- `forEachAccumulate` processes all packages without
-   short-circuiting. Failed publishes are collected alongside successes,
-   allowing a complete summary.
-
-3. **Buffer-on-failure** -- `logger.withBuffer` captures verbose output per
-   package. On success the buffer is discarded; on failure it flushes for
-   debugging context.
-
-4. **DryRun.guard** -- When `dry-run` is `"true"`, the `publisher.publish`
-   call is skipped and the fallback value (`undefined`) is returned instead.
+1. **State from pre** — `state.get("timing", TimingState)` reads and Schema-decodes the timing data saved by `pre.ts`. If the state is missing or invalid, it fails with an `ActionStateError`.
+2. **ErrorAccumulator** — `forEachAccumulate` processes all packages without short-circuiting. Failed publishes are collected alongside successes, allowing a complete summary.
+3. **Buffer-on-failure** — `logger.withBuffer` captures verbose output per package. On success the buffer is discarded; on failure it flushes for debugging context.
+4. **DryRun.guard** — When `dry-run` is `"true"`, the `publisher.publish` call is skipped and the fallback value (`undefined`) is returned instead.
 
 ## Phase 3: post.ts
 
-The `post` phase always runs, even if `main` fails. Use it for cleanup,
-timing reports, and final telemetry.
+The `post` phase always runs, even if `main` fails. Use it for cleanup, timing reports and final telemetry.
 
 ```typescript
 // src/post.ts
@@ -364,14 +337,10 @@ Action.run(program)
 
 ### What happens in post.ts
 
-1. **state.getOptional** -- Unlike `state.get` which fails on missing keys,
-   `getOptional` returns `Option.none()` when the key does not exist. This
-   handles the case where `main` failed before saving publish results.
+1. **state.getOptional** — Unlike `state.get` which fails on missing keys, `getOptional` returns `Option.none()` when the key does not exist. This handles the case where `main` failed before saving publish results.
+2. **Timing summary** — `outputs.summary` appends markdown to the existing step summary written by `main`. Each call appends rather than replacing.
 
-2. **Timing summary** -- `outputs.summary` appends markdown to the existing
-   step summary written by `main`. Each call appends rather than replacing.
-
-## Workflow Usage
+## Workflow usage
 
 ```yaml
 jobs:
@@ -394,24 +363,17 @@ jobs:
           dry-run: false
 ```
 
-## Key Takeaways
+## Key takeaways
 
-**State is the bridge between phases.** Each phase runs as a separate
-Node.js process. `ActionState` with Effect Schemas provides type-safe
-serialization across the process boundary.
+**State is the bridge between phases.** Each phase runs as a separate Node.js process. `ActionState` with Effect Schemas provides type-safe serialization across the process boundary.
 
-**Use `getOptional` in post.** The `post` phase always runs, but earlier
-phases may have failed before saving their state. Use `state.getOptional`
-to handle missing state gracefully.
+**Use `getOptional` in post.** The `post` phase always runs, but earlier phases may have failed before saving their state. Use `state.getOptional` to handle missing state gracefully.
 
-**Bracket patterns clean up automatically.** `GitHubApp.withToken` revokes
-the installation token even if the callback fails, preventing token leaks.
+**Bracket patterns clean up automatically.** `GitHubApp.withToken` revokes the installation token even if the callback fails, preventing token leaks.
 
 ## Testing
 
-Test each phase independently using test layers from the `/testing` subpath.
-Each phase is a pure Effect program that requires injected services -- test
-layers replace all live dependencies without any mocking framework.
+Test each phase independently using test layers from the `/testing` subpath. Each phase is a pure Effect program that requires injected services — test layers replace all live dependencies without any mocking framework.
 
 ### Testing a single phase
 
@@ -453,8 +415,7 @@ describe("pre phase", () => {
 
 ### Testing cross-phase state with pre-populated ActionStateTest
 
-Simulate state written by `pre.ts` when testing `main.ts` or `post.ts`.
-Pre-populate the `ActionStateTest` entries directly:
+Simulate state written by `pre.ts` when testing `main.ts` or `post.ts`. Pre-populate the `ActionStateTest` entries directly:
 
 ```typescript
 import { Effect, Layer, Schema } from "effect"
@@ -492,12 +453,11 @@ describe("post phase", () => {
 })
 ```
 
-See [Testing Guide](./testing.md) for the complete test layer API and more
-patterns.
+See [Testing GitHub Actions](./08-testing.md) for the complete test layer API and more patterns.
 
-## Next Steps
+## Next steps
 
-- [Services Guide](./services.md) -- detailed usage for each service
-- [Testing](./testing.md) -- test multi-phase actions with in-memory layers
-- [Patterns](./patterns.md) -- dry-run, error accumulation, and more
-- [Peer Dependencies](./peer-dependencies.md) -- which packages to install
+- [Services guide](./03-services.md) — detailed usage for each service
+- [Testing GitHub Actions](./08-testing.md) — test multi-phase actions with in-memory layers
+- [Common patterns](./04-patterns.md) — dry-run, error accumulation and more
+- [Peer dependencies](./05-peer-dependencies.md) — which packages to install

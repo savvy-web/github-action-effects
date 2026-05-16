@@ -1,22 +1,15 @@
 # Testing GitHub Actions
 
-This guide covers how to test GitHub Actions built with
-`@savvy-web/github-action-effects`. Every service in the library ships with a
-companion test layer that captures operations in memory, so your tests never
-need a real GitHub Actions runner environment.
+This guide covers how to test GitHub Actions built with `@savvy-web/github-action-effects`. Every service in the library ships with a companion test layer that captures operations in memory, so your tests never need a real GitHub Actions runner environment.
 
 ## Overview
 
 Test layers come in two shapes:
 
-- **Namespace objects** (`ActionLoggerTest`, `ActionOutputsTest`,
-  `ActionStateTest`) expose an `empty()` function that creates a mutable state
-  container and a `layer()` function that builds an Effect `Layer` backed by
-  that state. After running your effect, you inspect the state to verify what
-  happened.
+- **Namespace objects** (`ActionLoggerTest`, `ActionOutputsTest`, `ActionStateTest`) expose an `empty()` function that creates a mutable state container and a `layer()` function that builds an Effect `Layer` backed by that state. After running your effect, you inspect the state to verify what happened.
 - **Direct layers** (`ActionEnvironmentTest`) return a `Layer` directly.
 
-## Importing for Tests
+## Importing for tests
 
 Use the `/testing` subpath in all test files:
 
@@ -29,19 +22,15 @@ import {
 } from "@savvy-web/github-action-effects/testing"
 ```
 
-The `/testing` entry point exports all service tags, test layers, live layers,
-errors, schemas, and utilities -- but **excludes the `Action` namespace**.
-`Action` statically imports runtime components that emit workflow commands,
-which is inappropriate in test environments.
+The `/testing` entry point exports all service tags, test layers, live layers, errors, schemas and utilities — but **excludes the `Action` namespace**. `Action` statically imports runtime components that emit workflow commands, which is inappropriate in test environments.
 
-In production entry points (`main.ts`, `pre.ts`, `post.ts`), import from the
-main package:
+In production entry points (`main.ts`, `pre.ts`, `post.ts`), import from the main package:
 
 ```typescript
 import { Action } from "@savvy-web/github-action-effects"
 ```
 
-## Test Layer APIs
+## Test layer APIs
 
 ### ActionOutputsTest
 
@@ -54,8 +43,7 @@ const state = ActionOutputsTest.empty()
 const layer = ActionOutputsTest.layer(state)
 ```
 
-After running your effect against this layer, inspect `state` to verify which
-outputs were set.
+After running your effect against this layer, inspect `state` to verify which outputs were set.
 
 **State shape (`ActionOutputsTestState`):**
 
@@ -99,8 +87,7 @@ const state = ActionStateTest.empty()
 const layer = ActionStateTest.layer(state)
 ```
 
-The test state uses an in-memory `Map<string, string>`. Pre-populate entries
-to simulate state from a previous action phase:
+The test state uses an in-memory `Map<string, string>`. Pre-populate entries to simulate state from a previous action phase:
 
 ```typescript
 const state = ActionStateTest.empty()
@@ -115,10 +102,9 @@ const layer = ActionStateTest.layer(state)
 | --- | --- | --- |
 | `entries` | `Map<string, string>` | Stored state entries (key to JSON string) |
 
-## Composing Test Layers
+## Composing test layers
 
-When your action uses multiple services, merge the test layers together with
-`Layer.mergeAll`:
+When your action uses multiple services, merge the test layers together with `Layer.mergeAll`:
 
 ```typescript
 import { Effect, Layer } from "effect"
@@ -141,7 +127,7 @@ const TestLayer = Layer.mergeAll(
 
 Then provide the merged layer to any effect that requires those services.
 
-## Testing Patterns
+## Testing patterns
 
 ### Testing outputs
 
@@ -341,11 +327,9 @@ describe("annotations", () => {
 })
 ```
 
-## Testing GFM Builders
+## Testing GFM builders
 
-The GFM (GitHub Flavored Markdown) builder functions are pure -- they take
-strings in and return strings out. No layers or Effect runtime needed. Access
-them via the `GithubMarkdown` namespace.
+The GFM (GitHub Flavored Markdown) builder functions are pure — they take strings in and return strings out. No layers or Effect runtime needed. Access them via the `GithubMarkdown` namespace.
 
 ```typescript
 import { describe, expect, it } from "vitest"
@@ -367,10 +351,9 @@ describe("GFM builders", () => {
 })
 ```
 
-## Helper Patterns
+## Helper patterns
 
-Reduce boilerplate by extracting a helper that creates all test layers and
-returns both the merged layer and the state containers:
+Reduce boilerplate by extracting a helper that creates all test layers and returns both the merged layer and the state containers:
 
 ```typescript
 import { Layer } from "effect"

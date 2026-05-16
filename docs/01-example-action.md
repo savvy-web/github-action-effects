@@ -1,9 +1,6 @@
 # Building a GitHub Action with Effect
 
-This tutorial walks through building a complete GitHub Action using
-`@savvy-web/github-action-effects`. By the end you will have a working
-action with validated inputs, structured logging, a step summary,
-and typed outputs.
+This tutorial walks through building a complete GitHub Action using `@savvy-web/github-action-effects`. By the end you will have a working action with validated inputs, structured logging, a step summary and typed outputs.
 
 ## Prerequisites
 
@@ -13,13 +10,11 @@ npm install @savvy-web/github-action-effects effect \
   @effect/cluster @effect/rpc @effect/sql
 ```
 
-If you use `@savvy-web/github-action-builder` for bundling, it compiles
-your TypeScript source into the single `dist/index.js` that GitHub Actions
-expects.
+If you use `@savvy-web/github-action-builder` for bundling, it compiles your TypeScript source into the single `dist/index.js` that GitHub Actions expects.
 
 ## The action.yml
 
-Declare inputs, outputs, and the entry point:
+Declare inputs, outputs and the entry point:
 
 ```yaml
 name: 'Package Checker'
@@ -135,38 +130,17 @@ Action.run(program)
 
 ### What each section does
 
-1. **Inputs** -- `Config.string("package-name")` reads `INPUT_PACKAGE-NAME`
-   from the environment. `Config.integer` and `Config.boolean` parse and
-   validate automatically. `Config.withDefault` provides fallback values.
+1. **Inputs** — `Config.string("package-name")` reads `INPUT_PACKAGE-NAME` from the environment. `Config.integer` and `Config.boolean` parse and validate automatically. `Config.withDefault` provides fallback values.
+2. **Groups** — `logger.group` wraps the effect in a collapsible section in the Actions UI. The return value passes through.
+3. **Buffer-on-failure** — `logger.withBuffer` captures verbose output. On success the buffer is silently discarded. On failure it flushes before the error propagates, giving full context.
+4. **Outputs** — `set` for strings, `setJson` for schema-validated JSON. Values appear in `${{ steps.id.outputs.status }}` in downstream workflow steps.
+5. **Step summary** — `outputs.summary` writes markdown to the job summary. `GithubMarkdown.*` helpers build tables, headings, details blocks and so on.
+6. **Annotations** — `annotationError`, `annotationWarning` and `annotationNotice` appear inline on PR diffs at the specified file and line.
+7. **Action.run** — Provides `ActionsRuntime.Default` (ConfigProvider, Logger, ActionOutputs, ActionState, ActionLogger, ActionEnvironment and Node.js FileSystem), wraps in `withBuffer` and catches all errors with `::error::` workflow commands.
 
-2. **Groups** -- `logger.group` wraps the effect in a collapsible section in
-   the Actions UI. The return value passes through.
+## Adding multi-phase state
 
-3. **Buffer-on-failure** -- `logger.withBuffer` captures verbose output.
-   On success the buffer is silently discarded. On failure it flushes before
-   the error propagates, giving full context.
-
-4. **Outputs** -- `set` for strings, `setJson` for schema-validated JSON.
-   Values appear in `${{ steps.id.outputs.status }}` in downstream workflow
-   steps.
-
-5. **Step summary** -- `outputs.summary` writes markdown to the job summary.
-   `GithubMarkdown.*` helpers build tables, headings, details blocks, etc.
-
-6. **Annotations** -- `annotationError`, `annotationWarning`, and
-   `annotationNotice` appear inline on PR diffs at the specified file and
-   line.
-
-7. **Action.run** -- Provides `ActionsRuntime.Default` (ConfigProvider,
-   Logger, ActionOutputs, ActionState, ActionLogger, ActionEnvironment,
-   and Node.js FileSystem), wraps in `withBuffer`, and catches all errors
-   with `::error::` workflow commands.
-
-## Adding Multi-Phase State
-
-Some actions run in multiple phases -- `pre`, `main`, and `post`. The
-`ActionState` service transfers typed data between them using Schema
-encode/decode under the hood.
+Some actions run in multiple phases — `pre`, `main` and `post`. The `ActionState` service transfers typed data between them using Schema encode/decode under the hood.
 
 ### action.yml with phases
 
@@ -178,7 +152,7 @@ runs:
   post: 'dist/post.js'
 ```
 
-### pre.ts -- save state
+### pre.ts — save state
 
 ```typescript
 import { Effect, Schema } from "effect"
@@ -194,7 +168,7 @@ const program = Effect.gen(function* () {
 Action.run(program)
 ```
 
-### post.ts -- read state
+### post.ts — read state
 
 ```typescript
 import { Effect, Schema } from "effect"
@@ -213,13 +187,11 @@ const program = Effect.gen(function* () {
 Action.run(program)
 ```
 
-`ActionState` is included in `ActionsRuntime.Default` (provided by
-`Action.run`), so no additional layers are needed.
+`ActionState` is included in `ActionsRuntime.Default` (provided by `Action.run`), so no additional layers are needed.
 
-## Error Handling
+## Error handling
 
-`Action.run` catches all errors and emits `::error::` workflow commands
-automatically. For granular control, use `Effect.catchTag`:
+`Action.run` catches all errors and emits `::error::` workflow commands automatically. For granular control, use `Effect.catchTag`:
 
 ```typescript
 const result = yield* someEffect.pipe(
@@ -232,20 +204,13 @@ const result = yield* someEffect.pipe(
 )
 ```
 
-The error types -- `ActionOutputError`, `ActionStateError`,
-`GitHubClientError`, etc. -- are all `Data.TaggedError` instances. See
-[architecture.md](./architecture.md#error-types) for their fields.
+The error types — `ActionOutputError`, `ActionStateError`, `GitHubClientError` and so on — are all `Data.TaggedError` instances. See [architecture](./07-architecture.md#error-types) for their fields.
 
-For custom error handlers that extract a human-readable message from an
-Effect `Cause`, use `Action.formatCause(cause)`. It returns a `[Tag] message`
-string that is parseable by both humans and AI. See
-[error-handling.md](./error-handling.md) for details.
+For custom error handlers that extract a human-readable message from an Effect `Cause`, use `Action.formatCause(cause)`. It returns a `[Tag] message` string that is parseable by both humans and AI. See [error handling](./06-error-handling.md) for details.
 
 ## Testing
 
-Test your action's `program` function using test layers from the `/testing`
-subpath. No mocks, no real runner calls -- just in-memory service
-implementations.
+Test your action's `program` function using test layers from the `/testing` subpath. No mocks, no real runner calls — just in-memory service implementations.
 
 ```typescript
 // src/main.test.ts
@@ -284,14 +249,11 @@ describe("package checker action", () => {
 })
 ```
 
-See [Testing Guide](./testing.md) for the full API of each test layer and
-patterns for testing logging, state, and annotations.
+See [Testing GitHub Actions](./08-testing.md) for the full API of each test layer and patterns for testing logging, state and annotations.
 
-## Next Steps
+## Next steps
 
-- [Services Guide](./services.md) -- detailed guide for every service
-- [Testing Guide](./testing.md) -- test every service with in-memory layers
-- [Architecture](./architecture.md) -- runtime layer, layer composition, and
-  logging pipeline
-- [Patterns](./patterns.md) -- dry-run mode, error accumulation, permission
-  checking, and more
+- [Services guide](./03-services.md) — detailed guide for every service
+- [Testing GitHub Actions](./08-testing.md) — test every service with in-memory layers
+- [Architecture](./07-architecture.md) — runtime layer, layer composition and the logging pipeline
+- [Common patterns](./04-patterns.md) — dry-run mode, error accumulation, permission checking and more

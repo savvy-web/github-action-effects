@@ -2,30 +2,29 @@
 
 [![npm](https://img.shields.io/npm/v/@savvy-web%2Fgithub-action-effects?label=npm&color=cb3837)](https://www.npmjs.com/package/@savvy-web/github-action-effects)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-24-339933)](https://nodejs.org/)
+[![Node.js 24](https://img.shields.io/badge/Node.js-24-5fa04e.svg)](https://nodejs.org/)
+[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](https://www.typescriptlang.org/)
 
-Composable [Effect](https://effect.website) services for building GitHub Actions with schema-validated inputs, structured logging, and GitHub API operations -- zero `@actions/*` dependencies.
+Composable [Effect](https://effect.website) services for building GitHub Actions with schema-validated inputs, structured logging, and GitHub API operations — zero `@actions/*` dependencies.
 
 ## Features
 
-- **Zero CJS dependencies** -- native ESM implementations of the GitHub Actions runtime protocol replace all `@actions/*` packages
-- **29 composable services** -- action I/O, GitHub API, git operations, package publishing, and more
-- **Schema-validated inputs** -- read action inputs via Effect's `Config` API with built-in parsing and defaults
-- **Structured logging** -- Effect Logger maps to workflow commands with collapsible groups; buffered verbose output flushes inside its group when a step fails
-- **In-memory test layers** -- every service ships a test layer for fast, deterministic unit tests
+- **Zero CJS dependencies** — native ESM implementations of the GitHub Actions runtime protocol replace all `@actions/*` packages
+- **29 composable services** — action I/O, GitHub API, git operations, package publishing, and more
+- **Schema-validated inputs** — read action inputs via Effect's `Config` API with built-in parsing and defaults
+- **Structured logging** — Effect Logger maps to workflow commands with collapsible groups; buffered verbose output flushes inside its group when a step fails
+- **In-memory test layers** — every service ships a test layer for fast, deterministic unit tests
 
 ## Install
 
 ```bash
 npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node
-# or
-pnpm add @savvy-web/github-action-effects effect @effect/platform @effect/platform-node
 ```
 
 ## Quick start
 
 ```typescript
+// src/main.ts
 import { Config, Effect } from "effect";
 import { Action, ActionOutputs } from "@savvy-web/github-action-effects";
 
@@ -115,7 +114,14 @@ Action.run(GitHubToken.dispose().pipe(Effect.provide(appLayer)));
 
 ## Documentation
 
-For service reference, architecture, testing guides, and advanced usage, see [docs/](./docs/).
+- [Building a GitHub Action with Effect](./docs/01-example-action.md) — End-to-end walkthrough building a GitHub Action with validated inputs, logging, summaries and typed outputs.
+- [Advanced action: three-stage app](./docs/02-advanced-action.md) — A complete pre/main/post action with GitHub App auth, cross-phase state and buffered logging.
+- [Services guide](./docs/03-services.md) — Usage examples for every service in the library.
+- [Common patterns](./docs/04-patterns.md) — Dry-run, error accumulation, permission checking, workspace detection and more.
+- [Peer dependencies](./docs/05-peer-dependencies.md) — Which packages to install and why.
+- [Error handling](./docs/06-error-handling.md) — Tagged errors, `Action.formatCause` and the `[Tag] message` format.
+- [Architecture](./docs/07-architecture.md) — Runtime layer, layer composition and the logging pipeline.
+- [Testing GitHub Actions](./docs/08-testing.md) — Testing actions with in-memory test layers.
 
 ## License
 

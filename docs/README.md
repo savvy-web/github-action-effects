@@ -1,42 +1,27 @@
-# github-action-effects Documentation
+# github-action-effects documentation
 
-Effect-based utility library for building GitHub Actions with structured
-logging, typed outputs, GitHub API operations, package publishing, and
-composable test layers. Zero `@actions/*` dependencies -- all platform
-interactions use native ESM implementations of the GitHub Actions runtime
-protocol.
+Effect-based utility library for building GitHub Actions with structured logging, typed outputs, GitHub API operations, package publishing and composable test layers. Zero `@actions/*` dependencies — all platform interactions use native ESM implementations of the GitHub Actions runtime protocol.
 
-## Installation
+## Install
 
 ```bash
-npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node
+npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
+# or
+pnpm add @savvy-web/github-action-effects effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
 ```
 
-Required peer dependencies:
+## Pages
 
-```bash
-npm install effect @effect/platform @effect/platform-node
-```
+- [Building a GitHub Action with Effect](./01-example-action.md) — End-to-end walkthrough building a GitHub Action.
+- [Advanced action: three-stage app](./02-advanced-action.md) — A complete pre/main/post action with GitHub App auth, cross-phase state and buffered logging.
+- [Services guide](./03-services.md) — Usage examples for every service in the library.
+- [Common patterns](./04-patterns.md) — Dry-run, error accumulation, permission checking and workspace detection.
+- [Peer dependencies](./05-peer-dependencies.md) — Which packages to install and why.
+- [Error handling](./06-error-handling.md) — `Action.formatCause`, `Action.run` error handling and the `[Tag] message` format.
+- [Architecture](./07-architecture.md) — Runtime layer, layer composition and the logging pipeline.
+- [Testing GitHub Actions](./08-testing.md) — Testing with in-memory test layers.
 
-## Table of Contents
-
-- [Example Action](./example-action.md) -- End-to-end walkthrough building a
-  GitHub Action
-- [Advanced Action](./advanced-action.md) -- Three-stage app (pre/main/post)
-  with GitHub App auth, state, and log levels
-- [Services Guide](./services.md) -- Detailed guide for each service with usage
-  examples
-- [Architecture](./architecture.md) -- Runtime layer, layer composition, and
-  logging pipeline
-- [Peer Dependencies](./peer-dependencies.md) -- Required peer
-  dependencies
-- [Testing Guide](./testing.md) -- Testing with in-memory test layers
-- [Patterns](./patterns.md) -- Common patterns: dry-run, error accumulation,
-  permission checking, workspace detection
-- [Error Handling](./error-handling.md) -- `Action.formatCause`, `Action.run`
-  error handling, and the `[Tag] message` format
-
-## How Inputs Work
+## How inputs work
 
 Inputs use Effect's `Config` API, backed by `ActionsConfigProvider` which reads
 `INPUT_*` environment variables:
@@ -51,9 +36,9 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Services at a Glance
+## Services at a glance
 
-### Core Services (provided by ActionsRuntime.Default / Action.run)
+### Core services (provided by ActionsRuntime.Default / Action.run)
 
 | Service | Purpose |
 | --- | --- |
@@ -62,7 +47,7 @@ const program = Effect.gen(function* () {
 | ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
 | ActionEnvironment | Typed access to GITHUB_*and RUNNER_* env vars |
 
-### Extended Services (provide via additional layers)
+### Extended services (provide via additional layers)
 
 | Service | Purpose |
 | --- | --- |
@@ -91,7 +76,7 @@ const program = Effect.gen(function* () {
 | WorkflowDispatch | Trigger workflows and poll until completion |
 | ToolInstaller | Download, extract, cache tool binaries (archives and standalone binaries) |
 
-## Namespace Objects
+## Namespace objects
 
 | Namespace | Purpose |
 | --- | --- |
@@ -102,9 +87,8 @@ const program = Effect.gen(function* () {
 | `ErrorAccumulator` | Process items collecting all successes and failures |
 | `ReportBuilder` | Fluent builder for markdown reports |
 
-## See Also
+## See also
 
 See the [project README](../README.md) for a quick-start example.
 
-For build tooling and the action runner, see the companion package
-`@savvy-web/github-action-builder`.
+For build tooling and the action runner, see the companion package `@savvy-web/github-action-builder`.

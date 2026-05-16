@@ -1,15 +1,10 @@
-# Services Guide
+# Services guide
 
-This guide covers each service in `@savvy-web/github-action-effects` with
-usage examples. For architecture and layer composition, see
-[architecture.md](./architecture.md). For testing, see
-[testing.md](./testing.md).
+This guide covers each service in `@savvy-web/github-action-effects` with usage examples. For architecture and layer composition, see [architecture](./07-architecture.md). For testing, see [testing](./08-testing.md).
 
 ## Inputs via Config API
 
-Inputs are read using Effect's `Config` API, backed by `ActionsConfigProvider`
-which reads `INPUT_*` environment variables. This replaces the previous
-`ActionInputs` service.
+Inputs are read using Effect's `Config` API, backed by `ActionsConfigProvider` which reads `INPUT_*` environment variables.
 
 ```typescript
 import { Config, Effect, Schema } from "effect"
@@ -32,10 +27,9 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Core Services
+## Core services
 
-These services are provided automatically by `ActionsRuntime.Default` and
-`Action.run`.
+These services are provided automatically by `ActionsRuntime.Default` and `Action.run`.
 
 ### ActionLogger
 
@@ -110,7 +104,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## State and Environment
+## State and environment
 
 ### ActionState
 
@@ -166,7 +160,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## GitHub API Services
+## GitHub API services
 
 These services use `@octokit/rest` directly (a regular dependency).
 
@@ -284,8 +278,7 @@ const program = Effect.gen(function* () {
 
 ### PullRequest
 
-Full pull request lifecycle management: get, list, create, update, merge,
-and the idempotent `getOrCreate` pattern.
+Full pull request lifecycle management: get, list, create, update, merge and the idempotent `getOrCreate` pattern.
 
 ```typescript
 import { Effect } from "effect"
@@ -425,7 +418,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Command Execution
+## Command execution
 
 ### CommandRunner
 
@@ -455,7 +448,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Package Management
+## Package management
 
 ### NpmRegistry
 
@@ -568,12 +561,11 @@ const program = Effect.gen(function* () {
 })
 ```
 
-## Infrastructure Services
+## Infrastructure services
 
 ### ActionCache
 
-GitHub Actions cache using V2 Twirp RPC protocol at ACTIONS_RESULTS_URL
-with Azure Blob Storage (`@azure/storage-blob`) for uploads/downloads.
+GitHub Actions cache using V2 Twirp RPC protocol at ACTIONS_RESULTS_URL with Azure Blob Storage (`@azure/storage-blob`) for uploads/downloads.
 
 ```typescript
 import { Effect } from "effect"
@@ -712,11 +704,7 @@ const program = Effect.gen(function* () {
 
 ### ToolInstaller
 
-Download, cache, and install tool binaries using node:https/http and
-child_process. Supports both archived tools (tar.gz, tar.xz, zip) and
-standalone binary files. Includes socket timeout, redirect following,
-retry with exponential backoff, and cross-platform zip extraction
-(PowerShell on Windows, unzip on other platforms).
+Download, cache and install tool binaries using node:https/http and child_process. Supports both archived tools (tar.gz, tar.xz, zip) and standalone binary files. Includes socket timeout, redirect following, retry with exponential backoff and cross-platform zip extraction (PowerShell on Windows, unzip on other platforms).
 
 ```typescript
 import { Effect } from "effect"
