@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 1.1.1
+
+### Bug Fixes
+
+* [`514296a`](https://github.com/savvy-web/github-action-effects/commit/514296a5cca7062dd48be54de0aa2715469f1e9c) Fix `botIdentity()` silently falling back to `github-actions[bot]` when the App's identity could not be resolved. The `/users/{username}` lookup was authenticated with the App JWT, which GitHub rejects on public user endpoints — causing a 401 and a silent fallback. The lookup now uses the installation token, which has the correct permissions. An additional guard prevents a nonsensical `/users/[bot]` request when `GET /app` returns no slug. Consumers that sign commits via the Git Data API will now get the correct author identity (`<appUserId>+<appSlug>[bot]@users.noreply.github.com`) and avoid DCO mismatches.
+
 ## 1.1.0
 
 ### Breaking Changes
