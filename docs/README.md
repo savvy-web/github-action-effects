@@ -42,7 +42,7 @@ const program = Effect.gen(function* () {
 
 | Service | Purpose |
 | --- | --- |
-| ActionLogger | Structured logging with group, withBuffer, annotationError/Warning/Notice |
+| ActionLogger | Collapsible log groups (group) and buffer-on-failure logging (withBuffer) |
 | ActionOutputs | Typed outputs (set, setJson, summary, exportVariable, addPath, setFailed, setSecret) |
 | ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
 | ActionEnvironment | Typed access to GITHUB_*and RUNNER_* env vars |
@@ -81,6 +81,8 @@ const program = Effect.gen(function* () {
 | Namespace | Purpose |
 | --- | --- |
 | `Action` | Top-level helpers: `run`, `formatCause`, `resolveLogLevel` |
+| `GitHubToken` | GitHub App installation-token lifecycle: `provision`, `client`, `dispose` |
+| `GitHubClientLive` | `GitHubClient` layer constructors: `fromEnv`, `fromToken`, `fromApp` |
 | `GithubMarkdown` | Pure GFM builder functions: `table`, `heading`, `bold`, `details`, `checklist`, etc. |
 | `AutoMerge` | Enable/disable PR auto-merge via GraphQL |
 | `SemverResolver` | Semver comparison, range satisfaction, increment, parse |

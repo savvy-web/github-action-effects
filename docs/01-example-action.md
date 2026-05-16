@@ -116,10 +116,9 @@ const program = Effect.gen(function* () {
   ].join("\n\n"))
 
   // 6. Emit annotations for PR inline feedback
-  yield* logger.annotationWarning("Deprecated API usage", {
-    file: "src/helpers.ts",
-    startLine: 42,
-  })
+  yield* Effect.logWarning("Deprecated API usage").pipe(
+    Effect.annotateLogs({ file: "src/helpers.ts", line: "42" }),
+  )
 
   yield* Effect.log("Action completed")
 })
@@ -135,7 +134,7 @@ Action.run(program)
 3. **Buffer-on-failure** — `logger.withBuffer` captures verbose output. On success the buffer is silently discarded. On failure it flushes before the error propagates, giving full context.
 4. **Outputs** — `set` for strings, `setJson` for schema-validated JSON. Values appear in `${{ steps.id.outputs.status }}` in downstream workflow steps.
 5. **Step summary** — `outputs.summary` writes markdown to the job summary. `GithubMarkdown.*` helpers build tables, headings, details blocks and so on.
-6. **Annotations** — `annotationError`, `annotationWarning` and `annotationNotice` appear inline on PR diffs at the specified file and line.
+6. **Annotations** — log through Effect at warning or error level and the `ActionsLogger` maps it to a `::warning::` or `::error::` workflow command. Log annotations like `file` and `line` become command properties, so the message appears inline on the PR diff at that location.
 7. **Action.run** — Provides `ActionsRuntime.Default` (ConfigProvider, Logger, ActionOutputs, ActionState, ActionLogger, ActionEnvironment and Node.js FileSystem), wraps in `withBuffer` and catches all errors with `::error::` workflow commands.
 
 ## Adding multi-phase state

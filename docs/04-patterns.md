@@ -79,12 +79,17 @@ const result = yield* ErrorAccumulator.forEachAccumulateConcurrent(
 
 Verify GitHub token permissions before attempting operations that require specific scopes.
 
+`TokenPermissionCheckerLive` is a function, not a bare layer — it takes the granted permissions record (typically `InstallationToken.permissions`) and returns a `Layer<TokenPermissionChecker>`. Call it with the granted scopes, then provide the result.
+
 ```typescript
 import { Effect } from "effect"
 import {
   TokenPermissionChecker,
   TokenPermissionCheckerLive,
 } from "@savvy-web/github-action-effects"
+
+// `granted` is the permissions record from an installation token
+const granted = { contents: "write", "pull-requests": "write" }
 
 const program = Effect.gen(function* () {
   const checker = yield* TokenPermissionChecker
@@ -93,12 +98,12 @@ const program = Effect.gen(function* () {
   yield* checker.assertSufficient({
     contents: "write",
     "pull-requests": "write",
-    checks: "write",
   })
 
   // Or fail if there are missing OR extra permissions (least-privilege)
   yield* checker.assertExact({
-    contents: "read",
+    contents: "write",
+    "pull-requests": "write",
   })
 
   // Or just warn without failing
@@ -110,13 +115,43 @@ const program = Effect.gen(function* () {
   const result = yield* checker.check({
     contents: "write",
   })
-  // result.sufficient: boolean
-  // result.gaps: Array<{ scope, required, granted }>
-  // result.extras: Array<{ scope, granted }>
-})
+  // result.satisfied: boolean
+  // result.missing: Array<{ permission, required, granted }>
+  // result.extra:   Array<{ permission, level }>
+}).pipe(Effect.provide(TokenPermissionCheckerLive(granted)))
 ```
 
 Add this to the beginning of your action to catch permission issues early with a clear error message instead of cryptic API failures.
+
+When you provision a GitHub App token with `GitHubToken.provision`, you do not need to wire up `TokenPermissionChecker` yourself — see [App token provisioning](#app-token-provisioning) below.
+
+## App token provisioning
+
+When an action needs more than the repo-scoped workflow token, authenticate as a GitHub App. `GitHubToken.provision` generates an installation token, optionally verifies its scopes and persists it for later phases — all in one effect.
+
+```typescript
+import { Effect, Layer } from "effect"
+import {
+  Action,
+  GitHubAppLive,
+  GitHubToken,
+  OctokitAuthAppLive,
+} from "@savvy-web/github-action-effects"
+
+// provision and dispose need a GitHubApp layer in context
+const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive)
+
+// pre.ts — provision the token, verifying it grants the scopes we need
+Action.run(
+  GitHubToken.provision({
+    permissions: { contents: "write", pull_requests: "write" },
+  }).pipe(Effect.provide(appLayer)),
+)
+```
+
+With `permissions` set, `provision` runs the generated token through `TokenPermissionChecker` for you. A missing scope fails with `TokenPermissionError` and the rejected token is revoked, so you do not wire up the checker by hand.
+
+In `main`, build a `GitHubClient` from the persisted token with `GitHubToken.client()`; in `post`, revoke it with `GitHubToken.dispose()`. See [Advanced action: three-stage app](./02-advanced-action.md) for the full three-phase walkthrough.
 
 ## Workspace detection
 
@@ -170,6 +205,9 @@ import {
   ActionOutputs,
 } from "@savvy-web/github-action-effects"
 
+// `granted` is the permissions record from the token in use
+const granted = { contents: "write" }
+
 const program = Effect.gen(function* () {
   const dryRun = yield* DryRun
   const checker = yield* TokenPermissionChecker
@@ -216,7 +254,7 @@ Action.run(
       DryRunLive,
       NpmRegistryLive,
       PackagePublishLive,
-      TokenPermissionCheckerLive,
+      TokenPermissionCheckerLive(granted),
     ),
   },
 )
@@ -312,8 +350,10 @@ import {
   DryRunLive,
 } from "@savvy-web/github-action-effects"
 
+// GitHubClientLive is a namespace of constructors — call one to get a layer.
+// `fromEnv` reads process.env.GITHUB_TOKEN.
 const ExtendedLayer = Layer.mergeAll(
-  GitHubClientLive,
+  GitHubClientLive.fromEnv,
   GitHubReleaseLive,
   CommandRunnerLive,
   DryRunLive,

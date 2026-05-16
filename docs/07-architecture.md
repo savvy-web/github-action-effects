@@ -111,7 +111,7 @@ Provides:
 Action.run(program)
 
 // With additional layers
-Action.run(program, { layer: Layer.mergeAll(GitHubClientLive, DryRunLive) })
+Action.run(program, { layer: Layer.mergeAll(GitHubClientLive.fromEnv, DryRunLive) })
 ```
 
 It handles:
@@ -128,15 +128,14 @@ Each service is defined as a TypeScript interface paired with a `Context.Tag` fo
 
 ### ActionLogger
 
-Provides GitHub Actions-specific logging operations beyond what the Effect Logger handles:
+Provides the two GitHub Actions-specific logging operations that the Effect Logger does not handle on its own — collapsible groups and buffer-on-failure:
 
 | Method | Signature | Description |
 | --- | --- | --- |
 | `group` | `(name, effect) => Effect<A, E, R>` | Run an effect inside a collapsible log group |
 | `withBuffer` | `(label, effect) => Effect<A, E, R>` | Run an effect with buffered logging (buffer-on-failure pattern) |
-| `annotationError` | `(message, properties?) => Effect<void>` | Emit a file/line annotation (red, blocks PR checks) |
-| `annotationWarning` | `(message, properties?) => Effect<void>` | Emit a file/line annotation (yellow) |
-| `annotationNotice` | `(message, properties?) => Effect<void>` | Emit a file/line annotation (blue) |
+
+`ActionLogger` has no annotation methods. Workflow annotations come from logging through Effect itself: call `Effect.logError` or `Effect.logWarning` with `file`, `line` and `col` log annotations, and `ActionsLogger` turns those into `::error file=...,line=...::` and `::warning file=...::` workflow commands. See the `ActionsLogger` section above for the level-to-command mapping.
 
 ### ActionOutputs
 
@@ -189,7 +188,7 @@ All error types use `Data.TaggedError` for structural equality and pattern match
 - **Tag**: `"ActionStateError"`
 - **Fields**: `key` (string), `reason` (string), `rawValue` (string or undefined)
 
-Each error module exports a `Base` class (e.g. `ActionOutputErrorBase`) created by `Data.TaggedError(tag)`. The actual error class extends this base.
+Every error class in `src/errors/` extends `Data.TaggedError("Tag")<{ ... }>` directly. There is no intermediate `Base` class.
 
 ## GithubMarkdown namespace
 
@@ -227,7 +226,7 @@ See [services guide](./03-services.md) for usage examples of each service.
 
 | Service | Live Layer | Description |
 | --- | --- | --- |
-| GitHubClient | GitHubClientLive | Octokit REST/GraphQL with pagination (uses @octokit/rest) |
+| GitHubClient | GitHubClientLive (namespace) | Octokit REST/GraphQL with pagination (uses @octokit/rest) |
 | GitHubGraphQL | GitHubGraphQLLive | Typed GraphQL queries and mutations |
 | GitHubRelease | GitHubReleaseLive | Release CRUD and asset upload |
 | GitHubIssue | GitHubIssueLive | Issue management and PR linking |
@@ -238,6 +237,53 @@ See [services guide](./03-services.md) for usage examples of each service.
 | GitTag | GitTagLive | Tag CRUD via Git Data API |
 | GitBranch | GitBranchLive | Branch CRUD via Git Data API |
 | GitCommit | GitCommitLive | Tree/commit creation, ref updates, file deletions |
+
+Unlike the other services in this table, `GitHubClientLive` is not a bare `Layer`. It is a namespace object with three constructors, each producing a `GitHubClient` layer from a different credential source. This is covered in [Building a GitHubClient layer](#building-a-githubclient-layer) below.
+
+`GitHubApp` authenticates as a GitHub App. Its live layer, `GitHubAppLive`, depends on `OctokitAuthApp` — the wrapper around `@octokit/auth-app`. In production you compose the two: `Layer.provide(GitHubAppLive, OctokitAuthAppLive)`.
+
+#### Building a GitHubClient layer
+
+`GitHubClientLive` exposes three constructors. Each builds the same `GitHubClient` service from a different credential source, so the choice is about which identity the API calls run as:
+
+| Constructor | Signature | Result type |
+| --- | --- | --- |
+| `fromEnv` | property, no arguments | `Layer<GitHubClient, GitHubClientError>` |
+| `fromToken` | `(token: string \| Redacted<string>)` | `Layer<GitHubClient>` |
+| `fromApp` | `({ clientId, privateKey, installationId? })` | `Layer<GitHubClient, GitHubAppError>` |
+
+- `fromEnv` reads `process.env.GITHUB_TOKEN`, the repo-scoped workflow token. It fails with `GitHubClientError` if the variable is unset.
+- `fromToken` takes a token you constructed — a plain `string` or a `Redacted<string>`. It has no `process.env` dependency and cannot fail, so its error channel is `never`.
+- `fromApp` generates a fresh installation token from GitHub App credentials. It composes `GitHubAppLive` and `OctokitAuthAppLive` internally, so the consumer does not provide them. Each time the layer is built it generates a new token; for the pre/main/post pattern where one token is shared across phases, use `GitHubToken` instead.
+
+```typescript
+import { Effect } from "effect"
+import { GitHubClient, GitHubClientLive } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const client = yield* GitHubClient
+  const { owner, repo } = yield* client.repo
+  return yield* client.rest("repos.get", (octokit) =>
+    octokit.rest.repos.get({ owner, repo }),
+  )
+}).pipe(Effect.provide(GitHubClientLive.fromToken(process.env.MY_TOKEN ?? "")))
+```
+
+### GitHubToken namespace
+
+`GitHubToken` (in `src/GitHubToken.ts`) coordinates a single GitHub App installation token across the three phases of an action — `pre`, `main` and `post`. It is a namespace object with three members:
+
+| Member | Signature | Phase |
+| --- | --- | --- |
+| `provision` | `(options?: ProvisionOptions) => Effect<InstallationToken, ..., ActionState \| GitHubApp>` | `pre` |
+| `client` | `() => Layer<GitHubClient, ActionStateError, ActionState>` | `main` |
+| `dispose` | `() => Effect<void, ..., ActionState \| GitHubApp>` | `post` |
+
+`provision` generates an installation token, optionally verifies its `permissions` against a required set, then persists the token envelope to `ActionState` under an internal key. By default it reads App credentials from the `app-client-id` and `app-private-key` action inputs; pass `clientId` and `privateKey` on the options object to override. If verification or persistence fails the token is revoked, so a rejected token is never left orphaned.
+
+`client` reads the persisted token back out of `ActionState` and returns a `GitHubClient` layer built via `GitHubClientLive.fromToken`. `dispose` reads the token and revokes it, doing nothing if no token was persisted.
+
+`provision` and `dispose` need a `GitHubApp` layer in their requirements channel — `GitHubAppLive` composed with `OctokitAuthAppLive` in production, `GitHubAppTest` in tests. `client` needs only `ActionState`, which `ActionsRuntime.Default` already provides.
 
 ### Package management services
 
@@ -269,7 +315,7 @@ Every service has a corresponding test implementation in `src/layers/`. All foll
 
 ### Core test layers
 
-- `ActionLoggerTest` — captures groups, annotations (with type) and flushed buffers in `ActionLoggerTestState`.
+- `ActionLoggerTest` — captures log entries, groups and flushed buffers in `ActionLoggerTestState`.
 - `ActionOutputsTest` — captures outputs, summaries, exported variables, paths, failed messages and secrets in `ActionOutputsTestState`.
 - `ActionStateTest` — uses an in-memory `Map<string, string>`. Can be pre-populated to simulate state from a previous phase.
 - `ActionEnvironmentTest` — provides mock environment variables.

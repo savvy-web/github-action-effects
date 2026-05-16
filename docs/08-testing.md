@@ -6,8 +6,10 @@ This guide covers how to test GitHub Actions built with `@savvy-web/github-actio
 
 Test layers come in two shapes:
 
-- **Namespace objects** (`ActionLoggerTest`, `ActionOutputsTest`, `ActionStateTest`) expose an `empty()` function that creates a mutable state container and a `layer()` function that builds an Effect `Layer` backed by that state. After running your effect, you inspect the state to verify what happened.
+- **Namespace objects** (`ActionLoggerTest`, `ActionOutputsTest`, `ActionStateTest`, `GitHubAppTest`, most others) expose an `empty()` function that creates a mutable state container and a `layer()` function that builds an Effect `Layer` backed by that state. After running your effect, you inspect the state to verify what happened.
 - **Direct layers** (`ActionEnvironmentTest`) return a `Layer` directly.
+
+One namespace breaks the pattern: `GitHubClientTest.empty()` returns a `Layer`, not a state container — see [Testing GitHubClient consumers](#testing-githubclient-consumers).
 
 ## Importing for tests
 
@@ -73,7 +75,6 @@ const layer = ActionLoggerTest.layer(state)
 | --- | --- | --- |
 | `entries` | `Array<{ level: string, message: string }>` | Individual log entries |
 | `groups` | `Array<{ name: string, entries: Array<{ level, message }> }>` | Log groups opened via `group` |
-| `annotations` | `Array<{ type: string, message: string, properties?: AnnotationProperties }>` | File/line annotations (type is `"error"`, `"warning"`, or `"notice"`) |
 | `flushedBuffers` | `Array<{ label: string, entries: Array<string> }>` | Buffers flushed on failure via `withBuffer` |
 
 ### ActionStateTest
@@ -298,31 +299,181 @@ describe("withBuffer", () => {
 })
 ```
 
-### Testing annotations
+## Testing GitHubClient consumers
+
+`GitHubClientTest` has two members, but they do not follow the `empty()`/`layer()` split used by the other namespaces. `empty()` returns a `Layer` directly, ready to provide:
 
 ```typescript
 import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
-import { ActionLogger, ActionLoggerTest } from "@savvy-web/github-action-effects/testing"
+import { GitHubClient, GitHubClientTest } from "@savvy-web/github-action-effects/testing"
 
-describe("annotations", () => {
-  it("records error annotation with properties", async () => {
-    const state = ActionLoggerTest.empty()
-    await Effect.gen(function* () {
-      const logger = yield* ActionLogger
-      yield* logger.annotationError("Check failed", {
-        file: "src/index.ts",
-        startLine: 10,
-      })
-    }).pipe(Effect.provide(ActionLoggerTest.layer(state)), Effect.runPromise)
+describe("repo context", () => {
+  it("reads the default test repo", async () => {
+    const result = await Effect.gen(function* () {
+      const client = yield* GitHubClient
+      return yield* client.repo
+    }).pipe(Effect.provide(GitHubClientTest.empty()), Effect.runPromise)
 
-    expect(state.annotations).toEqual([
-      {
-        type: "error",
-        message: "Check failed",
-        properties: { file: "src/index.ts", startLine: 10 },
-      },
-    ])
+    expect(result).toEqual({ owner: "test-owner", repo: "test-repo" })
+  })
+})
+```
+
+Because `empty()` is already a layer, do not wrap it — `GitHubClientTest.layer(GitHubClientTest.empty())` is a type error. Use `layer(state)` only when you build a `GitHubClientTestState` yourself.
+
+To stub API responses, build the state and record them. The state has four fields: `restResponses` (a `Map` keyed by the operation string passed to `client.rest`), `graphqlResponses` (keyed by the GraphQL query string), `paginateResponses` (keyed by the operation string, value is an array of pages) and `repo`:
+
+```typescript
+import { Effect } from "effect"
+import { describe, expect, it } from "vitest"
+import { GitHubClient, GitHubClientTest } from "@savvy-web/github-action-effects/testing"
+import type { GitHubClientTestState } from "@savvy-web/github-action-effects/testing"
+
+describe("rest calls", () => {
+  it("returns the recorded response for an operation", async () => {
+    const state: GitHubClientTestState = {
+      restResponses: new Map([["repos.get", { data: { default_branch: "main" } }]]),
+      graphqlResponses: new Map(),
+      paginateResponses: new Map(),
+      repo: { owner: "acme", repo: "widget" },
+    }
+
+    const result = await Effect.gen(function* () {
+      const client = yield* GitHubClient
+      const { owner, repo } = yield* client.repo
+      return yield* client.rest("repos.get", (octokit: any) =>
+        octokit.rest.repos.get({ owner, repo }),
+      )
+    }).pipe(Effect.provide(GitHubClientTest.layer(state)), Effect.runPromise)
+
+    expect(result).toEqual({ default_branch: "main" })
+  })
+})
+```
+
+A `rest`, `graphql` or `paginate` call with no recorded entry fails with a `GitHubClientError`, so a missing stub surfaces as a clear test failure rather than a silent `undefined`.
+
+## Testing GitHub App token lifecycle
+
+Actions that use `GitHubToken` need `GitHubApp` and `ActionState` in context. Provide `GitHubAppTest` and `ActionStateTest` to exercise `provision`, `client` and `dispose` without a real GitHub App.
+
+`GitHubAppTest` follows the `empty()`/`layer()` pattern. Its state has three fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `generateCalls` | `Array<{ appId, privateKey, installationId? }>` | Recorded `generateToken` calls |
+| `revokeCalls` | `Array<string>` | Tokens passed to `revokeToken` |
+| `tokenToReturn` | `InstallationToken` | The token every `generateToken` call returns |
+
+`GitHubAppTest.empty()` seeds `tokenToReturn` with a default token (`ghs_test_token_123`, empty `permissions`). Override `tokenToReturn` to test permission verification.
+
+Testing `provision` — supply the App credentials and assert the token was generated and persisted:
+
+```typescript
+import { Config, ConfigProvider, Effect, Layer } from "effect"
+import { describe, expect, it } from "vitest"
+import {
+  ActionStateTest,
+  GitHubAppTest,
+  GitHubToken,
+} from "@savvy-web/github-action-effects/testing"
+
+describe("GitHubToken.provision", () => {
+  it("generates a token and persists it", async () => {
+    const appState = GitHubAppTest.empty()
+    const stateState = ActionStateTest.empty()
+
+    await GitHubToken.provision({ clientId: "client-id", privateKey: "key" }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          GitHubAppTest.layer(appState),
+          ActionStateTest.layer(stateState),
+        ),
+      ),
+      Effect.runPromise,
+    )
+
+    expect(appState.generateCalls).toHaveLength(1)
+    expect(stateState.entries.size).toBe(1)
+  })
+})
+```
+
+`provision` defaults its credentials to the `app-client-id` and `app-private-key` action inputs, read through Effect's `Config` API. To exercise that default path instead of passing options, install a `ConfigProvider` that supplies those inputs.
+
+Testing `client` — `GitHubToken.client()` returns a `Layer` and needs `ActionState` pre-populated with the token envelope a prior `provision` would have written. The internal state key is not part of the public API, so the most robust way to set this up is to run `provision` first against a shared `ActionStateTest` state, then provide that same state to `client()`:
+
+```typescript
+import { Effect, Layer } from "effect"
+import { describe, expect, it } from "vitest"
+import {
+  ActionStateTest,
+  GitHubAppTest,
+  GitHubClient,
+  GitHubToken,
+} from "@savvy-web/github-action-effects/testing"
+
+describe("GitHubToken.client", () => {
+  it("builds a client from the provisioned token", async () => {
+    const appState = GitHubAppTest.empty()
+    const stateState = ActionStateTest.empty()
+
+    // pre phase: provision writes the token envelope into stateState
+    await GitHubToken.provision({ clientId: "client-id", privateKey: "key" }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          GitHubAppTest.layer(appState),
+          ActionStateTest.layer(stateState),
+        ),
+      ),
+      Effect.runPromise,
+    )
+
+    // main phase: client() reads that same state back
+    const clientLayer = Layer.provide(
+      GitHubToken.client(),
+      ActionStateTest.layer(stateState),
+    )
+
+    const result = await Effect.gen(function* () {
+      const client = yield* GitHubClient
+      return yield* client.repo
+    }).pipe(Effect.provide(clientLayer), Effect.runPromise)
+
+    expect(result.owner).toBeDefined()
+  })
+})
+```
+
+`dispose` works the same way as `provision`: provide `GitHubAppTest` and `ActionStateTest`, then assert the token landed in `appState.revokeCalls`.
+
+### TokenPermissionChecker
+
+`provision` verifies token scopes through `TokenPermissionChecker` when you pass a `permissions` option, building the checker internally from the generated token's `permissions`. To test that path directly — or to test an action that uses `TokenPermissionChecker` on its own — use `TokenPermissionCheckerTest`. Its state has `grantedPermissions` (a `Record<string, string>` you populate with the scopes the token holds) and `checkCalls` (the requirement sets passed to `check`, `assertSufficient` and `assertExact`).
+
+```typescript
+import { Effect } from "effect"
+import { describe, expect, it } from "vitest"
+import {
+  TokenPermissionChecker,
+  TokenPermissionCheckerTest,
+} from "@savvy-web/github-action-effects/testing"
+
+describe("permission checks", () => {
+  it("passes when the token grants enough", async () => {
+    const state = TokenPermissionCheckerTest.empty()
+    state.grantedPermissions.contents = "write"
+
+    const result = await Effect.gen(function* () {
+      const checker = yield* TokenPermissionChecker
+      return yield* checker.assertSufficient({ contents: "write" })
+    }).pipe(
+      Effect.provide(TokenPermissionCheckerTest.layer(state)),
+      Effect.runPromise,
+    )
+
+    expect(result.satisfied).toBe(true)
   })
 })
 ```
