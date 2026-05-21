@@ -358,10 +358,11 @@ const fromToken = (token: Redacted.Redacted<string>, resilience?: ResilienceOpti
  * client. Composes `OctokitAuthAppLive` + `GitHubAppLive` internally.
  *
  * Builds as a scoped layer: the minted installation token is revoked on scope
- * close (best-effort `DELETE /installation/token`). Consumers on
- * `ActionsRuntime.Default` / `Action.run` (which wrap in `Effect.scoped`) are
- * unaffected; a consumer providing this via a bare `Effect.provide` must wrap in
- * `Effect.scoped` to satisfy the build-time `Scope` requirement.
+ * close (best-effort `DELETE /installation/token`). The scope is managed by the
+ * layer itself — `Scope` is not in the requirements channel — so a plain
+ * `Effect.provide` revokes the token when the provided program finishes. An
+ * explicit `Effect.scoped` is only needed when sharing one token across
+ * sub-programs via `Layer.memoize` (see the example below).
  *
  * Resilient by default; pass `resilience` to tune or disable retries.
  *

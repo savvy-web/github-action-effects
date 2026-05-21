@@ -236,14 +236,17 @@ import { GitHubClient, GitHubClientLive } from "@savvy-web/github-action-effects
 const program = Effect.gen(function* () {
   const client = yield* GitHubClient
 
-  // REST API call
+  // REST API call. The callback receives `octokit: unknown`, so narrow it with
+  // a structural cast (or `octokit as Octokit` from @octokit/rest) before use.
   const release = yield* client.rest("getLatestRelease", (octokit) =>
-    octokit.repos.getLatestRelease({ owner: "org", repo: "repo" })
+    (octokit as { rest: { repos: { getLatestRelease: (p: unknown) => Promise<{ data: { id: number } }> } } })
+      .rest.repos.getLatestRelease({ owner: "org", repo: "repo" }),
   )
 
   // Paginated REST call — eager, collects every page into one array
   const issues = yield* client.paginate("listIssues", (octokit, page, perPage) =>
-    octokit.issues.listForRepo({ owner: "org", repo: "repo", page, per_page: perPage })
+    (octokit as { rest: { issues: { listForRepo: (p: unknown) => Promise<{ data: Array<{ number: number }> }> } } })
+      .rest.issues.listForRepo({ owner: "org", repo: "repo", page, per_page: perPage }),
   )
 
   // Repository context
@@ -255,7 +258,7 @@ const program = Effect.gen(function* () {
 
 - `GitHubClientLive.fromEnv()` — a `Layer<GitHubClient, GitHubClientError>` that reads the ambient `process.env.GITHUB_TOKEN`, the repo-scoped workflow token. Call it with no arguments, or pass `ResilienceOptions` to tune retries.
 - `GitHubClientLive.fromToken(token)` — a `Layer<GitHubClient>` built from an explicit token with no `process.env` dependency. The token must be a `Redacted<string>` — wrap a bare string with `Redacted.make(...)` at the call site.
-- `GitHubClientLive.fromApp({ clientId, privateKey, installationId? })` — a `Layer<GitHubClient, GitHubAppError, HttpClient.HttpClient>` that mints an installation token from GitHub App credentials. `privateKey` is a `Redacted<string>`. It is a scoped layer: the minted token is revoked on scope close, so a bare `Effect.provide` must be wrapped in `Effect.scoped` (the `ActionsRuntime.Default` / `Action.run` path already scopes for you). It composes `GitHubAppLive` and `OctokitAuthAppLive` internally, leaving only `HttpClient.HttpClient` to provide — use `FetchHttpClient.layer` or `ActionsRuntime.Default`.
+- `GitHubClientLive.fromApp({ clientId, privateKey, installationId? })` — a `Layer<GitHubClient, GitHubAppError, HttpClient.HttpClient>` that mints an installation token from GitHub App credentials. `privateKey` is a `Redacted<string>`. It is a scoped layer: the minted token is revoked when its scope closes. The scope is managed by the layer itself — `Scope` is not in the requirements channel — so a plain `Effect.provide` revokes the token automatically when the provided program finishes. Reach for `Effect.scoped` only when sharing one token across sub-programs with `Layer.memoize`. It composes `GitHubAppLive` and `OctokitAuthAppLive` internally, leaving only `HttpClient.HttpClient` to provide — use `FetchHttpClient.layer` or `ActionsRuntime.Default`.
 
 ```typescript
 import { Effect, Redacted } from "effect"
@@ -269,7 +272,8 @@ const program = Effect.gen(function* () {
   Effect.provide(GitHubClientLive.fromToken(Redacted.make(process.env.MY_TOKEN ?? ""))),
 )
 
-// fromApp is scoped — wrap in Effect.scoped and provide an HttpClient.
+// fromApp is scoped — provide an HttpClient; the installation token is revoked
+// when `appProgram` finishes, so a plain Effect.provide needs no Effect.scoped.
 const appProgram = Effect.gen(function* () {
   const client = yield* GitHubClient
   const { owner, repo } = yield* client.repo
@@ -278,7 +282,6 @@ const appProgram = Effect.gen(function* () {
     GitHubClientLive.fromApp({ clientId, privateKey: Redacted.make(pem) }),
   ),
   Effect.provide(FetchHttpClient.layer),
-  Effect.scoped,
 )
 ```
 
@@ -299,7 +302,8 @@ const program = Effect.gen(function* () {
   const recent = yield* client.paginateStream<{ number: number; closed_at: string | null }>(
     "listIssues",
     (octokit, page, perPage) =>
-      octokit.issues.listForRepo({ owner: "org", repo: "repo", state: "all", page, per_page: perPage }),
+      (octokit as { rest: { issues: { listForRepo: (p: unknown) => Promise<{ data: Array<{ number: number; closed_at: string | null }> }> } } })
+        .rest.issues.listForRepo({ owner: "org", repo: "repo", state: "all", page, per_page: perPage }),
   ).pipe(
     Stream.takeWhile((issue) => issue.closed_at === null || issue.closed_at > "2026-01-01"),
     Stream.runCollect,

@@ -259,7 +259,7 @@ The 2.0 release changes a handful of layer signatures. If you wire through `Acti
 
 ### Scopes and the fromApp / fromEnv constructors
 
-`GitHubClientLive.fromApp` is now a scoped layer: it acquires the installation token when built and revokes it on scope close, so building the layer needs a `Scope`. Wrap a bare `Effect.provide` in `Effect.scoped`. `fromApp` also requires `HttpClient.HttpClient` and takes `privateKey` as a `Redacted<string>`:
+`GitHubClientLive.fromApp` is now a scoped layer: it acquires the installation token when built and revokes it on scope close. The scope is managed by the layer itself — `Scope` is not in the layer's requirements channel — so a plain `Effect.provide` revokes the token automatically when the provided program finishes. You only need an explicit `Effect.scoped` wrapper when you share one token across sub-programs with `Layer.memoize`. `fromApp` also requires `HttpClient.HttpClient` and takes `privateKey` as a `Redacted<string>`:
 
 ```typescript
 import { Effect, Redacted } from "effect"
@@ -274,8 +274,9 @@ const program = Effect.gen(function* () {
     GitHubClientLive.fromApp({ clientId, privateKey: Redacted.make(pem) }),
   ),
   Effect.provide(FetchHttpClient.layer), // 2.0: fromApp needs an HttpClient
-  Effect.scoped, // 2.0: fromApp acquires the token in a scope
 )
+// The installation token is revoked when `program` finishes — no Effect.scoped
+// needed for a plain provide. Use Effect.scoped with Layer.memoize(fromApp(...)).
 ```
 
 `GitHubClientLive.fromEnv` is now a function — call `fromEnv()` where you previously referenced the bare property.
