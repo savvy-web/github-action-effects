@@ -5,9 +5,9 @@ An Effect library for building GitHub Actions. It covers structured logging, typ
 ## Install
 
 ```bash
-npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
+npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node
 # or
-pnpm add @savvy-web/github-action-effects effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
+pnpm add @savvy-web/github-action-effects effect @effect/platform @effect/platform-node
 ```
 
 ## Pages
