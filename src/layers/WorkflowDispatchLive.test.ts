@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer } from "effect";
+import { Duration, Effect, Exit, Fiber, Layer, Stream, TestClock, TestContext } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
 import { GitHubClient } from "../services/GitHubClient.js";
@@ -28,10 +28,12 @@ const mockClient: typeof GitHubClient.Service = {
 					status: undefined,
 					reason: e instanceof Error ? e.message : String(e),
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 		}).pipe(Effect.map((r) => r.data)),
 	graphql: () => Effect.die("not used"),
 	paginate: () => Effect.die("not used"),
+	paginateStream: () => Stream.die("not used"),
 	repo: Effect.succeed({ owner: "test-owner", repo: "test-repo" }),
 };
 
@@ -206,6 +208,73 @@ describe("WorkflowDispatchLive", () => {
 				),
 			);
 			expect(Exit.isFailure(exit)).toBe(true);
+		});
+	});
+
+	describe("dispatchAndWait (TestClock)", () => {
+		const futureDate = "2099-01-01T00:00:00.000Z";
+
+		it("resolves the conclusion after pending polls", async () => {
+			mockCreateWorkflowDispatch.mockResolvedValue({ data: {} });
+			let callCount = 0;
+			mockListWorkflowRuns.mockImplementation(() => {
+				callCount++;
+				const run =
+					callCount < 3
+						? { id: 1, status: "in_progress", conclusion: null, created_at: futureDate }
+						: { id: 1, status: "completed", conclusion: "success", created_at: futureDate };
+				return Promise.resolve({ data: { workflow_runs: [run] } });
+			});
+
+			const exit = await Effect.gen(function* () {
+				const fiber = yield* Effect.fork(
+					Effect.provide(
+						Effect.flatMap(WorkflowDispatch, (svc) =>
+							svc.dispatchAndWait("deploy.yml", "main", undefined, { intervalMs: 10_000, timeoutMs: 300_000 }),
+						),
+						testLayer,
+					),
+				);
+				// Two pending polls are spaced 10s apart.
+				yield* TestClock.adjust(Duration.seconds(30));
+				return yield* Fiber.join(fiber);
+			}).pipe(Effect.exit, Effect.provide(TestContext.TestContext), Effect.runPromise);
+
+			expect(exit._tag).toBe("Success");
+			if (Exit.isSuccess(exit)) {
+				expect(exit.value).toBe("success");
+			}
+			expect(callCount).toBeGreaterThanOrEqual(3);
+		});
+
+		it("times out after the configured timeout", async () => {
+			mockCreateWorkflowDispatch.mockResolvedValue({ data: {} });
+			mockListWorkflowRuns.mockImplementation(() =>
+				Promise.resolve({
+					data: { workflow_runs: [{ id: 1, status: "in_progress", conclusion: null, created_at: futureDate }] },
+				}),
+			);
+
+			const exit = await Effect.gen(function* () {
+				const fiber = yield* Effect.fork(
+					Effect.provide(
+						Effect.flatMap(WorkflowDispatch, (svc) =>
+							svc.dispatchAndWait("deploy.yml", "main", undefined, { intervalMs: 10_000, timeoutMs: 30_000 }),
+						),
+						testLayer,
+					),
+				);
+				// Advance well past the timeout budget.
+				yield* TestClock.adjust(Duration.seconds(120));
+				return yield* Fiber.join(fiber);
+			}).pipe(Effect.exit, Effect.provide(TestContext.TestContext), Effect.runPromise);
+
+			expect(Exit.isFailure(exit)).toBe(true);
+			if (Exit.isFailure(exit)) {
+				const cause = JSON.stringify(exit.cause);
+				expect(cause).toContain("Timed out after");
+				expect(cause).toContain('"operation":"poll"');
+			}
 		});
 	});
 });

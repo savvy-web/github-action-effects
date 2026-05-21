@@ -15,4 +15,12 @@ export class GitHubClientError extends Data.TaggedError("GitHubClientError")<{
 
 	/** Whether this error is retryable (e.g., rate limit, 5xx). */
 	readonly retryable: boolean;
+
+	/**
+	 * Server-advised delay before retrying, in milliseconds, if the response
+	 * carried a `Retry-After` header or an exhausted `x-ratelimit-reset`.
+	 * `undefined` when the server gave no explicit hint (the resilient client
+	 * then falls back to its exponential backoff).
+	 */
+	readonly retryAfterMs: number | undefined;
 }> {}

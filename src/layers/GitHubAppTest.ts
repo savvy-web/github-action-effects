@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Redacted } from "effect";
 import { GitHubAppError } from "../errors/GitHubAppError.js";
 import type { InstallationToken } from "../services/GitHubApp.js";
 import { GitHubApp } from "../services/GitHubApp.js";
@@ -10,8 +10,8 @@ import { formatBotIdentity } from "../utils/botIdentity.js";
  * @public
  */
 export interface GitHubAppTestState {
-	readonly generateCalls: Array<{ appId: string; privateKey: string; installationId?: number }>;
-	readonly revokeCalls: Array<string>;
+	readonly generateCalls: Array<{ appId: string; privateKey: Redacted.Redacted<string>; installationId?: number }>;
+	readonly revokeCalls: Array<Redacted.Redacted<string>>;
 	readonly tokenToReturn: InstallationToken;
 	/**
 	 * Identity returned by `resolveAppIdentity`. When omitted, `resolveAppIdentity`
@@ -24,7 +24,10 @@ const makeTestGitHubApp = (state: GitHubAppTestState): typeof GitHubApp.Service 
 	const impl: typeof GitHubApp.Service = {
 		generateToken: (appId, privateKey, installationId) =>
 			Effect.sync(() => {
-				const call: { appId: string; privateKey: string; installationId?: number } = { appId, privateKey };
+				const call: { appId: string; privateKey: Redacted.Redacted<string>; installationId?: number } = {
+					appId,
+					privateKey,
+				};
 				if (installationId !== undefined) {
 					call.installationId = installationId;
 				}
@@ -74,7 +77,7 @@ export const GitHubAppTest = {
 		generateCalls: [],
 		revokeCalls: [],
 		tokenToReturn: {
-			token: "ghs_test_token_123",
+			token: Redacted.make("ghs_test_token_123"),
 			expiresAt: "2099-01-01T00:00:00Z",
 			installationId: 12345,
 			permissions: {},

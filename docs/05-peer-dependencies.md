@@ -22,16 +22,13 @@ These must be installed for the library to function:
 | `effect` | Core dependency — services, layers, schemas, errors, tracing |
 | `@effect/platform` | `FileSystem`, `Path` and platform abstractions |
 | `@effect/platform-node` | Node.js platform implementation |
-| `@effect/cluster` | Required peer of `@effect/platform-node` |
-| `@effect/rpc` | Required peer of `@effect/platform-node` |
-| `@effect/sql` | Required peer of `@effect/platform-node` |
 
-The `@effect/cluster`, `@effect/rpc` and `@effect/sql` packages are transitive peers required by `@effect/platform-node`. They are not used directly by your action code.
+The library requires exactly these three Effect peers and nothing else.
 
 Install all required peers at once:
 
 ```bash
-npm install effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
+npm install effect @effect/platform @effect/platform-node
 ```
 
 ## Direct dependencies (not peers)
@@ -50,7 +47,7 @@ These are regular dependencies bundled with the library:
 ## Typical installation
 
 ```bash
-npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node @effect/cluster @effect/rpc @effect/sql
+npm install @savvy-web/github-action-effects effect @effect/platform @effect/platform-node
 ```
 
 There are no optional peers. Every service works with the packages listed above.

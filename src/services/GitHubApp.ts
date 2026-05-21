@@ -1,4 +1,4 @@
-import type { Effect } from "effect";
+import type { Effect, Redacted } from "effect";
 import { Context, Schema } from "effect";
 import type { GitHubAppError } from "../errors/GitHubAppError.js";
 
@@ -18,7 +18,11 @@ export interface BotIdentity {
  * @public
  */
 export const InstallationToken = Schema.Struct({
-	token: Schema.String,
+	// `Schema.Redacted(Schema.String)` decodes a stored string into
+	// `Redacted<string>` (so application code can never accidentally
+	// log/echo/`String()` the token) and encodes back to the raw string for
+	// the `GITHUB_STATE` env file. The on-disk bytes are unchanged.
+	token: Schema.Redacted(Schema.String),
 	expiresAt: Schema.String,
 	installationId: Schema.Number,
 	appSlug: Schema.optional(Schema.String),
@@ -47,12 +51,12 @@ export class GitHubApp extends Context.Tag("github-action-effects/GitHubApp")<
 		/** Generate an installation token for the GitHub App. */
 		readonly generateToken: (
 			appId: string,
-			privateKey: string,
+			privateKey: Redacted.Redacted<string>,
 			installationId?: number,
 		) => Effect.Effect<InstallationToken, GitHubAppError>;
 
 		/** Revoke a previously generated installation token. */
-		readonly revokeToken: (token: string) => Effect.Effect<void, GitHubAppError>;
+		readonly revokeToken: (token: Redacted.Redacted<string>) => Effect.Effect<void, GitHubAppError>;
 
 		/**
 		 * Resolve the App's public identity — slug, bot user ID, and name —
@@ -64,8 +68,8 @@ export class GitHubApp extends Context.Tag("github-action-effects/GitHubApp")<
 		 */
 		readonly resolveAppIdentity: (
 			appId: string,
-			privateKey: string,
-			installationToken?: string,
+			privateKey: Redacted.Redacted<string>,
+			installationToken?: Redacted.Redacted<string>,
 		) => Effect.Effect<{ appSlug: string; appUserId: number; appName: string }, GitHubAppError>;
 
 		/**
@@ -88,8 +92,8 @@ export class GitHubApp extends Context.Tag("github-action-effects/GitHubApp")<
 		 */
 		readonly withToken: <A, E, R>(
 			appId: string,
-			privateKey: string,
-			effect: (token: string) => Effect.Effect<A, E, R>,
+			privateKey: Redacted.Redacted<string>,
+			effect: (token: Redacted.Redacted<string>) => Effect.Effect<A, E, R>,
 		) => Effect.Effect<A, E | GitHubAppError, R>;
 	}
 >() {}

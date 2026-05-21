@@ -1,4 +1,4 @@
-import type { Effect } from "effect";
+import type { Effect, Stream } from "effect";
 import { Context } from "effect";
 import type { GitHubClientError } from "../errors/GitHubClientError.js";
 
@@ -30,6 +30,19 @@ export class GitHubClient extends Context.Tag("github-action-effects/GitHubClien
 			fn: (octokit: unknown, page: number, perPage: number) => Promise<{ data: T[] }>,
 			options?: { perPage?: number; maxPages?: number },
 		) => Effect.Effect<Array<T>, GitHubClientError>;
+
+		/**
+		 * Paginate a REST API call as a Stream, one page's worth of items at a
+		 * time. Lets consumers `Stream.takeWhile` / `Stream.take` and stop early
+		 * without fetching or buffering the remaining pages. The eager `paginate`
+		 * collects all pages; prefer `paginateStream` for large or
+		 * early-terminating scans.
+		 */
+		readonly paginateStream: <T>(
+			operation: string,
+			fn: (octokit: unknown, page: number, perPage: number) => Promise<{ data: T[] }>,
+			options?: { perPage?: number; maxPages?: number },
+		) => Stream.Stream<T, GitHubClientError>;
 
 		/**
 		 * Get the repository context (owner and repo name).

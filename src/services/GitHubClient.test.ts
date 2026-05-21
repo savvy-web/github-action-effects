@@ -105,6 +105,7 @@ describe("GitHubClient", () => {
 				status: 404,
 				reason: "Not Found",
 				retryable: false,
+				retryAfterMs: undefined,
 			});
 			expect(error._tag).toBe("GitHubClientError");
 			expect(error.operation).toBe("repos.get");
@@ -119,8 +120,20 @@ describe("GitHubClient", () => {
 				status: 429,
 				reason: "Rate limit exceeded",
 				retryable: true,
+				retryAfterMs: undefined,
 			});
 			expect(error.retryable).toBe(true);
+		});
+
+		it("carries an optional retryAfterMs hint", () => {
+			const error = new GitHubClientError({
+				operation: "repos.list",
+				status: 429,
+				reason: "Secondary rate limit",
+				retryable: true,
+				retryAfterMs: 5000,
+			});
+			expect(error.retryAfterMs).toBe(5000);
 		});
 
 		it("supports undefined status", () => {
@@ -129,6 +142,7 @@ describe("GitHubClient", () => {
 				status: undefined,
 				reason: "Network error",
 				retryable: false,
+				retryAfterMs: undefined,
 			});
 			expect(error.status).toBeUndefined();
 		});

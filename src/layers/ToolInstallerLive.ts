@@ -78,6 +78,13 @@ const spawnEffect = (
 				);
 			}
 		});
+
+		// On interruption (timeout/race/Fiber.interrupt), SIGTERM the extraction
+		// child so it is not leaked. Safe no-op if the process already exited;
+		// only runs on interrupt, not on a normal close.
+		return Effect.sync(() => {
+			child.kill();
+		});
 	});
 
 const SOCKET_TIMEOUT_MS = 180_000; // 3 minutes, matches @actions/tool-cache
@@ -86,6 +93,8 @@ const USER_AGENT = "github-action-effects";
 
 const httpRequest = (url: string, redirectCount = 0): Effect.Effect<string, ToolInstallerError> =>
 	Effect.async<string, ToolInstallerError>((resume) => {
+		// Hoisted so the interruption finalizer can clean up a partial download.
+		let tempFile: string | undefined;
 		if (redirectCount > MAX_REDIRECTS) {
 			resume(
 				Effect.fail(
@@ -130,12 +139,13 @@ const httpRequest = (url: string, redirectCount = 0): Effect.Effect<string, Tool
 				return;
 			}
 
-			const tempFile = join(tmpdir(), `download-${randomUUID()}`);
-			const writeStream = createWriteStream(tempFile);
+			tempFile = join(tmpdir(), `download-${randomUUID()}`);
+			const downloadTarget = tempFile;
+			const writeStream = createWriteStream(downloadTarget);
 			pipeline(response, writeStream)
-				.then(() => resume(Effect.succeed(tempFile)))
+				.then(() => resume(Effect.succeed(downloadTarget)))
 				.catch((error: unknown) => {
-					unlink(tempFile).catch(() => {});
+					unlink(downloadTarget).catch(() => {});
 					resume(
 						Effect.fail(
 							new ToolInstallerError({
@@ -165,7 +175,40 @@ const httpRequest = (url: string, redirectCount = 0): Effect.Effect<string, Tool
 				),
 			);
 		});
+
+		// On interruption: abort the in-flight request socket and remove any
+		// partial download. `unlink` ENOENT (file never created) is swallowed.
+		// Each recursive redirect hop is its own `Effect.async` with its own
+		// finalizer, so a mid-redirect interrupt still aborts that hop's `req`.
+		return Effect.sync(() => {
+			req.destroy();
+			if (tempFile !== undefined) {
+				void unlink(tempFile).catch(() => {});
+			}
+		});
 	});
+
+/**
+ * Predicate gating the `download` retry schedule: a `ToolInstallerError` is
+ * retryable when its HTTP status is 5xx / 408 / 429, or (for transport faults
+ * with no status) when its reason names a known transient network error.
+ *
+ * Extracted as a pure function so the backoff timing can be exercised under
+ * `TestClock` without standing up a `node:https` mock (see Q3 in the WS3 spec).
+ *
+ * @internal
+ */
+export const isRetryableDownloadError = (error: ToolInstallerError): boolean => {
+	if (error.statusCode !== undefined) {
+		return error.statusCode >= 500 || error.statusCode === 408 || error.statusCode === 429;
+	}
+	return (
+		error.reason.includes("Socket timeout") ||
+		error.reason.includes("ECONNRESET") ||
+		error.reason.includes("ECONNREFUSED") ||
+		error.reason.includes("ETIMEDOUT")
+	);
+};
 
 /**
  * Live implementation of ToolInstaller using `node:https`/`node:http`,
@@ -187,17 +230,7 @@ export const ToolInstallerLive: Layer.Layer<ToolInstaller> = Layer.succeed(ToolI
 		httpRequest(url).pipe(
 			Effect.retry(
 				Schedule.intersect(Schedule.exponential("1 second"), Schedule.recurs(2)).pipe(
-					Schedule.whileInput((error: ToolInstallerError) => {
-						if (error.statusCode !== undefined) {
-							return error.statusCode >= 500 || error.statusCode === 408 || error.statusCode === 429;
-						}
-						return (
-							error.reason.includes("Socket timeout") ||
-							error.reason.includes("ECONNRESET") ||
-							error.reason.includes("ECONNREFUSED") ||
-							error.reason.includes("ETIMEDOUT")
-						);
-					}),
+					Schedule.whileInput(isRetryableDownloadError),
 				),
 			),
 		),

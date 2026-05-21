@@ -27,6 +27,45 @@ const formatOutputTail = (output: string): string => {
 };
 
 /**
+ * Argument tokens that mark the *next* positional as a secret to be scrubbed.
+ *
+ * @internal
+ */
+const SECRET_FLAG_TOKENS = new Set(["_authtoken", "_password", "--auth", "--password", "--token", "--otp"]);
+
+/** True when a positional looks like an npm registry `_authToken` config key. */
+const isAuthTokenKey = (arg: string): boolean => /:_authtoken$/i.test(arg) || /:_password$/i.test(arg);
+
+/**
+ * Replace any argument that is (or immediately follows) a known auth-token
+ * positional with `"***"`. Non-breaking backstop so a secret accidentally
+ * passed as a command argument cannot leak through `CommandRunnerError.message`
+ * or the stored `args`.
+ *
+ * @internal
+ */
+export const scrubAuthArgs = (args: ReadonlyArray<string>): ReadonlyArray<string> => {
+	const out: string[] = [];
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i] ?? "";
+		const lower = arg.toLowerCase();
+		out.push(arg);
+		// `npm config set <key> <value>`: redact the value following an auth key.
+		if (isAuthTokenKey(arg) && i + 1 < args.length) {
+			out.push("***");
+			i++;
+			continue;
+		}
+		// `--token <value>` style flags: redact the following value.
+		if (SECRET_FLAG_TOKENS.has(lower) && i + 1 < args.length) {
+			out.push("***");
+			i++;
+		}
+	}
+	return out;
+};
+
+/**
  * Error when a shell command fails or produces unexpected output.
  */
 export class CommandRunnerError extends Data.TaggedError("CommandRunnerError")<{
@@ -53,7 +92,11 @@ export class CommandRunnerError extends Data.TaggedError("CommandRunnerError")<{
 	readonly reason: string;
 }> {
 	get message(): string {
-		const cmd = this.args.length > 0 ? `${this.command} ${this.args.join(" ")}` : this.command;
+		// Scrub any known auth-token argument so a secret never reaches the
+		// rendered message (defense in depth — callers should also scrub the
+		// stored `args`).
+		const safeArgs = scrubAuthArgs(this.args);
+		const cmd = safeArgs.length > 0 ? `${this.command} ${safeArgs.join(" ")}` : this.command;
 		const parts = [`Command "${cmd}" failed`];
 		if (this.exitCode !== undefined) parts.push(`(exit ${this.exitCode})`);
 		// Prefer stderr (where errors live); fall back to stdout for tools that

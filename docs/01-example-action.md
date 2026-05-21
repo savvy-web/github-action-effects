@@ -6,8 +6,7 @@ This tutorial builds one complete GitHub Action with `@savvy-web/github-action-e
 
 ```bash
 npm install @savvy-web/github-action-effects effect \
-  @effect/platform @effect/platform-node \
-  @effect/cluster @effect/rpc @effect/sql
+  @effect/platform @effect/platform-node
 ```
 
 If you use `@savvy-web/github-action-builder` for bundling, it compiles your TypeScript source into the single `dist/index.js` that GitHub Actions expects.

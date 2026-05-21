@@ -9,10 +9,10 @@
  */
 
 import { FileSystem } from "@effect/platform";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { AttestError } from "../errors/AttestError.js";
-import type { AttestInput, AttestationRecord, SigstoreBundle } from "../schemas/Attestation.js";
-import { CYCLONEDX_BOM, InTotoStatement, SLSA_PROVENANCE_V1 } from "../schemas/Attestation.js";
+import type { AttestInput, AttestationRecord } from "../schemas/Attestation.js";
+import { CYCLONEDX_BOM, InTotoStatement, SLSA_PROVENANCE_V1, SigstoreBundle } from "../schemas/Attestation.js";
 import type { AttestationListEntry } from "../services/Attest.js";
 import { Attest } from "../services/Attest.js";
 import { GitHubClient } from "../services/GitHubClient.js";
@@ -203,10 +203,22 @@ const attestFromInput = (
 			),
 		);
 
-		// Flatten the bundle to a pure JSON value for the request body: the
-		// round-trip drops any class prototypes and non-JSON fields from the
-		// in-memory `@sigstore/bundle` object so only wire-safe data is POSTed.
-		const bundlePayload = JSON.parse(JSON.stringify(bundle)) as Record<string, unknown>;
+		// Encode the bundle to its wire shape via the owning schema instead of a
+		// `JSON.parse(JSON.stringify(...))` round-trip. `SigstoreBundle`'s
+		// `mediaType` is a `Schema.Literal` and its `verificationMaterial` /
+		// `dsseEnvelope` are `Schema.Unknown` (encode is identity), so the encoded
+		// object is structurally identical to the old round-trip output; the POST
+		// body is JSON-serialized by Octokit regardless.
+		const bundlePayload = (yield* Schema.encode(SigstoreBundle)(bundle).pipe(
+			Effect.mapError(
+				(cause) =>
+					new AttestError({
+						reason: "upload",
+						message: `Failed to encode Sigstore bundle for upload: ${cause}`,
+						cause,
+					}),
+			),
+		)) as Record<string, unknown>;
 		const attestationId = yield* client
 			.rest("repos.createAttestation", async (octokit) => {
 				if (!isOctokitLike(octokit)) {
