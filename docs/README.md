@@ -57,7 +57,7 @@ const program = Effect.gen(function* () {
 | GitHubIssue | List, close, comment and get issues |
 | GitHubContent | Read repository file contents at a ref |
 | GitHubCommit | Read the commit graph (get, list, compare) |
-| GitHubArtifactMetadata | Read and write GitHub Packages artifact-metadata storage records |
+| GitHubArtifactMetadata | Create GitHub Packages artifact-metadata storage records |
 | GitHubApp | GitHub App token lifecycle with bracket pattern |
 | CheckRun | Create, update and complete check runs with annotations |
 | PullRequest | PR lifecycle: get, list, create, update, merge, listFiles, baseSha, labels, reviewers |

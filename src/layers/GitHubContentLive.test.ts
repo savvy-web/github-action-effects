@@ -69,6 +69,27 @@ describe("GitHubContentLive", () => {
 		expect(result.path).toBe("some/submodule");
 	});
 
+	it("getFile fails when the content encoding is not base64", async () => {
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const svc = yield* GitHubContent;
+				return yield* svc.getFile("big-file.bin", "base-sha");
+			}).pipe(
+				Effect.provide(GitHubContentLive),
+				Effect.provide(
+					GitHubClientTest.layer(
+						clientState([["repos.getContent", { data: { type: "file", encoding: "none", content: "" } }]]),
+					),
+				),
+				Effect.flip,
+			),
+		);
+		expect(result._tag).toBe("GitHubContentError");
+		expect(result.operation).toBe("getFile");
+		expect(result.path).toBe("big-file.bin");
+		expect(result.reason).toContain("none");
+	});
+
 	it("getFile wraps a client error as GitHubContentError", async () => {
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {

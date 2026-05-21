@@ -110,12 +110,16 @@ export function isCustomRegistry(registry: string | null | undefined): boolean {
 /**
  * Detect the type of a registry from its URL
  *
- * @param registry - Registry URL to check
- * @returns The registry type
+ * @param registry - Registry URL, or null/undefined when no registry is
+ *   configured.
+ * @returns The registry type. Returns `"npm"` when `registry` is null or
+ *   undefined: an absent registry resolves to the public npm registry
+ *   (`registry.npmjs.org`), which is this library's publishing default.
  *
  * @public
  */
 export function getRegistryType(registry: string | null | undefined): RegistryType {
+	if (!registry) return "npm";
 	if (isNpmRegistry(registry)) return "npm";
 	if (isGitHubPackagesRegistry(registry)) return "github-packages";
 	if (isJsrRegistry(registry)) return "jsr";
@@ -128,13 +132,14 @@ export function getRegistryType(registry: string | null | undefined): RegistryTy
  * @param registry - Registry URL, or null/undefined when no registry is
  *   configured.
  * @returns Human-readable registry name (e.g. "npm", "GitHub Packages", or the
- *   hostname for custom registries). Returns `"jsr.io"` when `registry` is null
- *   or undefined, because JSR is the default registry.
+ *   hostname for custom registries). Returns `"npm"` when `registry` is null or
+ *   undefined, matching {@link getRegistryType}: an absent registry resolves to
+ *   the public npm registry (`registry.npmjs.org`), this library's default.
  *
  * @public
  */
 export function getRegistryDisplayName(registry: string | null | undefined): string {
-	if (!registry) return "jsr.io";
+	if (!registry) return "npm";
 	if (isNpmRegistry(registry)) return "npm";
 	if (isGitHubPackagesRegistry(registry)) return "GitHub Packages";
 	if (isJsrRegistry(registry)) return "jsr.io";

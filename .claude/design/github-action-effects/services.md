@@ -480,7 +480,7 @@ Multi-registry npm package publishing workflow.
 - `publish(packageDir, options?)` -- Publish to a registry. `options.packageManager` routes through the active PM's executor (e.g. `pnpm dlx npm` or `yarn npm`) so callers can use npm ≥ 11.5.1 for OIDC trusted publishing regardless of which PM manages the workspace. Verbose npm logging is enabled so the OIDC exchange is visible in the action log
 - `publishTarball(tarballPath, options)` -- Upload a previously-packed tarball to a specific registry without re-packing. `options.registry` is required. Suitable for publishing byte-identical content to multiple registries
 - `verifyIntegrity(packageName, version, expectedDigest)` -- Verify a published package's integrity hash against the expected digest
-- `publishToRegistries(packageDir, registries)` -- Publish to multiple registries in sequence
+- `publishToRegistries(packageDir, registries)` -- Publish to multiple registries in sequence; each `RegistryTarget` carries an optional `packageManager` so per-registry publishes route through the same PM executor dispatch as `publish`
 - `publishIdempotent(input)` -- Skip when an identical version already exists; fail on content mismatch. Deprecated: new callers should compose `pack`, `NpmRegistry.getPublishedIntegrity` and `publishTarball` directly
 - `dryRun(packageDir, options?)` -- Simulate publishing via `npm publish --dry-run`. Returns `DryRunResult { ok, packedSize?, unpackedSize?, fileCount?, output }`. A non-zero exit is reported as `ok: false`, not as an error
 
@@ -718,8 +718,8 @@ Composable markdown report builder with multiple output targets.
 URL-safe registry detection. Parses URLs and checks hostnames (not substrings) to prevent CWE-20 bypass attacks.
 
 - `isNpmRegistry(url)`, `isGitHubPackagesRegistry(url)`, `isJsrRegistry(url)`, `isCustomRegistry(url)` -- boolean predicates
-- `getRegistryType(url)` -- returns `RegistryType` (`"npm" | "github-packages" | "jsr" | "custom"`)
-- `getRegistryDisplayName(url)` -- human-readable name; defaults to `"jsr.io"` when `url` is null/undefined
+- `getRegistryType(url)` -- returns `RegistryType` (`"npm" | "github-packages" | "jsr" | "custom"`); a null/undefined `url` resolves to `"npm"` (an absent registry is the public npm registry, this library's default)
+- `getRegistryDisplayName(url)` -- human-readable name; defaults to `"npm"` when `url` is null/undefined, matching `getRegistryType`
 - `generatePackageViewUrl(registry, packageName)` -- generates a browse URL for npm and GitHub Packages registries
 
 ---

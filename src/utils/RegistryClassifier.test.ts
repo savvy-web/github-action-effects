@@ -139,8 +139,12 @@ describe("RegistryClassifier", () => {
 			expect(getRegistryType("https://my-registry.example.com/")).toBe("custom");
 		});
 
-		it("returns custom for null", () => {
-			expect(getRegistryType(null)).toBe("custom");
+		it("returns npm for null (absent registry defaults to npm)", () => {
+			expect(getRegistryType(null)).toBe("npm");
+		});
+
+		it("returns npm for undefined (absent registry defaults to npm)", () => {
+			expect(getRegistryType(undefined)).toBe("npm");
 		});
 	});
 
@@ -161,12 +165,12 @@ describe("RegistryClassifier", () => {
 			expect(getRegistryDisplayName("https://my-registry.example.com/")).toBe("my-registry.example.com");
 		});
 
-		it("returns jsr.io for null (default registry)", () => {
-			expect(getRegistryDisplayName(null)).toBe("jsr.io");
+		it("returns npm for null (absent registry defaults to npm)", () => {
+			expect(getRegistryDisplayName(null)).toBe("npm");
 		});
 
-		it("returns jsr.io for undefined", () => {
-			expect(getRegistryDisplayName(undefined)).toBe("jsr.io");
+		it("returns npm for undefined (absent registry defaults to npm)", () => {
+			expect(getRegistryDisplayName(undefined)).toBe("npm");
 		});
 
 		it("returns original string for invalid URL", () => {

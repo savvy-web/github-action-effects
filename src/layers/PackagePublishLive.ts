@@ -289,15 +289,24 @@ export const PackagePublishLive: Layer.Layer<PackagePublish, never, CommandRunne
 						readonly token: string;
 						readonly tag?: string;
 						readonly access?: "public" | "restricted";
+						readonly packageManager?: "npm" | "pnpm" | "yarn" | "bun";
 					}>,
 				) =>
 					Effect.forEach(
 						registries,
 						(target) =>
+							// `npm config set` writes the auth token to `.npmrc`; the
+							// bundled npm handles this fine regardless of which manager
+							// runs the publish, so it stays bare `npm`.
 							runner.exec("npm", ["config", "set", authTokenKey(target.registry), target.token]).pipe(
 								Effect.asVoid,
 								Effect.flatMap(() => {
-									const args = ["publish"];
+									// Route the publish through the active manager's npm
+									// executor — same dispatch as `publish` / `publishTarball`
+									// so a caller publishing through `publishToRegistries`
+									// still gets the fresh-npm OIDC fix.
+									const { cmd, baseArgs } = getNpmCommand(target.packageManager);
+									const args = [...baseArgs, "publish"];
 									args.push("--registry", target.registry);
 									if (target.tag) args.push("--tag", target.tag);
 									if (target.access) args.push("--access", target.access);
@@ -305,7 +314,7 @@ export const PackagePublishLive: Layer.Layer<PackagePublish, never, CommandRunne
 									// See the `publish` method above — stream npm output
 									// to the runner log so failures are diagnosable, and
 									// verbose surfaces npm's OIDC exchange and HTTP requests.
-									return runner.exec("npm", args, { cwd: packageDir, streaming: true }).pipe(Effect.asVoid);
+									return runner.exec(cmd, args, { cwd: packageDir, streaming: true }).pipe(Effect.asVoid);
 								}),
 							),
 						{ discard: true },

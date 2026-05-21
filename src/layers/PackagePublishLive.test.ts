@@ -659,6 +659,44 @@ describe("PackagePublishLive", () => {
 		expect(calls[3]?.cwd).toBe("/pkg");
 	});
 
+	it("publishToRegistries routes the publish through the target's package manager", async () => {
+		const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+		const runner = makeMockRunner({
+			exec: (command, args) => {
+				calls.push({ command, args });
+				return Effect.succeed(0);
+			},
+		});
+		const registry = NpmRegistryTest.empty();
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+
+		await Effect.runPromise(
+			PackagePublish.pipe(
+				Effect.flatMap((svc) =>
+					svc.publishToRegistries("/pkg", [
+						{ registry: "https://registry.npmjs.org", token: "npm-token", packageManager: "pnpm" },
+					]),
+				),
+				Effect.provide(layer),
+			),
+		);
+
+		// Auth still goes through bare npm (writes .npmrc)...
+		expect(calls[0]?.command).toBe("npm");
+		expect(calls[0]?.args).toEqual(["config", "set", "//registry.npmjs.org:_authToken", "npm-token"]);
+		// ...but the publish dispatches through `pnpm dlx npm`.
+		expect(calls[1]?.command).toBe("pnpm");
+		expect(calls[1]?.args).toEqual([
+			"dlx",
+			"npm",
+			"publish",
+			"--registry",
+			"https://registry.npmjs.org",
+			"--loglevel",
+			"verbose",
+		]);
+	});
+
 	it("publishToRegistries wraps CommandRunnerError into PackagePublishError", async () => {
 		const runner = makeMockRunner({
 			exec: (_command, args) => {

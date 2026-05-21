@@ -54,6 +54,14 @@ export interface RegistryTarget {
 	readonly token: string;
 	readonly tag?: string;
 	readonly access?: "public" | "restricted";
+	/**
+	 * Package manager whose bundled `npm` executor runs the publish. Matches the
+	 * `packageManager` option on {@link PackagePublish.publish} — non-`npm`
+	 * dispatchers (`pnpm dlx npm`, `yarn npm`, `bun x npm`) fetch a fresh npm so
+	 * the OIDC trusted-publisher exchange works on runners pinned to an older
+	 * bundled npm. Defaults to bare `npm`.
+	 */
+	readonly packageManager?: "npm" | "pnpm" | "yarn" | "bun";
 }
 
 /**

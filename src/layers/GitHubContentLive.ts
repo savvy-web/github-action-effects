@@ -63,6 +63,20 @@ export const GitHubContentLive: Layer.Layer<GitHubContent, never, GitHubClient> 
 							}),
 						);
 					}
+					// The contents API returns `encoding: "base64"` for files it can
+					// inline. Files over the inline size limit come back with
+					// `encoding: "none"` and empty content (the blob API must be used
+					// instead). Decoding a non-base64 payload as base64 silently yields
+					// garbage, so reject anything we cannot faithfully decode.
+					if (file.encoding !== "base64") {
+						return Effect.fail(
+							new GitHubContentError({
+								operation: "getFile",
+								path,
+								reason: `Path "${path}" returned unsupported content encoding "${file.encoding ?? "undefined"}" (expected "base64")`,
+							}),
+						);
+					}
 					return Effect.succeed(Buffer.from(file.content.replace(/\s/g, ""), "base64").toString("utf-8"));
 				}),
 			),

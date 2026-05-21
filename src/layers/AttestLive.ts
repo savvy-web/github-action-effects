@@ -11,7 +11,7 @@
 import { FileSystem } from "@effect/platform";
 import { Effect, Layer } from "effect";
 import { AttestError } from "../errors/AttestError.js";
-import type { AttestationRecord, SigstoreBundle } from "../schemas/Attestation.js";
+import type { AttestInput, AttestationRecord, SigstoreBundle } from "../schemas/Attestation.js";
 import { CYCLONEDX_BOM, InTotoStatement, SLSA_PROVENANCE_V1 } from "../schemas/Attestation.js";
 import type { AttestationListEntry } from "../services/Attest.js";
 import { Attest } from "../services/Attest.js";
@@ -145,28 +145,39 @@ const isEmptyListError = (cause: unknown): boolean => {
 };
 
 /**
+ * Build an in-toto statement from input, mapping any failure to a typed
+ * `AttestError` with `reason: "build"`. Shared by the `buildStatement` and
+ * `buildBundle` methods and the `attestFromInput` flow so the try/catch
+ * error-mapping lives in exactly one place.
+ *
+ * @internal
+ */
+const buildStatementEffect = (input: AttestInput): Effect.Effect<InTotoStatement, AttestError> =>
+	Effect.try({
+		try: () => buildStatement(input),
+		catch: (cause) =>
+			new AttestError({
+				reason: "build",
+				message: `Failed to build in-toto statement: ${cause instanceof Error ? cause.message : String(cause)}`,
+				cause,
+			}),
+	});
+
+/**
  * Core attest-from-input flow shared by `attest`, `sbom`, and
  * `provenance` — build the statement, sign it, POST to GitHub.
  *
  * @internal
  */
 const attestFromInput = (
-	input: import("../schemas/Attestation.js").AttestInput,
+	input: AttestInput,
 ): Effect.Effect<
 	AttestationRecord,
 	AttestError,
 	SigstoreSigner | import("../services/OidcTokenIssuer.js").OidcTokenIssuer | GitHubClient
 > =>
 	Effect.gen(function* () {
-		const statement = yield* Effect.try({
-			try: () => buildStatement(input),
-			catch: (cause) =>
-				new AttestError({
-					reason: "build",
-					message: `Failed to build in-toto statement: ${cause instanceof Error ? cause.message : String(cause)}`,
-					cause,
-				}),
-		});
+		const statement = yield* buildStatementEffect(input);
 
 		const signer = yield* SigstoreSigner;
 		const bundle = yield* signer.signStatement(statement).pipe(
@@ -234,16 +245,7 @@ const attestFromInput = (
  * @public
  */
 export const AttestLive = Layer.succeed(Attest, {
-	buildStatement: (input) =>
-		Effect.try({
-			try: () => buildStatement(input),
-			catch: (cause) =>
-				new AttestError({
-					reason: "build",
-					message: `Failed to build in-toto statement: ${cause instanceof Error ? cause.message : String(cause)}`,
-					cause,
-				}),
-		}),
+	buildStatement: (input) => buildStatementEffect(input),
 
 	save: (data: InTotoStatement | SigstoreBundle, path: string) =>
 		Effect.gen(function* () {
@@ -263,15 +265,7 @@ export const AttestLive = Layer.succeed(Attest, {
 
 	buildBundle: (input) =>
 		Effect.gen(function* () {
-			const statement = yield* Effect.try({
-				try: () => buildStatement(input),
-				catch: (cause) =>
-					new AttestError({
-						reason: "build",
-						message: `Failed to build in-toto statement: ${cause instanceof Error ? cause.message : String(cause)}`,
-						cause,
-					}),
-			});
+			const statement = yield* buildStatementEffect(input);
 			const signer = yield* SigstoreSigner;
 			return yield* signer.signStatement(statement).pipe(
 				Effect.mapError(

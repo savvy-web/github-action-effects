@@ -172,9 +172,10 @@ export const emitSuccess = (frame: StepFrame, line: string | null): void => {
 };
 
 /**
- * Emit the failure block for a step. Writes the failure header,
- * then each buffered line with a `│ [LEVEL]` prefix, then a trailing
- * `└ Error:` line that carries the original error's message.
+ * Emit the failure block for a step. Writes the failure header, then
+ * each buffered line with a `│ [LEVEL]` prefix, then — only when there
+ * were buffered lines — a trailing `└ Error:` line that closes the spill
+ * block.
  *
  * The spill is written **directly to stdout** at the child's depth.
  * The parent step's buffer is not modified — its failure block (if
@@ -183,7 +184,9 @@ export const emitSuccess = (frame: StepFrame, line: string | null): void => {
  *
  * Failure header format mirrors the success path: `❌ <name>: <error>`.
  * The library prepends the icon and step name; callers' error
- * messages should describe the outcome only.
+ * messages should describe the outcome only. When the buffer is empty
+ * the `└ Error:` trailer is suppressed — with no spill lines to close,
+ * it would just repeat the header's error text on the next line.
  *
  * @internal
  */
@@ -194,5 +197,7 @@ export const emitFailure = (frame: StepFrame, errorText: string): void => {
 		const label = entry.level === "debug" ? "[DEBUG]" : "[INFO]";
 		process.stdout.write(`${prefix}   │ ${label} ${entry.text}\n`);
 	}
-	process.stdout.write(`${prefix}   └ Error: ${errorText}\n`);
+	if (frame.buffer.entries.length > 0) {
+		process.stdout.write(`${prefix}   └ Error: ${errorText}\n`);
+	}
 };

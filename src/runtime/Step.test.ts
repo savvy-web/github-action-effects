@@ -98,6 +98,18 @@ describe("Step", () => {
 			expect(out).toContain("│ [DEBUG] probe https://npm.pkg.github.com/: HTTP 200");
 			expect(out).toContain("└ Error: integrity mismatch — local sha512-ABC ≠ remote sha512-XYZ");
 		});
+
+		it("omits the '└ Error:' trailer when the step buffered no lines", async () => {
+			const exit = await runExit(Step.withStep("bare-fail", Effect.fail(new Error("boom"))));
+
+			expect(Exit.isFailure(exit)).toBe(true);
+			const out = output();
+			// The header still carries the error message...
+			expect(out).toContain("❌ bare-fail: boom");
+			// ...but with no spill lines to close, the trailer would just
+			// repeat the header — so it is suppressed.
+			expect(out).not.toContain("└ Error:");
+		});
 	});
 
 	// -----------------------------------------------------------------
