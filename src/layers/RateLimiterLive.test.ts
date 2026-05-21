@@ -1,16 +1,21 @@
-import { Effect, Exit, Layer } from "effect";
+import { Duration, Effect, Exit, Fiber, Layer, Option, Ref, Stream, TestClock, TestContext } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value needed for Layer.succeed
 import { GitHubClient } from "../services/GitHubClient.js";
 import { RateLimiter } from "../services/RateLimiter.js";
+import type { RateLimitSnapshot } from "../services/RateLimitState.js";
+import { RateLimitState } from "../services/RateLimitState.js";
 import { RateLimiterLive } from "./RateLimiterLive.js";
 
 const mockRateLimitGet = vi.fn();
+/** Records every operation name the rate limiter routes through client.rest. */
+const restOperations: Array<string> = [];
 
 const mockClient: typeof GitHubClient.Service = {
-	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
-		Effect.tryPromise({
+	rest: <T>(operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) => {
+		restOperations.push(operation);
+		return Effect.tryPromise({
 			try: () =>
 				fn({
 					rest: {
@@ -19,31 +24,63 @@ const mockClient: typeof GitHubClient.Service = {
 				}),
 			catch: (e) =>
 				new GitHubClientError({
-					operation: _operation,
+					operation,
 					status: undefined,
 					reason: e instanceof Error ? e.message : String(e),
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
-		}).pipe(Effect.map((r) => r.data)),
+		}).pipe(Effect.map((r) => r.data));
+	},
 	graphql: () => Effect.die("not used"),
 	paginate: () => Effect.die("not used"),
+	paginateStream: () => Stream.die("not used"),
 	repo: Effect.succeed({ owner: "test-owner", repo: "test-repo" }),
 };
 
-const testLayer = Layer.provide(RateLimiterLive, Layer.succeed(GitHubClient, mockClient));
+const clientLayer = Layer.succeed(GitHubClient, mockClient);
+const baseLayer = Layer.provideMerge(RateLimiterLive, Layer.merge(clientLayer, RateLimitState.Default));
 
-const run = <A, E>(effect: Effect.Effect<A, E, RateLimiter>) => Effect.runPromise(Effect.provide(effect, testLayer));
+const run = <A, E>(effect: Effect.Effect<A, E, RateLimiter>) => Effect.runPromise(Effect.provide(effect, baseLayer));
 
 const runExit = <A, E>(effect: Effect.Effect<A, E, RateLimiter>) =>
-	Effect.runPromise(Effect.exit(Effect.provide(effect, testLayer)));
+	Effect.runPromise(Effect.exit(Effect.provide(effect, baseLayer)));
+
+/** Seed the shared RateLimitState snapshot, then run an effect against the limiter. */
+const withSeededSnapshot = <A, E>(snapshot: RateLimitSnapshot, effect: Effect.Effect<A, E, RateLimiter>) =>
+	Effect.gen(function* () {
+		const ref = yield* RateLimitState;
+		yield* Ref.set(ref, Option.some(snapshot));
+		return yield* effect;
+	}).pipe(Effect.provide(baseLayer));
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	restOperations.length = 0;
 });
 
 describe("RateLimiterLive", () => {
 	describe("checkRest", () => {
-		it("calls GitHub API and maps core resource", async () => {
+		it("returns the cached snapshot without probing when the cache is warm", async () => {
+			const snapshot: RateLimitSnapshot = {
+				remaining: 4500,
+				limit: 5000,
+				resetEpochSeconds: 1700000000,
+				observedAt: Date.now(),
+			};
+			const result = await Effect.runPromise(
+				withSeededSnapshot(
+					snapshot,
+					Effect.flatMap(RateLimiter, (svc) => svc.checkRest()),
+				),
+			);
+			expect(result).toEqual({ limit: 5000, remaining: 4500, reset: 1700000000, used: 500 });
+			// No GET /rate_limit probe when the cache is warm.
+			expect(restOperations).not.toContain("rate_limit");
+			expect(mockRateLimitGet).not.toHaveBeenCalled();
+		});
+
+		it("probes GitHub on a cache miss and maps the core resource", async () => {
 			mockRateLimitGet.mockResolvedValue({
 				data: {
 					resources: {
@@ -55,10 +92,11 @@ describe("RateLimiterLive", () => {
 
 			const result = await run(Effect.flatMap(RateLimiter, (svc) => svc.checkRest()));
 			expect(result).toEqual({ limit: 5000, remaining: 4500, reset: 1700000000, used: 500 });
+			expect(restOperations).toContain("rate_limit");
 			expect(mockRateLimitGet).toHaveBeenCalledTimes(1);
 		});
 
-		it("fails on API error", async () => {
+		it("fails on API error during a cache-miss probe", async () => {
 			mockRateLimitGet.mockRejectedValue(new Error("network error"));
 			const exit = await runExit(Effect.flatMap(RateLimiter, (svc) => svc.checkRest()));
 			expect(exit._tag).toBe("Failure");
@@ -66,7 +104,7 @@ describe("RateLimiterLive", () => {
 	});
 
 	describe("checkGraphQL", () => {
-		it("calls GitHub API and maps graphql resource", async () => {
+		it("probes on a cache miss and maps the graphql resource", async () => {
 			mockRateLimitGet.mockResolvedValue({
 				data: {
 					resources: {
@@ -79,41 +117,90 @@ describe("RateLimiterLive", () => {
 			const result = await run(Effect.flatMap(RateLimiter, (svc) => svc.checkGraphQL()));
 			expect(result).toEqual({ limit: 5000, remaining: 3000, reset: 1700000000, used: 2000 });
 		});
+
+		it("always probes the graphql resource even when the REST-sourced cache is warm", async () => {
+			// A warm snapshot represents the core (REST) bucket. checkGraphQL must
+			// NOT serve it — REST and GraphQL have independent quotas — so it probes.
+			mockRateLimitGet.mockResolvedValue({
+				data: {
+					resources: {
+						core: { limit: 5000, remaining: 4500, reset: 1700000000, used: 500 },
+						graphql: { limit: 5000, remaining: 3000, reset: 1700000000, used: 2000 },
+					},
+				},
+			});
+
+			const result = await Effect.runPromise(
+				withSeededSnapshot(
+					{ remaining: 4500, limit: 5000, resetEpochSeconds: 1700000000, observedAt: Date.now() },
+					Effect.flatMap(RateLimiter, (svc) => svc.checkGraphQL()),
+				),
+			);
+
+			// Returns the graphql bucket (3000), not the seeded core snapshot (4500).
+			expect(result).toEqual({ limit: 5000, remaining: 3000, reset: 1700000000, used: 2000 });
+			expect(restOperations).toContain("rate_limit");
+			expect(mockRateLimitGet).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	describe("withRateLimit", () => {
-		it("runs effect when rate limit is healthy", async () => {
-			mockRateLimitGet.mockResolvedValue({
-				data: {
-					resources: {
-						core: { limit: 5000, remaining: 4000, reset: 1700000000, used: 1000 },
-						graphql: { limit: 5000, remaining: 5000, reset: 1700000000, used: 0 },
-					},
-				},
-			});
-
+		it("runs the effect without any probe when the cache is empty", async () => {
 			const result = await run(Effect.flatMap(RateLimiter, (svc) => svc.withRateLimit(Effect.succeed("ok"))));
 			expect(result).toBe("ok");
+			// No pre-flight GET /rate_limit on an empty cache.
+			expect(restOperations).not.toContain("rate_limit");
+			expect(mockRateLimitGet).not.toHaveBeenCalled();
 		});
 
-		it("fails with RateLimitError when near limit and wait exceeds 60s", async () => {
-			const futureReset = Math.floor(Date.now() / 1000) + 120; // 2 minutes from now
-			mockRateLimitGet.mockResolvedValue({
-				data: {
-					resources: {
-						core: { limit: 5000, remaining: 10, reset: futureReset, used: 4990 },
-						graphql: { limit: 5000, remaining: 5000, reset: futureReset, used: 0 },
-					},
-				},
-			});
+		it("runs the effect when cached remaining is healthy", async () => {
+			const result = await Effect.runPromise(
+				withSeededSnapshot(
+					{ remaining: 4000, limit: 5000, resetEpochSeconds: 1700000000, observedAt: Date.now() },
+					Effect.flatMap(RateLimiter, (svc) => svc.withRateLimit(Effect.succeed("ok"))),
+				),
+			);
+			expect(result).toBe("ok");
+			expect(restOperations).not.toContain("rate_limit");
+		});
 
-			const exit = await runExit(Effect.flatMap(RateLimiter, (svc) => svc.withRateLimit(Effect.succeed("ok"))));
+		it("waits then runs when cached remaining is below the threshold and reset is near", async () => {
+			const nearReset = Math.floor(Date.now() / 1000) + 10; // 10s out
+			const exit = await Effect.gen(function* () {
+				const ref = yield* RateLimitState;
+				yield* Ref.set(
+					ref,
+					Option.some({ remaining: 10, limit: 5000, resetEpochSeconds: nearReset, observedAt: Date.now() }),
+				);
+				const fiber = yield* Effect.fork(
+					Effect.flatMap(RateLimiter, (svc) => svc.withRateLimit(Effect.succeed("done"))),
+				);
+				yield* TestClock.adjust(Duration.seconds(11));
+				return yield* Fiber.join(fiber);
+			}).pipe(Effect.exit, Effect.provide(baseLayer), Effect.provide(TestContext.TestContext), Effect.runPromise);
 
+			expect(exit._tag).toBe("Success");
+			if (Exit.isSuccess(exit)) {
+				expect(exit.value).toBe("done");
+			}
+		});
+
+		it("fails with RateLimitError when below threshold and wait exceeds 60s", async () => {
+			const farReset = Math.floor(Date.now() / 1000) + 120; // 2 minutes out
+			const exit = await Effect.runPromise(
+				Effect.exit(
+					withSeededSnapshot(
+						{ remaining: 10, limit: 5000, resetEpochSeconds: farReset, observedAt: Date.now() },
+						Effect.flatMap(RateLimiter, (svc) => svc.withRateLimit(Effect.succeed("ok"))),
+					),
+				),
+			);
 			expect(Exit.isFailure(exit)).toBe(true);
 			if (Exit.isFailure(exit)) {
-				const error = exit.cause;
-				expect(String(error)).toContain("RateLimitError");
+				expect(String(exit.cause)).toContain("RateLimitError");
 			}
+			// Policy is cache-driven; no probe issued.
+			expect(restOperations).not.toContain("rate_limit");
 		});
 	});
 

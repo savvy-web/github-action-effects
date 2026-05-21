@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
 import { GitHubClient } from "../services/GitHubClient.js";
@@ -11,6 +11,7 @@ const makeMockGitHubClient = (
 	Layer.succeed(GitHubClient, {
 		rest: () => Effect.die("not used"),
 		paginate: () => Effect.die("not used"),
+		paginateStream: () => Stream.die("not used"),
 		graphql: graphqlFn as (typeof GitHubClient.Service)["graphql"],
 		repo: Effect.die("not used"),
 	});
@@ -48,6 +49,7 @@ describe("GitHubGraphQLLive", () => {
 					status: 401,
 					reason: "Bad credentials",
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 			),
 		);
@@ -72,6 +74,7 @@ describe("GitHubGraphQLLive", () => {
 					status: 403,
 					reason: "Forbidden",
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 			),
 		);
@@ -99,6 +102,7 @@ describe("GitHubGraphQLLive", () => {
 					status: 200,
 					reason: errorJson,
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 			),
 		);

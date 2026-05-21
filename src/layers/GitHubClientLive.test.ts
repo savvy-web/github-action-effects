@@ -1,6 +1,21 @@
-import { Cause, Effect, Exit, Redacted } from "effect";
+import {
+	Cause,
+	Chunk,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	Option,
+	Redacted,
+	Ref,
+	Stream,
+	TestClock,
+	TestContext,
+} from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClient } from "../services/GitHubClient.js";
+import { RateLimitState } from "../services/RateLimitState.js";
 import { GitHubClientLive } from "./GitHubClientLive.js";
 
 const { octokitAuthCalls, mockAuth } = vi.hoisted(() => ({
@@ -31,11 +46,13 @@ afterEach(() => {
 
 describe("GitHubClientLive", () => {
 	describe("fromEnv", () => {
+		// Error-wrapping tests disable resilience so retryable failures fail fast;
+		// retry behavior has dedicated tests under the "resilience" describe.
 		const run = <A, E>(effect: Effect.Effect<A, E, GitHubClient>) =>
-			Effect.runPromise(Effect.provide(effect, GitHubClientLive.fromEnv));
+			Effect.runPromise(Effect.provide(effect, GitHubClientLive.fromEnv({ enabled: false })));
 
 		const runExit = <A, E>(effect: Effect.Effect<A, E, GitHubClient>) =>
-			Effect.runPromise(Effect.exit(Effect.provide(effect, GitHubClientLive.fromEnv)));
+			Effect.runPromise(Effect.exit(Effect.provide(effect, GitHubClientLive.fromEnv({ enabled: false }))));
 
 		it("fails when GITHUB_TOKEN is not set", async () => {
 			delete process.env.GITHUB_TOKEN;
@@ -243,6 +260,19 @@ describe("GitHubClientLive", () => {
 	});
 
 	describe("fromApp", () => {
+		// fromApp is now a scoped layer that revokes its token (DELETE
+		// /installation/token via fetch) on scope close. Stub fetch so the revoke
+		// finalizer never touches the network, and wrap provides in Effect.scoped.
+		let fromAppFetchSpy: ReturnType<typeof vi.spyOn>;
+		beforeEach(() => {
+			fromAppFetchSpy = vi
+				.spyOn(globalThis, "fetch")
+				.mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+		});
+		afterEach(() => {
+			fromAppFetchSpy.mockRestore();
+		});
+
 		it("generates an installation token and builds a client", async () => {
 			mockAuth.mockResolvedValue({
 				token: "app-installation-token",
@@ -251,9 +281,11 @@ describe("GitHubClientLive", () => {
 				permissions: { contents: "write" },
 			});
 			const result = await Effect.runPromise(
-				Effect.provide(
-					Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: "done" }))),
-					GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+				Effect.scoped(
+					Effect.provide(
+						Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: "done" }))),
+						GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+					),
 				),
 			);
 			expect(result).toBe("done");
@@ -267,13 +299,15 @@ describe("GitHubClientLive", () => {
 				permissions: {},
 			});
 			const result = await Effect.runPromise(
-				Effect.provide(
-					Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: 1 }))),
-					GitHubClientLive.fromApp({
-						clientId: "Iv1.abc",
-						privateKey: Redacted.make("key"),
-						installationId: 42,
-					}),
+				Effect.scoped(
+					Effect.provide(
+						Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: 1 }))),
+						GitHubClientLive.fromApp({
+							clientId: "Iv1.abc",
+							privateKey: Redacted.make("key"),
+							installationId: 42,
+						}),
+					),
 				),
 			);
 			expect(result).toBe(1);
@@ -283,9 +317,11 @@ describe("GitHubClientLive", () => {
 			mockAuth.mockRejectedValue(new Error("bad credentials"));
 			const exit = await Effect.runPromise(
 				Effect.exit(
-					Effect.provide(
-						Effect.flatMap(GitHubClient, (client) => client.repo),
-						GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+					Effect.scoped(
+						Effect.provide(
+							Effect.flatMap(GitHubClient, (client) => client.repo),
+							GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+						),
 					),
 				),
 			);
@@ -294,6 +330,340 @@ describe("GitHubClientLive", () => {
 				const err = Cause.squash(exit.cause) as { _tag?: string };
 				expect(err._tag).toBe("GitHubAppError");
 			}
+		});
+	});
+
+	describe("resilience", () => {
+		/** Drive a retrying effect under TestClock so backoff sleeps are instant. */
+		const runWithClock = <A, E>(effect: Effect.Effect<A, E>, advance = Duration.seconds(600)) =>
+			Effect.gen(function* () {
+				const fiber = yield* Effect.fork(effect);
+				yield* TestClock.adjust(advance);
+				return yield* Fiber.join(fiber);
+			}).pipe(Effect.exit, Effect.provide(TestContext.TestContext), Effect.runPromise);
+
+		it("rest retries a transient 503 then succeeds (default-on)", async () => {
+			let attempts = 0;
+			const exit = await runWithClock(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.rest("op", () => {
+							attempts++;
+							if (attempts < 2) {
+								return Promise.reject(Object.assign(new Error("unavailable"), { status: 503 }));
+							}
+							return Promise.resolve({ data: "ok" });
+						}),
+					),
+					GitHubClientLive.fromToken("t"),
+				),
+			);
+			expect(exit._tag).toBe("Success");
+			expect(attempts).toBe(2);
+		});
+
+		it("rest with resilience disabled does not retry", async () => {
+			let attempts = 0;
+			const exit = await runWithClock(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.rest("op", () => {
+							attempts++;
+							return Promise.reject(Object.assign(new Error("unavailable"), { status: 503 }));
+						}),
+					),
+					GitHubClientLive.fromToken("t", { enabled: false }),
+				),
+			);
+			expect(exit._tag).toBe("Failure");
+			expect(attempts).toBe(1);
+		});
+
+		it("rest does not retry non-retryable (404) errors", async () => {
+			let attempts = 0;
+			const exit = await runWithClock(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.rest("op", () => {
+							attempts++;
+							return Promise.reject(Object.assign(new Error("not found"), { status: 404 }));
+						}),
+					),
+					GitHubClientLive.fromToken("t"),
+				),
+			);
+			expect(exit._tag).toBe("Failure");
+			expect(attempts).toBe(1);
+		});
+
+		it("honors a Retry-After header as the retry delay", async () => {
+			let attempts = 0;
+			const exit = await Effect.gen(function* () {
+				const fiber = yield* Effect.fork(
+					Effect.provide(
+						Effect.flatMap(GitHubClient, (client) =>
+							client.rest("op", () => {
+								attempts++;
+								if (attempts < 2) {
+									return Promise.reject(
+										Object.assign(new Error("secondary limit"), {
+											status: 429,
+											response: { headers: { "retry-after": "5" } },
+										}),
+									);
+								}
+								return Promise.resolve({ data: "recovered" });
+							}),
+						),
+						GitHubClientLive.fromToken("t"),
+					),
+				);
+				// Less than the advised 5s: still pending.
+				yield* TestClock.adjust(Duration.seconds(4));
+				const stillRunning = (yield* Fiber.poll(fiber))._tag === "None";
+				// Past the advised delay: completes.
+				yield* TestClock.adjust(Duration.seconds(2));
+				const result = yield* Fiber.join(fiber);
+				return { stillRunning, result };
+			}).pipe(Effect.exit, Effect.provide(TestContext.TestContext), Effect.runPromise);
+
+			expect(exit._tag).toBe("Success");
+			if (Exit.isSuccess(exit)) {
+				expect(exit.value.stillRunning).toBe(true);
+				expect(exit.value.result).toBe("recovered");
+			}
+			expect(attempts).toBe(2);
+		});
+
+		it("graphql failures route through the resilient wrapper", async () => {
+			// graphql shares the withResilience wrapper. The mocked octokit.graphql
+			// rejects without a status (network error) → non-retryable → fails fast.
+			const exit = await runWithClock(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) => client.graphql("{ viewer { login } }")),
+					GitHubClientLive.fromToken("t"),
+				),
+			);
+			expect(exit._tag).toBe("Failure");
+		});
+	});
+
+	describe("rate-limit snapshot", () => {
+		it("records x-ratelimit headers into RateLimitState on a successful rest call", async () => {
+			const snapshot = await Effect.runPromise(
+				Effect.gen(function* () {
+					const ref = yield* RateLimitState;
+					yield* Effect.flatMap(GitHubClient, (client) =>
+						client.rest("op", () =>
+							Promise.resolve({
+								data: "ok",
+								headers: {
+									"x-ratelimit-remaining": "4321",
+									"x-ratelimit-limit": "5000",
+									"x-ratelimit-reset": "1700000000",
+								},
+							}),
+						),
+					);
+					return yield* Ref.get(ref);
+				}).pipe(Effect.provide(GitHubClientLive.fromToken("t")), Effect.provide(RateLimitState.Default)),
+			);
+			expect(Option.isSome(snapshot)).toBe(true);
+			if (Option.isSome(snapshot)) {
+				expect(snapshot.value.remaining).toBe(4321);
+				expect(snapshot.value.limit).toBe(5000);
+				expect(snapshot.value.resetEpochSeconds).toBe(1700000000);
+			}
+		});
+
+		it("leaves the snapshot untouched when no headers are present", async () => {
+			const snapshot = await Effect.runPromise(
+				Effect.gen(function* () {
+					const ref = yield* RateLimitState;
+					yield* Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: "ok" })));
+					return yield* Ref.get(ref);
+				}).pipe(Effect.provide(GitHubClientLive.fromToken("t")), Effect.provide(RateLimitState.Default)),
+			);
+			expect(Option.isNone(snapshot)).toBe(true);
+		});
+	});
+
+	describe("paginateStream", () => {
+		it("emits pages lazily — Stream.take(1) fetches only page 1", async () => {
+			let callCount = 0;
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						Stream.runCollect(
+							client
+								.paginateStream(
+									"op",
+									(_o, page) => {
+										callCount++;
+										if (page === 1) return Promise.resolve({ data: [1, 2, 3] });
+										return Promise.resolve({ data: [4, 5, 6] });
+									},
+									{ perPage: 3 },
+								)
+								.pipe(Stream.take(1)),
+						).pipe(Effect.map(Chunk.toReadonlyArray)),
+					),
+					GitHubClientLive.fromToken("t"),
+				),
+			);
+			expect(result).toEqual([1]);
+			expect(callCount).toBe(1);
+		});
+
+		it("stops at maxPages", async () => {
+			let callCount = 0;
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						Stream.runCollect(
+							client.paginateStream(
+								"op",
+								(_o, _page) => {
+									callCount++;
+									return Promise.resolve({ data: [1, 2, 3] });
+								},
+								{ perPage: 3, maxPages: 2 },
+							),
+						).pipe(Effect.map(Chunk.toReadonlyArray)),
+					),
+					GitHubClientLive.fromToken("t"),
+				),
+			);
+			expect(callCount).toBe(2);
+			expect(result).toEqual([1, 2, 3, 1, 2, 3]);
+		});
+
+		it("agrees with paginate on page boundaries", async () => {
+			const fn = (_o: unknown, page: number) => {
+				if (page === 1) return Promise.resolve({ data: [1, 2, 3] });
+				if (page === 2) return Promise.resolve({ data: [4, 5, 6] });
+				return Promise.resolve({ data: [7] });
+			};
+			const eager = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) => client.paginate("op", fn, { perPage: 3 })),
+					GitHubClientLive.fromToken("t"),
+				),
+			);
+			const streamed = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						Stream.runCollect(client.paginateStream("op", fn, { perPage: 3 })).pipe(Effect.map(Chunk.toReadonlyArray)),
+					),
+					GitHubClientLive.fromToken("t"),
+				),
+			);
+			expect(streamed).toEqual(eager);
+			expect(streamed).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		});
+
+		it("takeWhile stops fetching subsequent pages", async () => {
+			let callCount = 0;
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						Stream.runCollect(
+							client
+								.paginateStream(
+									"op",
+									(_o, page) => {
+										callCount++;
+										if (page === 1) return Promise.resolve({ data: [1, 2, 3] });
+										if (page === 2) return Promise.resolve({ data: [4, 5, 6] });
+										return Promise.resolve({ data: [7, 8, 9] });
+									},
+									{ perPage: 3 },
+								)
+								.pipe(Stream.takeWhile((x) => x < 5)),
+						).pipe(Effect.map(Chunk.toReadonlyArray)),
+					),
+					GitHubClientLive.fromToken("t"),
+				),
+			);
+			expect(result).toEqual([1, 2, 3, 4]);
+			// page 3 is never fetched; at most 2 pages.
+			expect(callCount).toBeLessThanOrEqual(2);
+		});
+
+		it("propagates errors through the stream", async () => {
+			const exit = await Effect.runPromise(
+				Effect.exit(
+					Effect.provide(
+						Effect.flatMap(GitHubClient, (client) =>
+							Stream.runCollect(client.paginateStream("op", () => Promise.reject(new Error("page fail")))),
+						),
+						GitHubClientLive.fromToken("t"),
+					),
+				),
+			);
+			expect(exit._tag).toBe("Failure");
+		});
+	});
+
+	describe("fromApp scope", () => {
+		it("revokes the installation token when the scope closes", async () => {
+			const revoked: Array<string> = [];
+			mockAuth.mockResolvedValue({
+				token: "scoped-installation-token",
+				expiresAt: "2099-01-01T00:00:00Z",
+				installationId: 42,
+				permissions: {},
+			});
+			// Spy on the revoke fetch (DELETE /installation/token).
+			const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
+				if (typeof url === "string" && url.includes("/installation/token") && init?.method === "DELETE") {
+					revoked.push(url);
+				}
+				return Promise.resolve(new Response(null, { status: 204 }));
+			});
+
+			await Effect.runPromise(
+				Effect.scoped(
+					Effect.provide(
+						Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: "done" }))),
+						GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+					),
+				),
+			);
+
+			expect(revoked.length).toBe(1);
+			fetchSpy.mockRestore();
+		});
+
+		it("Layer.memoize builds the App client once across multiple provides", async () => {
+			mockAuth.mockResolvedValue({
+				token: "memoized-token",
+				expiresAt: "2099-01-01T00:00:00Z",
+				installationId: 42,
+				permissions: {},
+			});
+			const before = mockAuth.mock.calls.length;
+			const fetchSpy = vi
+				.spyOn(globalThis, "fetch")
+				.mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const shared = yield* Layer.memoize(
+						GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+					);
+					yield* Effect.flatMap(GitHubClient, (client) => client.rest("a", () => Promise.resolve({ data: 1 }))).pipe(
+						Effect.provide(shared),
+					);
+					yield* Effect.flatMap(GitHubClient, (client) => client.rest("b", () => Promise.resolve({ data: 2 }))).pipe(
+						Effect.provide(shared),
+					);
+				}).pipe(Effect.scoped),
+			);
+
+			// generateToken (which calls mockAuth) ran exactly once for both provides.
+			expect(mockAuth.mock.calls.length - before).toBe(1);
+			fetchSpy.mockRestore();
 		});
 	});
 });

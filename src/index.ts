@@ -137,6 +137,8 @@ export { PullRequestTest } from "./layers/PullRequestTest.js";
 export { RateLimiterLive } from "./layers/RateLimiterLive.js";
 export type { RateLimiterTestState } from "./layers/RateLimiterTest.js";
 export { RateLimiterTest } from "./layers/RateLimiterTest.js";
+export type { ResilienceOptions } from "./layers/resilience.js";
+export { resilienceSchedule } from "./layers/resilience.js";
 export { SbomLive } from "./layers/SbomLive.js";
 export type { SbomTestState } from "./layers/SbomTest.js";
 export { SbomTest, makeSbomTestState } from "./layers/SbomTest.js";

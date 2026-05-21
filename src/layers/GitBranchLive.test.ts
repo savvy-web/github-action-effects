@@ -1,4 +1,4 @@
-import { Cause, Duration, Effect, Exit, Fiber, Layer, TestClock, TestContext } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Layer, Stream, TestClock, TestContext } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
 import { GitBranch } from "../services/GitBranch.js";
@@ -30,10 +30,12 @@ const mockClient: typeof GitHubClient.Service = {
 					status: undefined,
 					reason: e instanceof Error ? e.message : String(e),
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 		}).pipe(Effect.map((r) => r.data)),
 	graphql: () => Effect.die("not used"),
 	paginate: () => Effect.die("not used"),
+	paginateStream: () => Stream.die("not used"),
 	repo: Effect.succeed({ owner: "test-owner", repo: "test-repo" }),
 };
 
@@ -66,11 +68,13 @@ const makeMockClient = (): typeof GitHubClient.Service => ({
 					status,
 					reason: message,
 					retryable: status !== undefined && (status === 429 || status >= 500),
+					retryAfterMs: undefined,
 				});
 			},
 		}).pipe(Effect.map((r) => r.data)),
 	graphql: () => Effect.die("not used"),
 	paginate: () => Effect.die("not used"),
+	paginateStream: () => Stream.die("not used"),
 	repo: Effect.succeed({ owner: "test-owner", repo: "test-repo" }),
 });
 
@@ -155,6 +159,7 @@ describe("GitBranchLive", () => {
 								status: 500,
 								reason: "Internal Server Error",
 								retryable: false,
+								retryAfterMs: undefined,
 							}),
 					}).pipe(Effect.map((r) => r.data)),
 			};
@@ -194,6 +199,7 @@ describe("GitBranchLive", () => {
 								status: 404,
 								reason: "Not Found",
 								retryable: false,
+								retryAfterMs: undefined,
 							}),
 					}).pipe(Effect.map((r) => r.data)),
 			};

@@ -1,8 +1,11 @@
-import { Duration, Effect, Layer, Schedule } from "effect";
+import { Duration, Effect, Layer, Option, Ref, Schedule } from "effect";
+import type { GitHubClientError } from "../errors/GitHubClientError.js";
 import { RateLimitError } from "../errors/RateLimitError.js";
 import type { RateLimitStatus } from "../schemas/RateLimit.js";
 import { GitHubClient } from "../services/GitHubClient.js";
 import { RateLimiter } from "../services/RateLimiter.js";
+import type { RateLimitSnapshot } from "../services/RateLimitState.js";
+import { RateLimitState } from "../services/RateLimitState.js";
 
 /** Minimal Octokit shape for rate limit API calls. */
 interface OctokitRateLimit {
@@ -22,29 +25,54 @@ interface OctokitRateLimit {
 
 const asRateLimit = (octokit: unknown): OctokitRateLimit => octokit as OctokitRateLimit;
 
+/** Project an internal snapshot onto the public `RateLimitStatus` schema. */
+const snapshotToStatus = (snapshot: RateLimitSnapshot): RateLimitStatus => ({
+	limit: snapshot.limit,
+	remaining: snapshot.remaining,
+	reset: snapshot.resetEpochSeconds,
+	used: Math.max(0, snapshot.limit - snapshot.remaining),
+});
+
 /**
- * Executes `effect` with a pre-flight REST rate limit check.
- * Note: only checks the REST core quota. For GraphQL-heavy effects,
- * call `checkGraphQL` separately.
+ * Rate limiter that reads the `x-ratelimit-*` headers observed on real
+ * responses (cached in a shared `RateLimitState` `Ref` written by the
+ * GitHubClient), rather than issuing a pre-flight `GET /rate_limit` before every
+ * guarded call. Probes only on a cache miss.
  */
 export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = Layer.effect(
 	RateLimiter,
-	Effect.map(GitHubClient, (client) => {
-		/** Fetch all rate limit resources via the REST API (used by both checkRest and checkGraphQL). */
+	Effect.gen(function* () {
+		const client = yield* GitHubClient;
+		// Use the app-provided shared snapshot when present (so the client's
+		// observed headers drive the policy); otherwise fall back to a private
+		// empty Ref so the limiter is self-contained and adds no build requirement.
+		const snapshotRef = yield* Effect.flatMap(Effect.serviceOption(RateLimitState), (maybe) =>
+			Option.isSome(maybe) ? Effect.succeed(maybe.value) : Ref.make(Option.none<RateLimitSnapshot>()),
+		);
+
+		/** Fetch all rate limit resources via the REST API (the cache-miss probe). */
 		const fetchRateLimits = () => client.rest("rate_limit", (octokit) => asRateLimit(octokit).rest.rateLimit.get());
 
-		const checkRest = (): Effect.Effect<RateLimitStatus, import("../errors/GitHubClientError.js").GitHubClientError> =>
-			fetchRateLimits().pipe(
-				Effect.map((data) => {
-					const typed = data as { resources: { core: RateLimitStatus } };
-					return typed.resources.core;
-				}),
+		// The shared snapshot is written only from REST (core-bucket) responses;
+		// `graphql` calls never record it. So a cached snapshot is always the
+		// core bucket: checkRest may serve it, but checkGraphQL must not.
+		const checkRest = (): Effect.Effect<RateLimitStatus, GitHubClientError> =>
+			Effect.flatMap(Ref.get(snapshotRef), (cached) =>
+				Option.isSome(cached)
+					? Effect.succeed(snapshotToStatus(cached.value))
+					: fetchRateLimits().pipe(
+							Effect.map((data) => {
+								const typed = data as { resources: { core: RateLimitStatus } };
+								return typed.resources.core;
+							}),
+						),
 			);
 
-		const checkGraphQL = (): Effect.Effect<
-			RateLimitStatus,
-			import("../errors/GitHubClientError.js").GitHubClientError
-		> =>
+		// REST and GraphQL have independent quotas on the GitHub API, and the
+		// shared snapshot only ever holds the core (REST) bucket, so serving it
+		// here would report the wrong quota. checkGraphQL always probes the
+		// graphql resource directly.
+		const checkGraphQL = (): Effect.Effect<RateLimitStatus, GitHubClientError> =>
 			fetchRateLimits().pipe(
 				Effect.map((data) => {
 					const typed = data as { resources: { graphql: RateLimitStatus } };
@@ -57,36 +85,31 @@ export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = La
 			checkGraphQL,
 
 			withRateLimit: <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E | RateLimitError, R> =>
-				checkRest().pipe(
-					Effect.mapError(
-						(e): E | RateLimitError =>
+				Effect.flatMap(Ref.get(snapshotRef), (cached): Effect.Effect<A, E | RateLimitError, R> => {
+					// Never observed yet → run directly; the first real call will
+					// populate the snapshot for subsequent guards (no wasted probe).
+					if (Option.isNone(cached)) {
+						return effect;
+					}
+					const snapshot = cached.value;
+					const threshold = Math.ceil(snapshot.limit * 0.1);
+					if (snapshot.remaining > threshold) {
+						return effect;
+					}
+					const resetDate = new Date(snapshot.resetEpochSeconds * 1000);
+					const waitMs = Math.max(0, resetDate.getTime() - Date.now());
+					if (waitMs > 60000) {
+						return Effect.fail(
 							new RateLimitError({
 								api: "rest",
-								remaining: 0,
-								resetAt: "",
-								reason: `Failed to check rate limit: ${e.reason}`,
+								remaining: snapshot.remaining,
+								resetAt: resetDate.toISOString(),
+								reason: `Rate limit nearly exhausted (${snapshot.remaining}/${snapshot.limit}). Resets at ${resetDate.toISOString()}`,
 							}),
-					),
-					Effect.flatMap((status): Effect.Effect<A, E | RateLimitError, R> => {
-						const threshold = Math.ceil(status.limit * 0.1);
-						if (status.remaining <= threshold) {
-							const resetDate = new Date(status.reset * 1000);
-							const waitMs = Math.max(0, resetDate.getTime() - Date.now());
-							if (waitMs > 60000) {
-								return Effect.fail(
-									new RateLimitError({
-										api: "rest",
-										remaining: status.remaining,
-										resetAt: resetDate.toISOString(),
-										reason: `Rate limit nearly exhausted (${status.remaining}/${status.limit}). Resets at ${resetDate.toISOString()}`,
-									}),
-								);
-							}
-							return Effect.sleep(Duration.millis(waitMs)).pipe(Effect.flatMap(() => effect));
-						}
-						return effect;
-					}),
-				),
+						);
+					}
+					return Effect.sleep(Duration.millis(waitMs)).pipe(Effect.flatMap(() => effect));
+				}),
 
 			withRetry: <A, E, R>(
 				effect: Effect.Effect<A, E, R>,

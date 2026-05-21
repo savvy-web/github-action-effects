@@ -9,7 +9,7 @@
  * silk-integration repo run, not here.
  */
 
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import type { InTotoStatement } from "../testing.js";
 import {
@@ -94,10 +94,12 @@ describe("Attest.attest — step 4: end-to-end upload", () => {
 						status: 403,
 						reason: "permission denied: missing attestations:write",
 						retryable: false,
+						retryAfterMs: undefined,
 					}),
 				),
 			graphql: () => Effect.die("graphql should not be called"),
 			paginate: () => Effect.die("paginate should not be called"),
+			paginateStream: () => Stream.die("paginateStream should not be called"),
 			repo: Effect.succeed({ owner: "savvy-web", repo: "silk-integration" }),
 		});
 

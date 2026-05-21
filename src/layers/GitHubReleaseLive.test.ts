@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
 import { GitHubClient } from "../services/GitHubClient.js";
@@ -34,9 +34,11 @@ const mockClient: typeof GitHubClient.Service = {
 					status: undefined,
 					reason: e instanceof Error ? e.message : String(e),
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 		}).pipe(Effect.map((r) => r.data)),
 	graphql: () => Effect.die("not used"),
+	paginateStream: () => Stream.die("not used"),
 	paginate: <T>(
 		_operation: string,
 		fn: (octokit: unknown, page: number, perPage: number) => Promise<{ data: T[] }>,
@@ -66,6 +68,7 @@ const mockClient: typeof GitHubClient.Service = {
 					status: undefined,
 					reason: e instanceof Error ? e.message : String(e),
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 		}).pipe(Effect.map((r) => r.data)),
 	repo: Effect.succeed({ owner: "test-owner", repo: "test-repo" }),
