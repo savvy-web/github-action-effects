@@ -54,6 +54,9 @@ export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = La
 		/** Fetch all rate limit resources via the REST API (the cache-miss probe). */
 		const fetchRateLimits = () => client.rest("rate_limit", (octokit) => asRateLimit(octokit).rest.rateLimit.get());
 
+		// The shared snapshot is written only from REST (core-bucket) responses;
+		// `graphql` calls never record it. So a cached snapshot is always the
+		// core bucket: checkRest may serve it, but checkGraphQL must not.
 		const checkRest = (): Effect.Effect<RateLimitStatus, GitHubClientError> =>
 			Effect.flatMap(Ref.get(snapshotRef), (cached) =>
 				Option.isSome(cached)
@@ -66,16 +69,16 @@ export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = La
 						),
 			);
 
+		// REST and GraphQL have independent quotas on the GitHub API, and the
+		// shared snapshot only ever holds the core (REST) bucket, so serving it
+		// here would report the wrong quota. checkGraphQL always probes the
+		// graphql resource directly.
 		const checkGraphQL = (): Effect.Effect<RateLimitStatus, GitHubClientError> =>
-			Effect.flatMap(Ref.get(snapshotRef), (cached) =>
-				Option.isSome(cached)
-					? Effect.succeed(snapshotToStatus(cached.value))
-					: fetchRateLimits().pipe(
-							Effect.map((data) => {
-								const typed = data as { resources: { graphql: RateLimitStatus } };
-								return typed.resources.graphql;
-							}),
-						),
+			fetchRateLimits().pipe(
+				Effect.map((data) => {
+					const typed = data as { resources: { graphql: RateLimitStatus } };
+					return typed.resources.graphql;
+				}),
 			);
 
 		return {
