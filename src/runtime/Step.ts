@@ -95,6 +95,10 @@ const resolveSummary = <A>(frame: StepFrame, result: A, options?: WithStepOption
  * original error untouched. The buffered lines retain their
  * chronological order.
  *
+ * If the body called {@link failure} (rather than failing the effect),
+ * the step renders the same `❌` block — header plus buffer spill — but
+ * returns its value instead of propagating a cause. See {@link failure}.
+ *
  * The library is the single source of truth for the `✅` / `❌`
  * icon and the `<name>:` prefix. Consumers pass ONLY the outcome
  * to {@link success}.
@@ -117,6 +121,7 @@ export const withStep = <A, E, R>(
 			name,
 			depth: stack.length,
 			successLine: null,
+			failureLine: null,
 			buffer,
 		};
 
@@ -137,6 +142,14 @@ export const withStep = <A, E, R>(
 		if (Exit.isFailure(exit)) {
 			emitFailure(frame, renderErrorMessage(exit.cause));
 			return yield* Effect.failCause(exit.cause);
+		}
+
+		// A non-throwing failure: the body resolved with a value but called
+		// `Step.failure`, so render the `❌` block (and spill) instead of the
+		// success line, then return the value untouched.
+		if (frame.failureLine !== null) {
+			emitFailure(frame, frame.failureLine);
+			return exit.value;
 		}
 
 		const summary = resolveSummary(frame, exit.value, options);
@@ -172,6 +185,54 @@ export const success = (line: string): Effect.Effect<void> =>
 		const innermost = stack[stack.length - 1];
 		if (innermost !== undefined) {
 			innermost.successLine = line;
+		}
+	});
+
+/**
+ * Mark the current step as failed without throwing. The step's
+ * {@link withStep} envelope renders `❌ <name>: <line>` (with the usual
+ * buffer spill) instead of the success line, but the wrapped effect
+ * still resolves with its value so the surrounding loop can continue and
+ * aggregate the outcome.
+ *
+ * Use this for non-fatal target failures the orchestrator records as
+ * results and reports later — e.g. one registry rejecting a publish
+ * while siblings succeed. For failures that should abort the fiber, fail
+ * the effect instead; {@link withStep} renders the same `❌` block and
+ * propagates the cause.
+ *
+ * Calling outside a {@link withStep} envelope is a no-op (with a
+ * defensive debug log). When both `failure` and {@link success} are
+ * called on the same step, `failure` wins.
+ *
+ * @example
+ * ```ts
+ * Step.withStep(`publish ${name} → ${registry}`, Effect.gen(function* () {
+ *   const outcome = yield* publishSvc.publishTarball(tarball, opts).pipe(
+ *     Effect.map(() => ({ ok: true as const })),
+ *     Effect.catchAll((e) => Effect.succeed({ ok: false as const, error: e.message })),
+ *   )
+ *   if (!outcome.ok) {
+ *     yield* Step.failure("publish-failed")
+ *     return { status: "failed" as const, error: outcome.error }
+ *   }
+ *   yield* Step.success("published")
+ *   return { status: "published" as const }
+ * }))
+ * ```
+ *
+ * @public
+ */
+export const failure = (line: string): Effect.Effect<void> =>
+	Effect.gen(function* () {
+		const stack = yield* FiberRef.get(StepStack);
+		if (stack.length === 0) {
+			yield* Effect.logDebug("Step.failure called outside a withStep envelope; ignoring.");
+			return;
+		}
+		const innermost = stack[stack.length - 1];
+		if (innermost !== undefined) {
+			innermost.failureLine = line;
 		}
 	});
 
@@ -240,6 +301,7 @@ export const collapse = <A>(
 							name: step.name,
 							depth,
 							successLine: null,
+							failureLine: null,
 							buffer,
 						};
 						const exit = yield* Effect.exit(
@@ -254,8 +316,10 @@ export const collapse = <A>(
 			{ concurrency: "unbounded" },
 		);
 
-		// Decide between collapsed-line and per-child emission.
-		const allSucceeded = outcomes.every((o) => Exit.isSuccess(o.exit));
+		// Decide between collapsed-line and per-child emission. A child that
+		// marked itself failed via `Step.failure` resolved with a value, so its
+		// Exit is a success — but it must not be collapsed away, so exclude it.
+		const allSucceeded = outcomes.every((o) => Exit.isSuccess(o.exit) && o.frame.failureLine === null);
 		const collapsedLine = allSucceeded
 			? reducer(
 					outcomes.map(
@@ -280,6 +344,8 @@ export const collapse = <A>(
 		for (const outcome of outcomes) {
 			if (Exit.isFailure(outcome.exit)) {
 				emitFailure(outcome.frame, renderErrorMessage(outcome.exit.cause));
+			} else if (outcome.frame.failureLine !== null) {
+				emitFailure(outcome.frame, outcome.frame.failureLine);
 			} else {
 				const summary = resolveSummary(outcome.frame, outcome.exit.value);
 				emitSuccess(outcome.frame, summary);
