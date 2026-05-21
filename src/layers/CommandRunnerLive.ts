@@ -137,7 +137,7 @@ export const CommandRunnerLive: Layer.Layer<CommandRunner> = Layer.succeed(
 						catch: () =>
 							new CommandRunnerError({
 								command,
-								args: resolvedArgs,
+								args: scrubAuthArgs(resolvedArgs),
 								exitCode: output.exitCode,
 								stderr: output.stderr,
 								reason: `Failed to parse stdout as JSON: ${output.stdout.slice(0, 200)}`,
@@ -150,7 +150,7 @@ export const CommandRunnerLive: Layer.Layer<CommandRunner> = Layer.succeed(
 							() =>
 								new CommandRunnerError({
 									command,
-									args: resolvedArgs,
+									args: scrubAuthArgs(resolvedArgs),
 									exitCode: 0,
 									stderr: undefined,
 									reason: "Command output did not match expected schema",
