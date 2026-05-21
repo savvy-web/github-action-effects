@@ -186,79 +186,9 @@ const program = Effect.gen(function* () {
 
 ## Package publishing workflow
 
-This example wires several services together into a multi-registry publish workflow.
+Publishing has its own guide. The recommended path is the `pack` → probe → `publishTarball` chain: pack the package once, compare the packed integrity digest against what the registry already has, and upload the exact bytes only when they differ. That composition is what makes a re-run recover cleanly across multiple registries, where the older fused `publishIdempotent` could not.
 
-```typescript
-import { Config, Effect, Layer } from "effect"
-import {
-  Action,
-  DryRun,
-  DryRunLive,
-  NpmRegistry,
-  NpmRegistryLive,
-  PackagePublish,
-  PackagePublishLive,
-  TokenPermissionChecker,
-  TokenPermissionCheckerLive,
-  ErrorAccumulator,
-  GithubMarkdown,
-  ActionOutputs,
-} from "@savvy-web/github-action-effects"
-
-// `granted` is the permissions record from the token in use
-const granted = { contents: "write" }
-
-const program = Effect.gen(function* () {
-  const dryRun = yield* DryRun
-  const checker = yield* TokenPermissionChecker
-  const npm = yield* NpmRegistry
-  const publisher = yield* PackagePublish
-  const outputs = yield* ActionOutputs
-
-  // 1. Verify permissions
-  yield* checker.assertSufficient({ contents: "write" })
-
-  // 2. Check if version already exists
-  const latest = yield* npm.getLatestVersion("@scope/my-pkg")
-  yield* Effect.log(`Current latest: ${latest}`)
-
-  // 3. Pack and publish
-  const packed = yield* dryRun.guard(
-    "pack",
-    publisher.pack("./dist/npm"),
-    { tarball: "dry-run.tgz", digest: "sha512-dry" },
-  )
-
-  yield* dryRun.guard(
-    "publish",
-    publisher.publishToRegistries("./dist/npm", [
-      { registry: "https://registry.npmjs.org/", token: npmToken },
-      { registry: "https://npm.pkg.github.com/", token: ghToken },
-    ]),
-    undefined,
-  )
-
-  // 4. Write summary
-  yield* outputs.summary(
-    GithubMarkdown.table(
-      ["Package", "Version", "Status"],
-      [["@scope/my-pkg", "1.0.0", GithubMarkdown.statusIcon("pass")]],
-    ),
-  )
-})
-
-Action.run(
-  program,
-  {
-    layer: Layer.mergeAll(
-      DryRunLive,
-      NpmRegistryLive,
-      PackagePublishLive,
-      TokenPermissionCheckerLive(granted),
-    ),
-  },
-)
-```
+See [publishing packages](./11-publishing.md) for the full chain, the two distinct `PackResult` digests (npm integrity vs the SHA-256 attestation subject), `RegistryTarget.packageManager`, dry runs and the `publishIdempotent` deprecation.
 
 ## Report builder
 
@@ -351,9 +281,9 @@ import {
 } from "@savvy-web/github-action-effects"
 
 // GitHubClientLive is a namespace of constructors — call one to get a layer.
-// `fromEnv` reads process.env.GITHUB_TOKEN.
+// `fromEnv()` reads process.env.GITHUB_TOKEN.
 const ExtendedLayer = Layer.mergeAll(
-  GitHubClientLive.fromEnv,
+  GitHubClientLive.fromEnv(),
   GitHubReleaseLive,
   CommandRunnerLive,
   DryRunLive,

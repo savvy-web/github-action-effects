@@ -202,9 +202,9 @@ const result = yield* someEffect.pipe(
 )
 ```
 
-The error types — `ActionOutputError`, `ActionStateError`, `GitHubClientError` and so on — are all `Data.TaggedError` instances. See [architecture](./07-architecture.md#error-types) for their fields.
+The error types — `ActionOutputError`, `ActionStateError`, `GitHubClientError` and so on — are all `Data.TaggedError` instances. See [architecture](./14-architecture.md#error-types) for their fields.
 
-For custom error handlers that extract a human-readable message from an Effect `Cause`, use `Action.formatCause(cause)`. It returns a `[Tag] message` string that is parseable by both humans and AI. See [error handling](./06-error-handling.md) for details.
+For custom error handlers that extract a human-readable message from an Effect `Cause`, use `Action.formatCause(cause)`. It returns a `[Tag] message` string that is parseable by both humans and AI. See [error handling](./13-error-handling.md) for details.
 
 ## Testing
 
@@ -247,11 +247,11 @@ describe("package checker action", () => {
 })
 ```
 
-See [Testing GitHub Actions](./08-testing.md) for the full API of each test layer and patterns for testing logging, state and annotations.
+See [Testing GitHub Actions](./16-testing.md) for the full API of each test layer and patterns for testing logging, state and annotations.
 
 ## Next steps
 
 - [Services guide](./03-services.md) — detailed guide for every service
-- [Testing GitHub Actions](./08-testing.md) — test every service with in-memory layers
-- [Architecture](./07-architecture.md) — runtime layer, layer composition and the logging pipeline
+- [Testing GitHub Actions](./16-testing.md) — test every service with in-memory layers
+- [Architecture](./14-architecture.md) — runtime layer, layer composition and the logging pipeline
 - [Common patterns](./04-patterns.md) — dry-run mode, error accumulation, permission checking and more

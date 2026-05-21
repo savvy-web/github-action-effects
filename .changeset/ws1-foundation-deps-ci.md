@@ -11,9 +11,8 @@ peers but are never imported anywhere in the library. They are now removed from
 `peerDependencies` and `peerDependenciesMeta`. Consumers only need `effect`,
 `@effect/platform`, and `@effect/platform-node`; the dropped packages still
 resolve transitively through `@effect/platform-node` if any code path needs
-them. The install docs (`docs/README.md`, `docs/01-example-action.md`,
-`docs/05-peer-dependencies.md`) are corrected to match the README's already-
-accurate three-peer list.
+them. The install docs are corrected to match the README's already-accurate
+three-peer list.
 
 ### CI now runs the full production build on every pull request
 

@@ -16,11 +16,18 @@ pnpm add @savvy-web/github-action-effects effect @effect/platform @effect/platfo
 - [Advanced action: three-stage app](./02-advanced-action.md) — A complete pre/main/post action with GitHub App auth, cross-phase state and buffered logging.
 - [Services guide](./03-services.md) — A usage example for every service in the library.
 - [Common patterns](./04-patterns.md) — Dry-run mode, error accumulation, permission checks and workspace detection.
-- [Peer dependencies](./05-peer-dependencies.md) — Which packages to install and why.
-- [Error handling](./06-error-handling.md) — `Action.formatCause`, `Action.run` error handling and the `[Tag] message` format.
-- [Architecture](./07-architecture.md) — The runtime layer, layer composition and the logging pipeline.
-- [Testing GitHub Actions](./08-testing.md) — How to test an action with in-memory test layers.
-- [Filesystem I/O](./09-filesystem-io.md) — `IoUtil` (`which`/`findInPath`) and the `cp`/`mv`/`rmRF`/`mkdirP` → `FileSystem` recipe.
+- [Building a robust action](./05-best-practices.md) — Principles and pointers: wiring, the pre/main/post pattern, dry runs, permission checks, idempotency and secret handling.
+- [Coming from `@actions/*`](./06-toolkit-parity.md) — The migration map from each `@actions/*` package to its native ESM replacement.
+- [Logging and error handling](./07-logging-and-error-handling.md) — The log-level model, groups, buffered output, annotations, secret masking and the error-handling boundary.
+- [Resilient GitHub API calls](./08-resilient-github-api.md) — Default-on retry, `ResilienceOptions`, the `RateLimiter` service and streaming pagination.
+- [Step-buffered logging patterns](./09-step-logging.md) — Quiet-on-success, verbose-on-failure step logging with `withStep`, `collapse` and `groupStep`.
+- [Generating SLSA attestations](./10-slsa-attestations.md) — Provenance and SBOM attestations, the layer stack and idempotent recovery.
+- [Publishing packages with the publish chain](./11-publishing.md) — Pack, probe and publish a tarball, plus registry classification.
+- [Peer dependencies](./12-peer-dependencies.md) — Which packages to install and why.
+- [Error handling](./13-error-handling.md) — `Action.formatCause`, `Action.run` error handling and the `[Tag] message` format.
+- [Architecture](./14-architecture.md) — The runtime layer, layer composition and the logging pipeline.
+- [Filesystem I/O](./15-filesystem-io.md) — `IoUtil` (`which`/`findInPath`) and the `cp`/`mv`/`rmRF`/`mkdirP` → `FileSystem` recipe.
+- [Testing GitHub Actions](./16-testing.md) — How to test an action with in-memory test layers.
 
 ## How inputs work
 
@@ -42,17 +49,19 @@ const program = Effect.gen(function* () {
 
 | Service | Purpose |
 | --- | --- |
-| ActionLogger | Collapsible log groups (group) and buffer-on-failure logging (withBuffer) |
+| ActionLogger | Collapsible log groups (group), buffer-on-failure logging (withBuffer) and `::notice::` annotations (notice) |
 | ActionOutputs | Typed outputs (set, setJson, summary, exportVariable, addPath, setFailed, setSecret) |
 | ActionState | Schema-serialized state for multi-phase actions (save, get, getOptional) |
-| ActionEnvironment | Typed access to `GITHUB_*` and `RUNNER_*` env vars |
+| ActionEnvironment | Typed access to `GITHUB_*` and `RUNNER_*` env vars, plus the parsed webhook payload (`payload`, `repo`, `issue`, `isDebug`) |
 
 ### Extended services (provide via additional layers)
 
 | Service | Purpose |
 | --- | --- |
 | ActionCache | Save/restore with withCache bracket pattern |
-| GitHubClient | Octokit REST/GraphQL with pagination (uses @octokit/rest directly) |
+| Artifact | Upload, list, download and delete GitHub Actions artifacts (`@actions/artifact` v2 parity) |
+| Glob | Resolve glob patterns and compute `@actions/glob`-compatible file hashes |
+| GitHubClient | Octokit REST/GraphQL with eager (`paginate`) and streaming (`paginateStream`) pagination (uses @octokit/rest directly) |
 | GitHubGraphQL | Typed GraphQL queries and mutations |
 | GitHubRelease | Create, update and list releases and assets |
 | GitHubIssue | List, close, comment and get issues |
@@ -91,7 +100,9 @@ const program = Effect.gen(function* () {
 | `Step` | Step-buffered execution: `withStep`, `success`, `collapse`, `groupStep` |
 | `GitHubToken` | GitHub App installation-token lifecycle: `provision`, `client`, `read`, `botIdentity`, `dispose` |
 | `GitHubClientLive` | `GitHubClient` layer constructors: `fromEnv`, `fromToken`, `fromApp` |
-| `GithubMarkdown` | Pure GFM builder functions: `table`, `heading`, `bold`, `details`, `checklist`, etc. |
+| `ActionInput` | GitHub-faithful `Config` input combinators: `boolean` (YAML 1.2 Core Schema), `multiline` |
+| `GithubMarkdown` | Pure GFM builder functions: `table`, `heading`, `bold`, `details`, `checklist`, `image`, `quote`, etc. |
+| `PathUtils` | Path-separator normalizers: `toPosixPath`, `toWin32Path`, `toPlatformPath` |
 | `AutoMerge` | Enable/disable PR auto-merge via GraphQL |
 | `SemverResolver` | Semver comparison, range satisfaction, increment, parse |
 | `ErrorAccumulator` | Process items collecting all successes and failures |
