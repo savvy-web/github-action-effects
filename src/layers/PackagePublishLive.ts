@@ -11,9 +11,9 @@ import { PackagePublish } from "../services/PackagePublish.js";
 /**
  * The size-bearing fields of npm's `--json` dry-run output.
  *
- * `npm publish --dry-run --json` emits one such object; `npm pack --dry-run
- * --json` emits an array of them. Only the fields consumed by {@link DryRunResult}
- * are modelled.
+ * `npm publish --dry-run --json` emits one such object;
+ * `npm pack --dry-run --json` emits an array of them. Only the fields
+ * consumed by {@link DryRunResult} are modelled.
  */
 interface PackedJson {
 	readonly size?: number;
