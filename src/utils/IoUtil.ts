@@ -153,7 +153,7 @@ const collectMatches = (fs: FileSystem.FileSystem, tool: string): Effect.Effect<
  *
  * `cp` / `mv` / `rmRF` / `mkdirP` are intentionally NOT provided here — they map
  * directly onto `@effect/platform` `FileSystem` (`copy` / `rename` / `remove` /
- * `makeDirectory`). See `docs/09-filesystem-io.md` for the substitution recipe.
+ * `makeDirectory`). See `docs/15-filesystem-io.md` for the substitution recipe.
  *
  * @public
  */

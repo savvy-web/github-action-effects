@@ -434,11 +434,11 @@ describe("post phase", () => {
 })
 ```
 
-See [Testing GitHub Actions](./08-testing.md) for the complete test layer API and more patterns.
+See [Testing GitHub Actions](./16-testing.md) for the complete test layer API and more patterns.
 
 ## Next steps
 
 - [Services guide](./03-services.md) — detailed usage for each service
-- [Testing GitHub Actions](./08-testing.md) — test multi-phase actions with in-memory layers
+- [Testing GitHub Actions](./16-testing.md) — test multi-phase actions with in-memory layers
 - [Common patterns](./04-patterns.md) — dry-run, error accumulation and more
-- [Peer dependencies](./05-peer-dependencies.md) — which packages to install
+- [Peer dependencies](./12-peer-dependencies.md) — which packages to install

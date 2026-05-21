@@ -19,7 +19,43 @@ const program = Effect.gen(function* () {
 )
 ```
 
-Each error type carries structured fields — `outputName`, `reason`, `operation` and so on — so the handler knows exactly what failed. See [architecture](./07-architecture.md#error-types) for the full error catalog.
+Each error type carries structured fields — `outputName`, `reason`, `operation` and so on — so the handler knows exactly what failed. See [architecture](./14-architecture.md#error-types) for the full error catalog.
+
+## The attestation and publish error surface
+
+The attestation cluster and the newer GitHub services add eight tagged errors. Each carries a discriminator — `reason` or `operation` — so a `catchTag` handler can branch on the failing stage without coupling to the implementation.
+
+| Error | Tag | Discriminator and fields |
+| --- | --- | --- |
+| `AttestError` | `"AttestError"` | `reason: "build" \| "save" \| "oidc" \| "sign" \| "upload"`, `message` |
+| `SbomError` | `"SbomError"` | `reason: "build" \| "serialize" \| "save"`, `message` |
+| `SigstoreSignerError` | `"SigstoreSignerError"` | `reason: "sign" \| "witness" \| "bundle"`, `message` |
+| `OidcTokenError` | `"OidcTokenError"` | `reason: "env" \| "http" \| "decode" \| "save"`, `message` |
+| `SlsaError` | `"SlsaError"` | `reason: "decode" \| "claims" \| "env"`, `message` |
+| `GitHubContentError` | `"GitHubContentError"` | `operation: "getFile"`, `reason`, optional `path` |
+| `GitHubCommitError` | `"GitHubCommitError"` | `operation: "get" \| "list" \| "compare"`, `reason`, optional `ref` |
+| `GitHubArtifactMetadataError` | `"GitHubArtifactMetadataError"` | `operation: "createStorageRecord"`, `reason`, `retryable: boolean` |
+
+Matching on the discriminator keeps recovery precise — retry only the retryable artifact-metadata failures, fall back only on a `"http"` OIDC failure, surface a `"claims"` `SlsaError` as a configuration problem rather than a transient one.
+
+```typescript
+import { Effect } from "effect"
+
+const program = Effect.gen(function* () {
+  // ... attestation work ...
+}).pipe(
+  Effect.catchTag("OidcTokenError", (e) =>
+    e.reason === "env"
+      ? Effect.logError("Missing id-token: write permission")
+      : Effect.logError(`OIDC token request failed: ${e.message}`),
+  ),
+  Effect.catchTag("GitHubArtifactMetadataError", (e) =>
+    e.retryable
+      ? Effect.logWarning(`Retryable: ${e.reason}`)
+      : Effect.logError(`Storage record failed: ${e.reason}`),
+  ),
+)
+```
 
 ## Action.formatCause
 

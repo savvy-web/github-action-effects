@@ -1,6 +1,6 @@
 # Services guide
 
-This guide walks through each service in `@savvy-web/github-action-effects` with a usage example. For architecture and layer composition, see [architecture](./07-architecture.md). For testing, see [testing](./08-testing.md).
+This guide walks through each service in `@savvy-web/github-action-effects` with a usage example. For architecture and layer composition, see [architecture](./14-architecture.md). For testing, see [testing](./16-testing.md).
 
 ## Inputs via Config API
 
@@ -28,13 +28,33 @@ const program = Effect.gen(function* () {
 })
 ```
 
+### ActionInput
+
+`ActionInput` is a namespace of `Config` combinators for GitHub-faithful input parsing. They read through the same `ActionsConfigProvider`, so they compose with `Config.withDefault`, `Config.option` and the rest.
+
+```typescript
+import { Config, Effect } from "effect"
+import { ActionInput } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  // YAML 1.2 Core Schema boolean — accepts ONLY true/True/TRUE and
+  // false/False/FALSE, matching @actions/core.getBooleanInput
+  const dryRun = yield* ActionInput.boolean("dry-run").pipe(Config.withDefault(false))
+
+  // Multiline input: split on \n, drop empty lines, trim each line
+  const paths = yield* ActionInput.multiline("paths").pipe(Config.withDefault([]))
+})
+```
+
+Prefer `ActionInput.boolean` over Effect's `Config.boolean` for GitHub parity. `Config.boolean` also accepts JS-flavored truthy values like `yes`/`on`/`1` (which GitHub's own composite-action runtime rejects) and rejects `True` (which GitHub accepts). `ActionInput.boolean` fails with `ConfigError.InvalidData` on anything outside the YAML 1.2 Core Schema set.
+
 ## Core services
 
 These services are provided automatically by `ActionsRuntime.Default` and `Action.run`.
 
 ### ActionLogger
 
-`ActionLogger` adds two operations on top of the built-in Effect logger: collapsible log groups and buffer-on-failure logging. It has exactly two methods, `group` and `withBuffer`.
+`ActionLogger` adds three operations on top of the built-in Effect logger: collapsible log groups, buffer-on-failure logging and `::notice::` annotations. Its methods are `group`, `withBuffer` and `notice`.
 
 ```typescript
 import { Effect } from "effect"
@@ -57,10 +77,15 @@ const program = Effect.gen(function* () {
     // If this succeeds, buffered logs are discarded
     // If this fails, buffered logs flush for debugging
   }))
+
+  // Notice annotation — there is no Effect log level between Info and Warning,
+  // so notice is its own method. Optional properties pin it to a file/line.
+  yield* logger.notice("Cache restored from a previous run")
+  yield* logger.notice("Generated file is stale", { file: "dist/index.js", startLine: 1 })
 })
 ```
 
-Workflow annotations are not a method on `ActionLogger`. Log through Effect at warning or error level instead — the `ActionsLogger` installed by `ActionsRuntime.Default` maps `Effect.logWarning` to a `::warning::` command and `Effect.logError` to a `::error::` command. Log annotations such as `file` and `line` become command properties, so an annotation lands inline on the PR diff.
+`notice` mirrors `@actions/core.notice` and emits a `::notice::` workflow command. `Effect.logInfo` writes plain stdout, so a notice annotation needs this dedicated path. Workflow warning and error annotations, by contrast, are not methods on `ActionLogger`. Log through Effect at warning or error level instead — the `ActionsLogger` installed by `ActionsRuntime.Default` maps `Effect.logWarning` to a `::warning::` command and `Effect.logError` to a `::error::` command. Log annotations such as `file` and `line` become command properties, so an annotation lands inline on the PR diff.
 
 ```typescript
 import { Effect } from "effect"
@@ -165,8 +190,36 @@ const program = Effect.gen(function* () {
 
   // Structured runner context (all RUNNER_* vars, validated)
   const runner = yield* env.runner
+
+  // True when RUNNER_DEBUG === "1" (mirrors @actions/core.isDebug)
+  const debugging = yield* env.isDebug
 })
 ```
+
+Beyond the raw and structured contexts, `ActionEnvironment` exposes the parsed webhook event the way `@actions/github`'s `context` does. These three accessors read `GITHUB_EVENT_PATH` and so require `FileSystem` in context (`ActionsRuntime.Default` provides it):
+
+```typescript
+import { Effect } from "effect"
+import { ActionEnvironment } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const env = yield* ActionEnvironment
+
+  // Parsed GITHUB_EVENT_PATH payload, schema-decoded into a WebhookPayload.
+  // Common fields are typed; unknown keys are preserved. Empty {} when the
+  // event file is absent (matching @actions/github).
+  const payload = yield* env.payload
+  const prTitle = payload.pull_request?.number
+
+  // { owner, repo } from GITHUB_REPOSITORY, falling back to payload.repository
+  const { owner, repo } = yield* env.repo
+
+  // { owner, repo, number } where number resolves from issue ?? pull_request ?? top-level
+  const { number } = yield* env.issue
+})
+```
+
+`WebhookPayload` is also exported as a value (the Effect Schema) and a type, so you can decode an event body yourself or annotate a handler. Decoding preserves unknown keys, mirroring the toolkit's open `[key: string]: any` payload shape.
 
 ## GitHub API services
 
@@ -183,28 +236,82 @@ import { GitHubClient, GitHubClientLive } from "@savvy-web/github-action-effects
 const program = Effect.gen(function* () {
   const client = yield* GitHubClient
 
-  // REST API call
+  // REST API call. The callback receives `octokit: unknown`, so narrow it with
+  // a structural cast (or `octokit as Octokit` from @octokit/rest) before use.
   const release = yield* client.rest("getLatestRelease", (octokit) =>
-    octokit.repos.getLatestRelease({ owner: "org", repo: "repo" })
+    (octokit as { rest: { repos: { getLatestRelease: (p: unknown) => Promise<{ data: { id: number } }> } } })
+      .rest.repos.getLatestRelease({ owner: "org", repo: "repo" }),
   )
 
-  // Paginated REST call
+  // Paginated REST call — eager, collects every page into one array
   const issues = yield* client.paginate("listIssues", (octokit, page, perPage) =>
-    octokit.issues.listForRepo({ owner: "org", repo: "repo", page, per_page: perPage })
+    (octokit as { rest: { issues: { listForRepo: (p: unknown) => Promise<{ data: Array<{ number: number }> }> } } })
+      .rest.issues.listForRepo({ owner: "org", repo: "repo", page, per_page: perPage }),
   )
 
   // Repository context
   const { owner, repo } = yield* client.repo
-}).pipe(Effect.provide(GitHubClientLive.fromEnv))
+}).pipe(Effect.provide(GitHubClientLive.fromEnv()))
 ```
 
-`GitHubClientLive` is a namespace of three layer constructors, not a bare layer:
+`GitHubClientLive` is a namespace of three layer constructors, not a bare layer. All three are functions:
 
-- `GitHubClientLive.fromEnv` — a `Layer<GitHubClient, GitHubClientError>` that reads the ambient `process.env.GITHUB_TOKEN`, the repo-scoped workflow token.
-- `GitHubClientLive.fromToken(token)` — a `Layer<GitHubClient>` built from an explicit token, a plain `string` or a `Redacted`, with no `process.env` dependency.
-- `GitHubClientLive.fromApp({ clientId, privateKey, installationId? })` — a `Layer<GitHubClient, GitHubAppError>` that generates a fresh installation token from GitHub App credentials each time the layer is built.
+- `GitHubClientLive.fromEnv()` — a `Layer<GitHubClient, GitHubClientError>` that reads the ambient `process.env.GITHUB_TOKEN`, the repo-scoped workflow token. Call it with no arguments, or pass `ResilienceOptions` to tune retries.
+- `GitHubClientLive.fromToken(token)` — a `Layer<GitHubClient>` built from an explicit token with no `process.env` dependency. The token must be a `Redacted<string>` — wrap a bare string with `Redacted.make(...)` at the call site.
+- `GitHubClientLive.fromApp({ clientId, privateKey, installationId? })` — a `Layer<GitHubClient, GitHubAppError, HttpClient.HttpClient>` that mints an installation token from GitHub App credentials. `privateKey` is a `Redacted<string>`. It is a scoped layer: the minted token is revoked when its scope closes. The scope is managed by the layer itself — `Scope` is not in the requirements channel — so a plain `Effect.provide` revokes the token automatically when the provided program finishes. Reach for `Effect.scoped` only when sharing one token across sub-programs with `Layer.memoize`. It composes `GitHubAppLive` and `OctokitAuthAppLive` internally, leaving only `HttpClient.HttpClient` to provide — use `FetchHttpClient.layer` or `ActionsRuntime.Default`.
+
+```typescript
+import { Effect, Redacted } from "effect"
+import { FetchHttpClient } from "@effect/platform"
+import { GitHubClient, GitHubClientLive } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const client = yield* GitHubClient
+  const { owner, repo } = yield* client.repo
+}).pipe(
+  Effect.provide(GitHubClientLive.fromToken(Redacted.make(process.env.MY_TOKEN ?? ""))),
+)
+
+// fromApp is scoped — provide an HttpClient; the installation token is revoked
+// when `appProgram` finishes, so a plain Effect.provide needs no Effect.scoped.
+const appProgram = Effect.gen(function* () {
+  const client = yield* GitHubClient
+  const { owner, repo } = yield* client.repo
+}).pipe(
+  Effect.provide(
+    GitHubClientLive.fromApp({ clientId, privateKey: Redacted.make(pem) }),
+  ),
+  Effect.provide(FetchHttpClient.layer),
+)
+```
 
 For the pre/main/post pattern where one token is shared across phases, use the [`GitHubToken`](#githubtoken) namespace instead of `fromApp`.
+
+#### Streaming pagination
+
+`paginate` collects every page into one array before it returns. `paginateStream` instead yields a `Stream` of items one page at a time, so a consumer can stop early with `Stream.takeWhile` or `Stream.take` without fetching or buffering the rest. Prefer it for large or early-terminating scans.
+
+```typescript
+import { Effect, Stream } from "effect"
+import { GitHubClient, GitHubClientLive } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const client = yield* GitHubClient
+
+  // Walk issues newest-first, stopping at the first one closed before a cutoff.
+  const recent = yield* client.paginateStream<{ number: number; closed_at: string | null }>(
+    "listIssues",
+    (octokit, page, perPage) =>
+      (octokit as { rest: { issues: { listForRepo: (p: unknown) => Promise<{ data: Array<{ number: number; closed_at: string | null }> }> } } })
+        .rest.issues.listForRepo({ owner: "org", repo: "repo", state: "all", page, per_page: perPage }),
+  ).pipe(
+    Stream.takeWhile((issue) => issue.closed_at === null || issue.closed_at > "2026-01-01"),
+    Stream.runCollect,
+  )
+  yield* Effect.log(`scanned ${recent.length} recent issues`)
+  // scanned <n> recent issues (depends on the repo)
+}).pipe(Effect.provide(GitHubClientLive.fromEnv()))
+```
 
 ### GitHubRelease
 
@@ -399,27 +506,37 @@ const program = Effect.gen(function* () {
 
 GitHub App authentication: generate, use and revoke installation tokens. `GitHubAppLive` requires an `OctokitAuthApp` layer, so compose it with `OctokitAuthAppLive`.
 
+`GitHubAppLive` also requires `HttpClient.HttpClient` for its API calls. Compose `OctokitAuthAppLive` underneath and provide an HTTP client — `FetchHttpClient.layer` or `ActionsRuntime.Default`. The secret-bearing parameters (`privateKey` and any token argument) are `Redacted<string>`; wrap raw values with `Redacted.make`.
+
 ```typescript
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Redacted } from "effect"
+import { FetchHttpClient } from "@effect/platform"
 import {
   GitHubApp,
   GitHubAppLive,
   OctokitAuthAppLive,
 } from "@savvy-web/github-action-effects"
 
-const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive)
+const appLayer = Layer.provide(
+  Layer.provide(GitHubAppLive, OctokitAuthAppLive),
+  FetchHttpClient.layer,
+)
 
 const program = Effect.gen(function* () {
   const app = yield* GitHubApp
 
+  // privateKey is a Redacted<string>
+  const privateKey = Redacted.make(pem)
+
   // Generate an installation token explicitly
   const installation = yield* app.generateToken(clientId, privateKey)
-  // installation.token, installation.expiresAt, installation.installationId
+  // installation.expiresAt, installation.installationId
+  // installation.token is a Redacted<string> — unwrap with Redacted.value to use it
   yield* Effect.log(`Generated token for installation ${installation.installationId}`)
 
-  // ... use installation.token for API calls ...
+  // ... unwrap installation.token at the API boundary only ...
 
-  // Revoke it when done
+  // Revoke it when done — revokeToken takes the Redacted token directly
   yield* app.revokeToken(installation.token)
 
   // Resolve the App's public identity (slug, bot user ID, display name).
@@ -439,10 +556,11 @@ const program = Effect.gen(function* () {
   // fallback.name  → "github-actions[bot]"
   // fallback.email → "41898282+github-actions[bot]@users.noreply.github.com"
 
-  // Or use the bracket form: the callback receives the bare token string,
+  // Or use the bracket form: the callback receives the Redacted token,
   // and the token is always revoked afterwards, even on failure
   yield* app.withToken(clientId, privateKey, (token) =>
     Effect.gen(function* () {
+      // token is Redacted<string> — unwrap with Redacted.value at the wire boundary
       yield* Effect.log("Using installation token for API calls")
     })
   )
@@ -469,22 +587,91 @@ const program = Effect.gen(function* () {
 })
 ```
 
+### GitHubContent
+
+Read a repository file's decoded UTF-8 contents at a ref. `ref` is optional; omitting it uses the default branch. Reading a path that is not a file (missing, a directory or a submodule) fails with `GitHubContentError`.
+
+```typescript
+import { Effect } from "effect"
+import { GitHubContent, GitHubContentLive } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const content = yield* GitHubContent
+
+  const pkgJson = yield* content.getFile("package.json")
+  const atRef = yield* content.getFile("package.json", "v1.2.3")
+  // both return the file as a decoded string
+  const parsed = JSON.parse(pkgJson) as { version: string }
+  yield* Effect.log(`version: ${parsed.version}`)
+})
+```
+
+### GitHubCommit
+
+Read the GitHub commit graph through the REST API. `get(ref)` returns a `CommitDetail` (sha, message, author, parents); `list(ref)` returns paginated `CommitSummary` entries; `compare(base, head)` returns the commits and changed files between two refs.
+
+```typescript
+import { Effect } from "effect"
+import { GitHubCommit, GitHubCommitLive } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const commits = yield* GitHubCommit
+
+  const head = yield* commits.get("main")
+  // head: { sha, message, author, parents: [{ sha }, ...] }
+  yield* Effect.log(`${head.sha.slice(0, 7)} ${head.message}`)
+
+  const diff = yield* commits.compare("v1.0.0", "main")
+  // diff.commits: CommitSummary[]   diff.files: { filename, status }[]
+})
+```
+
+`GitHubCommit` is the REST commit graph — `repos.getCommit` / `listCommits` / `compareCommits`. Do not confuse it with `GitCommit`, which is the Git Data API for *creating* verified commits and updating refs. The names are close; the services are different. Use `GitHubCommit` to read history, `GitCommit` to write it.
+
+### GitHubArtifactMetadata
+
+Create a GitHub Packages artifact-metadata storage record linking an attestation to a published artifact. `createStorageRecord` returns the created record IDs. `GitHubArtifactMetadataError` carries a `retryable` flag so callers can back off on rate limits and 5xx responses.
+
+```typescript
+import { Effect } from "effect"
+import { GitHubArtifactMetadata, GitHubArtifactMetadataLive } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const metadata = yield* GitHubArtifactMetadata
+
+  const ids = yield* metadata.createStorageRecord({
+    name: "pkg:npm/@scope/pkg@1.2.3",
+    digest: artifactSha256Hex,
+    version: "1.2.3",
+    registryUrl: "https://npm.pkg.github.com/",
+    artifactUrl: "https://github.com/owner/pkg/packages/123",
+    repo: "pkg",
+  })
+  yield* Effect.log(`created ${ids.length} storage record(s)`)
+})
+```
+
 ### OctokitAuthApp
 
 `OctokitAuthApp` wraps `@octokit/auth-app`. `GitHubAppLive` depends on it, so in practice you provide `OctokitAuthAppLive` as the layer underneath `GitHubAppLive` rather than reaching for `OctokitAuthApp` directly.
 
 ```typescript
 import { Layer } from "effect"
+import { FetchHttpClient } from "@effect/platform"
 import {
   GitHubAppLive,
   OctokitAuthAppLive,
 } from "@savvy-web/github-action-effects"
 
-// OctokitAuthAppLive satisfies the OctokitAuthApp requirement of GitHubAppLive
-const appLayer = Layer.provide(GitHubAppLive, OctokitAuthAppLive)
+// OctokitAuthAppLive satisfies the OctokitAuthApp requirement of GitHubAppLive;
+// FetchHttpClient.layer satisfies its HttpClient.HttpClient requirement.
+const appLayer = Layer.provide(
+  Layer.provide(GitHubAppLive, OctokitAuthAppLive),
+  FetchHttpClient.layer,
+)
 ```
 
-`OctokitAuthAppLive` is a bare `Layer<OctokitAuthApp>` — provide it as-is. Use the service tag directly only when you need raw `createAppAuth` access.
+`OctokitAuthAppLive` is a bare `Layer<OctokitAuthApp>` — provide it as-is. `GitHubAppLive` also needs `HttpClient.HttpClient`; under `Action.run` / `ActionsRuntime.Default` it is already in context, so a hand-composed `appLayer` only needs the explicit `FetchHttpClient.layer` when wired outside that path. Use the `OctokitAuthApp` service tag directly only when you need raw `createAppAuth` access.
 
 ## GitHub App token lifecycle
 
@@ -606,16 +793,21 @@ const program = Effect.gen(function* () {
 
 Publish packages to one or more registries.
 
+Registry tokens are `Redacted<string>` — `setupAuth` and each `RegistryTarget.token` take a redacted value, so wrap raw tokens with `Redacted.make`.
+
 ```typescript
-import { Effect } from "effect"
+import { Effect, Redacted } from "effect"
 import { PackagePublish, PackagePublishLive } from "@savvy-web/github-action-effects"
 
 const program = Effect.gen(function* () {
   const publisher = yield* PackagePublish
 
+  const npmToken = Redacted.make(process.env.NPM_TOKEN ?? "")
+  const ghToken = Redacted.make(process.env.GITHUB_TOKEN ?? "")
+
   yield* publisher.setupAuth("https://registry.npmjs.org/", npmToken)
 
-  const { tarball, digest } = yield* publisher.pack("./dist/npm")
+  const { tarballPath, digest, sha256Hex } = yield* publisher.pack("./dist/npm")
 
   yield* publisher.publish("./dist/npm", {
     registry: "https://registry.npmjs.org/",
@@ -634,6 +826,8 @@ const program = Effect.gen(function* () {
   const ok = yield* publisher.verifyIntegrity("my-pkg", "1.0.0", digest)
 })
 ```
+
+For the recommended `pack` → probe → `publishTarball` chain, the two `PackResult` digests and the `publishIdempotent` deprecation, see [publishing packages](./11-publishing.md).
 
 ### WorkspaceDetector
 
@@ -695,6 +889,110 @@ const program = Effect.gen(function* () {
 })
 ```
 
+## Attestation services
+
+These four services produce signed software attestations. The full wired layer stack and the provenance / SBOM walkthroughs live in [generating SLSA attestations](./10-slsa-attestations.md); the recaps below are the per-service surface.
+
+### Attest
+
+End-to-end attestation: build an in-toto statement, sign it via `SigstoreSigner`, and upload the Sigstore bundle to GitHub's attestation store. `provenance` and `sbom` are the two convenience entry points; `listForSubject` reads existing attestations for a digest so a re-run stays idempotent.
+
+```typescript
+import { Effect } from "effect"
+import { Attest, CYCLONEDX_BOM } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const attest = yield* Attest
+
+  // Reuse-or-write: list first, write only when absent.
+  const existing = yield* attest.listForSubject(tarballSha256Hex, { predicateType: CYCLONEDX_BOM })
+  if (existing.length === 0) {
+    const record = yield* attest.sbom({
+      rootName: "@scope/pkg",
+      rootVersion: "1.2.3",
+      subjectSha256: tarballSha256Hex,
+      dependencies: [{ name: "effect", version: "3.18.4" }],
+    })
+    yield* Effect.log(`attestation: ${record.attestationUrl}`)
+    // e.g. https://github.com/{owner}/{repo}/attestations/{id} (varies)
+  }
+})
+```
+
+`Attest.provenance` / `.sbom` / `.attest` require `SigstoreSigner | OidcTokenIssuer | GitHubClient`; `.sbom` also requires `Sbom` when it builds the BOM. `listForSubject`'s `predicateType` filter is applied client-side — see the [attestations guide](./10-slsa-attestations.md#idempotent-recovery).
+
+### Sbom
+
+Generate a CycloneDX 1.5 BOM from a resolved dependency graph, serialize it to canonical JSON, or write it to disk.
+
+```typescript
+import { Effect } from "effect"
+import { Sbom, SbomLive } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const sbom = yield* Sbom
+
+  const bom = yield* sbom.generate({
+    rootName: "@scope/pkg",
+    rootVersion: "1.2.3",
+    supplier: { name: "Acme, Inc." },
+    dependencies: [{ name: "effect", version: "3.18.4" }],
+  })
+  const json = yield* sbom.serializeJson(bom)
+  // json is the canonical CycloneDX JSON form
+})
+```
+
+### SigstoreSigner
+
+Sign an in-toto statement into a Sigstore DSSE bundle — the structure GitHub's attestations API accepts. `signStatement` requires `OidcTokenIssuer` because Fulcio issues the signing certificate against an OIDC token. Most callers reach `SigstoreSigner` indirectly through `Attest`.
+
+```typescript
+import { Effect } from "effect"
+import { SigstoreSigner } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const signer = yield* SigstoreSigner
+  const bundle = yield* signer.signStatement(statement)
+  // bundle is ready to POST as the `bundle` field of the attestation upload
+})
+```
+
+### OidcTokenIssuer
+
+Request a GitHub Actions OIDC token. The runner exposes the token-service endpoint only when the workflow has `id-token: write`. `getToken(audience)` returns a `Redacted<string>` — unwrap with `Redacted.value` only where you must.
+
+```typescript
+import { Effect, Redacted } from "effect"
+import { OidcTokenIssuer, SIGSTORE_OIDC_AUDIENCE } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const issuer = yield* OidcTokenIssuer
+  const token = yield* issuer.getToken(SIGSTORE_OIDC_AUDIENCE)
+  const raw = Redacted.value(token) // unwrap only to feed the pure JWT decoder
+})
+```
+
+## Step-buffered logging
+
+### Step
+
+`Step` is a top-level namespace, not an injected service. `withStep` runs an Effect with debug/info logs buffered, emitting one summary line on success and spilling the buffer under a `❌` header on failure. `success` sets that summary line; `collapse` reduces N parallel steps to one line; `groupStep` wraps an effect in both a log group and a step.
+
+```typescript
+import { Effect } from "effect"
+import { Step } from "@savvy-web/github-action-effects"
+
+const program = Step.withStep("resolve versions", Effect.gen(function* () {
+  yield* Effect.logDebug("reading workspace manifest")  // buffered on success
+  yield* Step.success("7 packages")
+  return 7
+}))
+// On success, one line: ✅ resolve versions: 7 packages
+```
+
+See [step-buffered logging patterns](./09-step-logging.md) for `defaultSummary`, `collapse`, `groupStep` and the failure-spill behaviour.
+
 ## Infrastructure services
 
 ### ActionCache
@@ -720,6 +1018,66 @@ const program = Effect.gen(function* () {
   )
 })
 ```
+
+`ActionCacheLive` requires `HttpClient.HttpClient` for the Twirp RPCs (provide `FetchHttpClient.layer` or use `ActionsRuntime.Default`). It reads `ACTIONS_RESULTS_URL` / `ACTIONS_RUNTIME_TOKEN`, which the runner injects only into action (`uses:`) contexts — so the cache works inside a bundled JS action, not a `run:` step. The same constraint applies to `Artifact` below.
+
+### Artifact
+
+Upload, list, download and delete GitHub Actions artifacts — `@actions/artifact` v2 parity over the results backend (Twirp + Azure Block Blob), with no dependency on `@actions/artifact`. `getArtifact` returns `Option.none()` on a miss rather than throwing.
+
+```typescript
+import { Effect, Option } from "effect"
+import { Artifact, ArtifactLive } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const artifacts = yield* Artifact
+
+  // Zip files relative to a root dir and upload under a name (unique per run)
+  const { id, size } = yield* artifacts.uploadArtifact(
+    "build-output",
+    ["dist/index.js", "dist/index.js.map"],
+    "dist",
+    { retentionDays: 7, compressionLevel: 6 },
+  )
+  yield* Effect.log(`uploaded artifact ${id} (${size} bytes)`)
+
+  // List, look up by name, download by id, delete by name
+  const all = yield* artifacts.listArtifacts()
+  const found = yield* artifacts.getArtifact("build-output")
+  if (Option.isSome(found)) {
+    const { downloadPath } = yield* artifacts.downloadArtifact(found.value.id)
+    yield* Effect.log(`downloaded to ${downloadPath}`)
+  }
+  yield* artifacts.deleteArtifact("build-output")
+})
+```
+
+`ArtifactLive` requires `HttpClient.HttpClient`. Like `ActionCache`, it depends on the runner-injected `ACTIONS_RESULTS_URL` / `ACTIONS_RUNTIME_TOKEN` and so **must run inside a bundled JS action, not a `run:` step** — those variables are absent from `run:` shell contexts. Pass a `FindBy` (token, run id, owner, repo) to list/get/download/delete across runs or repos through the public REST API instead.
+
+### Glob
+
+Resolve glob patterns and compute `@actions/glob`-compatible file hashes, backed by `node:fs.globSync` with no `@actions/glob` dependency. `glob` returns absolute paths in sorted order; `hashFiles` returns a SHA-256 hash-of-hashes wrapped in an `Option`.
+
+```typescript
+import { Effect, Option } from "effect"
+import { Glob, GlobLive } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const glob = yield* Glob
+
+  // Newline- or comma-separated patterns; `!` excludes, `#` comments, `~` HOME.
+  const files = yield* glob.glob("src/**/*.ts\n!src/**/*.test.ts")
+  yield* Effect.log(`matched ${files.length} files`)
+
+  // Hash-of-hashes over matched files, in sorted glob order. Files outside the
+  // workspace root are skipped. Option.none() when nothing matched — the
+  // toolkit returns "", which you can recover verbatim:
+  const hash = yield* glob.hashFiles("**/package-lock.json")
+  const key = `deps-${Option.getOrElse(hash, () => "")}`
+})
+```
+
+`hashFiles` matches `@actions/glob`'s algorithm exactly: each matched file is streamed through its own SHA-256, and the binary digests are folded — in sorted order — into one accumulating SHA-256 whose hex digest is returned. `GlobOptions`' `followSymbolicLinks`, `implicitDescendants`, `matchDirectories` and `omitBrokenSymbolicLinks` are accepted for parity but are documented no-ops, since `node:fs.globSync` does not expose those controls.
 
 ### TokenPermissionChecker
 
@@ -967,3 +1325,74 @@ const program = Effect.gen(function* () {
   yield* report.toCheckRun(checkRunId) // requires CheckRun
 })
 ```
+
+### RegistryClassifier
+
+Pure functions that classify a registry URL by parsing it and matching the hostname. Substring matching on URLs is a security issue, so these never use it — `http://evil-npmjs.org` does not pass as npm.
+
+```typescript
+import { RegistryClassifier } from "@savvy-web/github-action-effects"
+
+RegistryClassifier.getRegistryType("https://npm.pkg.github.com/")
+// → "github-packages"
+
+RegistryClassifier.getRegistryDisplayName("https://registry.npmjs.org/")
+// → "npm"
+
+RegistryClassifier.generatePackageViewUrl("https://registry.npmjs.org/", "@scope/pkg")
+// → "https://www.npmjs.com/package/@scope/pkg"
+```
+
+`getRegistryType` resolves to `"npm"`, `"github-packages"`, `"jsr"` or `"custom"`, with a null or undefined registry resolving to `"npm"` (the publishing default). The predicates `isNpmRegistry`, `isGitHubPackagesRegistry`, `isJsrRegistry` and `isCustomRegistry` answer the same question one registry at a time. See [publishing packages](./11-publishing.md#registry-classification) for how the publish flow uses it.
+
+### PathUtils
+
+Pure path-separator normalizers, matching `@actions/core`'s path utilities. Plain synchronous functions — no Effect, no context.
+
+```typescript
+import { PathUtils } from "@savvy-web/github-action-effects"
+
+PathUtils.toPosixPath("a\\b")
+// → "a/b"
+
+PathUtils.toWin32Path("a/b")
+// → "a\\b"
+
+PathUtils.toPlatformPath("a/b\\c")
+// → "a/b/c" on POSIX, "a\\b\\c" on Windows
+```
+
+### IoUtil
+
+Locate a binary on `PATH`, mirroring `@actions/io`'s `which` / `findInPath`. `which` and `findInPath` have a `never` error channel — a miss is `Option.none()` / `[]`, not a failure — while `whichOrFail` puts the not-found case in the typed error channel as `IoError`. All three read `FileSystem` from context. See [filesystem I/O](./15-filesystem-io.md) for the full behavior table and the `cp`/`mv`/`rmRF`/`mkdirP` → `FileSystem` recipe.
+
+```typescript
+import { Effect, Option } from "effect"
+import { IoUtil } from "@savvy-web/github-action-effects"
+
+const program = Effect.gen(function* () {
+  const git = yield* IoUtil.which("git")        // Option<string>, never fails
+  if (Option.isNone(git)) {
+    yield* Effect.logWarning("git not found on PATH")
+  }
+
+  const node = yield* IoUtil.whichOrFail("node") // string, fails with IoError on miss
+  const all = yield* IoUtil.findInPath("python")  // every match across PATH, [] on none
+})
+```
+
+### GithubMarkdown
+
+Pure GitHub-Flavored Markdown builders. The full method table lives in [architecture](./14-architecture.md#githubmarkdown-namespace); two builders worth calling out are `image` and `quote`, which match `@actions/core`'s step-summary `addImage` / `addQuote`.
+
+```typescript
+import { GithubMarkdown } from "@savvy-web/github-action-effects"
+
+GithubMarkdown.image("https://example.com/logo.png", "Logo", { width: "120" })
+// → <img src="https://example.com/logo.png" alt="Logo" width="120">
+
+GithubMarkdown.quote("All checks passed", "https://example.com/run/123")
+// → <blockquote cite="https://example.com/run/123">All checks passed</blockquote>
+```
+
+Attribute and text values are interpolated raw, not HTML-escaped — exactly as `@actions/core` does, since GitHub sanitizes step-summary HTML server-side. If you embed the output elsewhere with untrusted input, escape it yourself.

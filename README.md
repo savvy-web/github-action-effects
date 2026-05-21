@@ -45,9 +45,9 @@ Action.run(program);
 
 `GitHubClientLive` builds a `GitHubClient` layer one of three ways:
 
-- `GitHubClientLive.fromEnv` — reads the ambient `process.env.GITHUB_TOKEN`, the repo-scoped workflow token.
-- `GitHubClientLive.fromToken(token)` — an explicit token, plain `string` or `Redacted`, with no `process.env` dependency.
-- `GitHubClientLive.fromApp({ clientId, privateKey, installationId? })` — generates a fresh installation token from GitHub App credentials.
+- `GitHubClientLive.fromEnv()` — reads the ambient `process.env.GITHUB_TOKEN`, the repo-scoped workflow token. It is a function; call it with no arguments.
+- `GitHubClientLive.fromToken(token)` — an explicit token with no `process.env` dependency. The token is a `Redacted<string>` — wrap a bare string with `Redacted.make(...)`.
+- `GitHubClientLive.fromApp({ clientId, privateKey, installationId? })` — mints an installation token from GitHub App credentials, with `privateKey` as a `Redacted<string>`. It is a scoped layer that revokes the token on scope close and requires `HttpClient.HttpClient`; wrap a bare `Effect.provide` in `Effect.scoped`.
 
 ```typescript
 import { Effect } from "effect";
@@ -59,7 +59,7 @@ const program = Effect.gen(function* () {
   return yield* client.rest("issues.list", (octokit) =>
     octokit.rest.issues.listForRepo({ owner, repo }),
   );
-}).pipe(Effect.provide(GitHubClientLive.fromEnv));
+}).pipe(Effect.provide(GitHubClientLive.fromEnv()));
 
 Action.run(program);
 ```
@@ -125,10 +125,18 @@ Two additional accessors are available in any phase after `provision`:
 - [Advanced action: three-stage app](./docs/02-advanced-action.md) — A complete pre/main/post action with GitHub App auth, cross-phase state and buffered logging.
 - [Services guide](./docs/03-services.md) — A usage example for every service in the library.
 - [Common patterns](./docs/04-patterns.md) — Dry-run mode, error accumulation, permission checks and workspace detection.
-- [Peer dependencies](./docs/05-peer-dependencies.md) — Which packages to install and why.
-- [Error handling](./docs/06-error-handling.md) — Tagged errors, `Action.formatCause` and the `[Tag] message` format.
-- [Architecture](./docs/07-architecture.md) — The runtime layer, layer composition and the logging pipeline.
-- [Testing GitHub Actions](./docs/08-testing.md) — How to test an action with in-memory test layers.
+- [Building a robust action](./docs/05-best-practices.md) — Principles and pointers: wiring, the pre/main/post pattern, dry runs, permission checks, idempotency and secret handling.
+- [Coming from `@actions/*`](./docs/06-toolkit-parity.md) — The migration map from each `@actions/*` package to its native ESM replacement.
+- [Logging and error handling](./docs/07-logging-and-error-handling.md) — The log-level model, groups, buffered output, annotations, secret masking and the error-handling boundary.
+- [Resilient GitHub API calls](./docs/08-resilient-github-api.md) — Default-on retry, `ResilienceOptions`, the `RateLimiter` service and streaming pagination.
+- [Step-buffered logging patterns](./docs/09-step-logging.md) — Quiet-on-success, verbose-on-failure step logging with `withStep`, `collapse` and `groupStep`.
+- [Generating SLSA attestations](./docs/10-slsa-attestations.md) — Provenance and SBOM attestations, the layer stack and idempotent recovery.
+- [Publishing packages with the publish chain](./docs/11-publishing.md) — Pack, probe and publish a tarball, plus registry classification.
+- [Peer dependencies](./docs/12-peer-dependencies.md) — Which packages to install and why.
+- [Error handling](./docs/13-error-handling.md) — Tagged errors, `Action.formatCause` and the `[Tag] message` format.
+- [Architecture](./docs/14-architecture.md) — The runtime layer, layer composition and the logging pipeline.
+- [Filesystem I/O](./docs/15-filesystem-io.md) — `IoUtil` (`which`/`findInPath`) and the `cp`/`mv`/`rmRF`/`mkdirP` → `FileSystem` recipe.
+- [Testing GitHub Actions](./docs/16-testing.md) — How to test an action with in-memory test layers.
 
 ## License
 
