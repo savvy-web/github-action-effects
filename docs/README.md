@@ -20,6 +20,7 @@ pnpm add @savvy-web/github-action-effects effect @effect/platform @effect/platfo
 - [Error handling](./06-error-handling.md) — `Action.formatCause`, `Action.run` error handling and the `[Tag] message` format.
 - [Architecture](./07-architecture.md) — The runtime layer, layer composition and the logging pipeline.
 - [Testing GitHub Actions](./08-testing.md) — How to test an action with in-memory test layers.
+- [Filesystem I/O](./09-filesystem-io.md) — `IoUtil` (`which`/`findInPath`) and the `cp`/`mv`/`rmRF`/`mkdirP` → `FileSystem` recipe.
 
 ## How inputs work
 
@@ -96,6 +97,7 @@ const program = Effect.gen(function* () {
 | `ErrorAccumulator` | Process items collecting all successes and failures |
 | `ReportBuilder` | Fluent builder for markdown reports |
 | `RegistryClassifier` | Classify a registry URL as npm, GitHub Packages, a private registry or unknown |
+| `IoUtil` | Locate a binary on `PATH`: `which`, `whichOrFail`, `findInPath` |
 
 ## See also
 
