@@ -1,8 +1,53 @@
 import { Effect, Layer, Option } from "effect";
 import { ActionEnvironmentError } from "../errors/ActionEnvironmentError.js";
 import type { GitHubContext, RunnerContext } from "../schemas/Environment.js";
+import type { WebhookPayload } from "../schemas/EventPayload.js";
 import { ActionEnvironment } from "../services/ActionEnvironment.js";
 import { GITHUB_ENV_MAP, RUNNER_ENV_MAP } from "./internal/environmentMaps.js";
+
+const repoFromEnvOrPayload = (
+	repository: string | undefined,
+	payload: WebhookPayload,
+): Effect.Effect<{ owner: string; repo: string }, ActionEnvironmentError> => {
+	if (repository !== undefined && repository !== "") {
+		const [owner, repo] = repository.split("/");
+		if (owner !== undefined && repo !== undefined) {
+			return Effect.succeed({ owner, repo });
+		}
+	}
+	if (payload.repository !== undefined) {
+		return Effect.succeed({
+			owner: payload.repository.owner.login,
+			repo: payload.repository.name,
+		});
+	}
+	return Effect.fail(
+		new ActionEnvironmentError({
+			variable: "GITHUB_REPOSITORY",
+			reason:
+				"context.repo requires a GITHUB_REPOSITORY environment variable like 'owner/repo' or a repository in the event payload",
+		}),
+	);
+};
+
+const issueFromPayload = (
+	repository: string | undefined,
+	payload: WebhookPayload,
+): Effect.Effect<{ owner: string; repo: string; number: number }, ActionEnvironmentError> =>
+	repoFromEnvOrPayload(repository, payload).pipe(
+		Effect.flatMap((repo) => {
+			const number = payload.issue?.number ?? payload.pull_request?.number ?? payload.number;
+			if (number === undefined) {
+				return Effect.fail(
+					new ActionEnvironmentError({
+						variable: "GITHUB_EVENT_PATH",
+						reason: "context.issue requires an issue, pull_request, or top-level number in the event payload",
+					}),
+				);
+			}
+			return Effect.succeed({ ...repo, number });
+		}),
+	);
 
 const defaultGitHub: GitHubContext = {
 	sha: "abc1234567890def",
@@ -38,8 +83,12 @@ const defaultRunner: RunnerContext = {
  * @public
  */
 export const ActionEnvironmentTest = {
-	/** Create test layer from env record. Builds contexts from GITHUB_* /RUNNER_* keys. */
-	layer: (env: Record<string, string>): Layer.Layer<ActionEnvironment> =>
+	/**
+	 * Create test layer from an env record. Builds contexts from
+	 * GITHUB_* / RUNNER_* keys. An optional `payload` seeds `payload` / `repo`
+	 * / `issue` without a real event file.
+	 */
+	layer: (env: Record<string, string>, payload: WebhookPayload = {}): Layer.Layer<ActionEnvironment> =>
 		Layer.succeed(ActionEnvironment, {
 			get: (name: string) => {
 				const value = env[name];
@@ -77,6 +126,11 @@ export const ActionEnvironmentTest = {
 				),
 				debug: env.RUNNER_DEBUG === "1",
 			} as RunnerContext),
+
+			isDebug: Effect.succeed(env.RUNNER_DEBUG === "1"),
+			payload: Effect.succeed(payload),
+			repo: repoFromEnvOrPayload(env.GITHUB_REPOSITORY, payload),
+			issue: issueFromPayload(env.GITHUB_REPOSITORY, payload),
 		}),
 
 	/** Create test layer with default GitHub Actions environment. */
@@ -92,5 +146,11 @@ export const ActionEnvironmentTest = {
 			getOptional: (_name: string) => Effect.succeed(Option.none()),
 			github: Effect.succeed(defaultGitHub),
 			runner: Effect.succeed(defaultRunner),
+			isDebug: Effect.succeed(false),
+			payload: Effect.succeed({}),
+			// `.empty()` derives repo from the default `owner/repo`; issue fails
+			// (no number seeded).
+			repo: repoFromEnvOrPayload(defaultGitHub.repository, {}),
+			issue: issueFromPayload(defaultGitHub.repository, {}),
 		}),
 } as const;

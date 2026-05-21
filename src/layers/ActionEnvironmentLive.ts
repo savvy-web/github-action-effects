@@ -1,6 +1,8 @@
-import { Effect, Layer, Option } from "effect";
+import { FileSystem } from "@effect/platform";
+import { Effect, Layer, Option, Schema } from "effect";
 import { ActionEnvironmentError } from "../errors/ActionEnvironmentError.js";
 import type { GitHubContext, RunnerContext } from "../schemas/Environment.js";
+import { WebhookPayload } from "../schemas/EventPayload.js";
 import { ActionEnvironment } from "../services/ActionEnvironment.js";
 import { GITHUB_ENV_MAP } from "./internal/environmentMaps.js";
 
@@ -38,9 +40,123 @@ const buildRunnerContext: Effect.Effect<RunnerContext, ActionEnvironmentError> =
 	debug: Effect.sync(() => process.env.RUNNER_DEBUG === "1"),
 });
 
+const EMPTY_PAYLOAD: WebhookPayload = {};
+
+const decodePayload = (raw: string): Effect.Effect<WebhookPayload, ActionEnvironmentError> =>
+	Effect.try({
+		try: () => JSON.parse(raw) as unknown,
+		catch: (error) =>
+			new ActionEnvironmentError({
+				variable: "GITHUB_EVENT_PATH",
+				reason: `Failed to parse event payload JSON: ${error instanceof Error ? error.message : String(error)}`,
+			}),
+	}).pipe(
+		Effect.flatMap((data) =>
+			Schema.decodeUnknown(WebhookPayload, { onExcessProperty: "preserve" })(data).pipe(
+				Effect.mapError(
+					(error) =>
+						new ActionEnvironmentError({
+							variable: "GITHUB_EVENT_PATH",
+							reason: `Event payload did not match the expected shape: ${error.message}`,
+						}),
+				),
+			),
+		),
+	);
+
+/**
+ * Read and decode the `GITHUB_EVENT_PATH` payload. Degrades to an empty payload
+ * (no failure) when the env var is unset or the file is missing — matching
+ * `@actions/github`, which warns and uses `{}`.
+ */
+const readPayload: Effect.Effect<WebhookPayload, ActionEnvironmentError, FileSystem.FileSystem> = Effect.gen(
+	function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = process.env.GITHUB_EVENT_PATH;
+		if (path === undefined || path === "") {
+			return EMPTY_PAYLOAD;
+		}
+		const exists = yield* fs.exists(path).pipe(Effect.orElseSucceed(() => false));
+		if (!exists) {
+			yield* Effect.logDebug(`GITHUB_EVENT_PATH ${path} does not exist; using an empty payload`);
+			return EMPTY_PAYLOAD;
+		}
+		const raw = yield* fs.readFileString(path).pipe(
+			Effect.mapError(
+				(error) =>
+					new ActionEnvironmentError({
+						variable: "GITHUB_EVENT_PATH",
+						reason: `Failed to read event payload file: ${error.message}`,
+					}),
+			),
+		);
+		return yield* decodePayload(raw);
+	},
+);
+
+const repoFromEnvOrPayload = (
+	payload: WebhookPayload,
+): Effect.Effect<{ owner: string; repo: string }, ActionEnvironmentError> => {
+	const repository = process.env.GITHUB_REPOSITORY;
+	if (repository !== undefined && repository !== "") {
+		const [owner, repo] = repository.split("/");
+		if (owner !== undefined && repo !== undefined) {
+			return Effect.succeed({ owner, repo });
+		}
+	}
+	if (payload.repository !== undefined) {
+		return Effect.succeed({
+			owner: payload.repository.owner.login,
+			repo: payload.repository.name,
+		});
+	}
+	return Effect.fail(
+		new ActionEnvironmentError({
+			variable: "GITHUB_REPOSITORY",
+			reason:
+				"context.repo requires a GITHUB_REPOSITORY environment variable like 'owner/repo' or a repository in the event payload",
+		}),
+	);
+};
+
+const issueNumber = (payload: WebhookPayload): number | undefined =>
+	payload.issue?.number ?? payload.pull_request?.number ?? payload.number;
+
+const buildPayload: Effect.Effect<WebhookPayload, ActionEnvironmentError, FileSystem.FileSystem> = readPayload;
+
+const buildRepo: Effect.Effect<{ owner: string; repo: string }, ActionEnvironmentError, FileSystem.FileSystem> =
+	readPayload.pipe(Effect.flatMap(repoFromEnvOrPayload));
+
+const buildIssue: Effect.Effect<
+	{ owner: string; repo: string; number: number },
+	ActionEnvironmentError,
+	FileSystem.FileSystem
+> = readPayload.pipe(
+	Effect.flatMap((payload) =>
+		repoFromEnvOrPayload(payload).pipe(
+			Effect.flatMap((repo) => {
+				const number = issueNumber(payload);
+				if (number === undefined) {
+					return Effect.fail(
+						new ActionEnvironmentError({
+							variable: "GITHUB_EVENT_PATH",
+							reason: "context.issue requires an issue, pull_request, or top-level number in the event payload",
+						}),
+					);
+				}
+				return Effect.succeed({ ...repo, number });
+			}),
+		),
+	),
+);
+
 export const ActionEnvironmentLive: Layer.Layer<ActionEnvironment> = Layer.succeed(ActionEnvironment, {
 	get: (name) => readEnv(name),
 	getOptional: (name) => readOptionalEnv(name),
 	github: buildGitHubContext,
 	runner: buildRunnerContext,
+	isDebug: Effect.sync(() => process.env.RUNNER_DEBUG === "1"),
+	payload: buildPayload,
+	repo: buildRepo,
+	issue: buildIssue,
 });

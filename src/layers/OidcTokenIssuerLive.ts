@@ -9,10 +9,12 @@
  * - `ACTIONS_ID_TOKEN_REQUEST_TOKEN` — bearer token authorizing the request
  * - `ACTIONS_ID_TOKEN_REQUEST_URL`   — token issuance endpoint
  *
- * Callers pass an audience (e.g. `"sigstore"` for Fulcio cert issuance) and
- * receive a {@link Redacted} JWT. The redacted wrapper keeps the JWT out of
- * default `toString` / log paths; the value is unwrapped only at the point
- * where it crosses the wire to Fulcio or Rekor.
+ * Callers may pass an optional audience (e.g. `"sigstore"` for Fulcio cert
+ * issuance) and receive a {@link Redacted} JWT. When the audience is omitted,
+ * no `audience` query param is sent (matching `@actions/core.getIDToken`). The
+ * redacted wrapper keeps the JWT out of default `toString` / log paths; the
+ * value is unwrapped only at the point where it crosses the wire to Fulcio or
+ * Rekor.
  *
  * The implementation depends on {@link HttpClient.HttpClient} so the service
  * composes with `FetchHttpClient.layer` in production and an in-memory mock
@@ -62,15 +64,17 @@ export const OidcTokenIssuerLive = Layer.effect(
 		const http = yield* HttpClient.HttpClient;
 
 		return {
-			getToken: (audience: string) =>
+			getToken: (audience?: string) =>
 				Effect.gen(function* () {
 					const bearer = yield* readEnv(ACTIONS_ID_TOKEN_REQUEST_TOKEN);
 					const baseUrl = yield* readEnv(ACTIONS_ID_TOKEN_REQUEST_URL);
 
-					const url = new URL(baseUrl);
-					url.searchParams.set("audience", audience);
+					// Match @actions/core.getIDToken: when an audience is provided,
+					// append `&audience=<encodeURIComponent(audience)>` to the URL;
+					// otherwise leave the URL unchanged (no audience param at all).
+					const url = audience !== undefined ? `${baseUrl}&audience=${encodeURIComponent(audience)}` : baseUrl;
 
-					const request = HttpClientRequest.get(url.toString()).pipe(
+					const request = HttpClientRequest.get(url).pipe(
 						HttpClientRequest.bearerToken(bearer),
 						HttpClientRequest.acceptJson,
 					);

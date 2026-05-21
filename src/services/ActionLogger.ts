@@ -1,5 +1,6 @@
 import type { Effect } from "effect";
 import { Context } from "effect";
+import type { AnnotationProperties } from "../runtime/WorkflowCommand.js";
 
 /**
  * Service for action-specific logging operations beyond the Effect Logger.
@@ -25,5 +26,15 @@ export class ActionLogger extends Context.Tag("github-action-effects/ActionLogge
 		 * the buffer is flushed before the error is reported.
 		 */
 		readonly withBuffer: <A, E, R>(label: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+
+		/**
+		 * Emit a `::notice::` annotation. Mirrors `@actions/core.notice`.
+		 *
+		 * @remarks
+		 * Distinct from `Effect.logInfo`, which writes plain stdout. No standard
+		 * log level is remapped to `::notice::` (Effect has no level between
+		 * `Info` and `Warning`), so this is the dedicated path for notices.
+		 */
+		readonly notice: (message: string, properties?: AnnotationProperties) => Effect.Effect<void>;
 	}
 >() {}

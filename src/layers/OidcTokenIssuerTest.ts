@@ -7,5 +7,5 @@ import { OidcTokenIssuer } from "../services/OidcTokenIssuer.js";
  * @public
  */
 export const OidcTokenIssuerTest: Layer.Layer<OidcTokenIssuer> = Layer.succeed(OidcTokenIssuer, {
-	getToken: () => Effect.succeed(Redacted.make("test-oidc-token")),
+	getToken: (_audience?: string) => Effect.succeed(Redacted.make("test-oidc-token")),
 });

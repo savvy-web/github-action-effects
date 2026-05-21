@@ -13,6 +13,28 @@ describe("ActionLoggerTest", () => {
 			expect(state.entries).toEqual([]);
 			expect(state.groups).toEqual([]);
 			expect(state.flushedBuffers).toEqual([]);
+			expect(state.notices).toEqual([]);
+		});
+	});
+
+	describe("notice", () => {
+		it("records a notice into captured state", async () => {
+			const state = ActionLoggerTest.empty();
+			await run(
+				state,
+				Effect.flatMap(ActionLogger, (svc) => svc.notice("heads up")),
+			);
+			expect(state.notices).toHaveLength(1);
+			expect(state.notices[0]?.message).toBe("heads up");
+		});
+
+		it("forwards annotation properties", async () => {
+			const state = ActionLoggerTest.empty();
+			await run(
+				state,
+				Effect.flatMap(ActionLogger, (svc) => svc.notice("at line", { file: "a.ts", startLine: 3 })),
+			);
+			expect(state.notices[0]?.properties).toEqual({ file: "a.ts", startLine: 3 });
 		});
 	});
 

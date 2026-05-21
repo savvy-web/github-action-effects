@@ -1,5 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { escapeData, escapeProperty, format, issue } from "./WorkflowCommand.js";
+import {
+	annotationProperties,
+	escapeData,
+	escapeProperty,
+	format,
+	issue,
+	notice,
+	resumeCommands,
+	setCommandEcho,
+	stopCommands,
+} from "./WorkflowCommand.js";
 
 describe("format", () => {
 	it("formats a command with no properties and a message", () => {
@@ -60,6 +70,85 @@ describe("issue", () => {
 		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 		issue("debug", {}, "hello");
 		expect(writeSpy).toHaveBeenCalledWith("::debug::hello" + "\n");
+		writeSpy.mockRestore();
+	});
+});
+
+describe("annotationProperties", () => {
+	it("drops an empty object to {}", () => {
+		expect(annotationProperties({})).toEqual({});
+	});
+
+	it("maps startLine→line and startColumn→col", () => {
+		expect(annotationProperties({ startLine: 3, startColumn: 5 })).toEqual({ line: "3", col: "5" });
+	});
+
+	it("maps endLine/endColumn/title/file", () => {
+		expect(
+			annotationProperties({
+				title: "T",
+				file: "a.ts",
+				startLine: 1,
+				endLine: 2,
+				startColumn: 3,
+				endColumn: 4,
+			}),
+		).toEqual({ title: "T", file: "a.ts", line: "1", endLine: "2", col: "3", endColumn: "4" });
+	});
+});
+
+describe("notice", () => {
+	it("issues ::notice:: with a message", () => {
+		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		notice({}, "hi");
+		expect(writeSpy).toHaveBeenCalledWith("::notice::hi\n");
+		writeSpy.mockRestore();
+	});
+
+	it("maps startLine→line and startColumn→col", () => {
+		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		notice({ file: "a.ts", startLine: 3, startColumn: 5 }, "x");
+		expect(writeSpy).toHaveBeenCalledWith("::notice file=a.ts,line=3,col=5::x\n");
+		writeSpy.mockRestore();
+	});
+
+	it("includes endLine/endColumn/title", () => {
+		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		notice({ title: "T", endLine: 9, endColumn: 11 }, "x");
+		const written = String(writeSpy.mock.calls[0]?.[0]);
+		expect(written).toContain("title=T");
+		expect(written).toContain("endLine=9");
+		expect(written).toContain("endColumn=11");
+		writeSpy.mockRestore();
+	});
+});
+
+describe("stopCommands / resumeCommands / setCommandEcho", () => {
+	it("stopCommands emits ::stop-commands::{token}", () => {
+		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		stopCommands("XYZ");
+		expect(writeSpy).toHaveBeenCalledWith("::stop-commands::XYZ\n");
+		writeSpy.mockRestore();
+	});
+
+	it("resumeCommands emits ::{token}::", () => {
+		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		resumeCommands("XYZ");
+		expect(writeSpy).toHaveBeenCalledWith("::XYZ::\n");
+		writeSpy.mockRestore();
+	});
+
+	it("setCommandEcho(true) emits ::echo::on", () => {
+		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		setCommandEcho(true);
+		expect(writeSpy).toHaveBeenCalledWith("::echo::on\n");
+		writeSpy.mockRestore();
+	});
+
+	it("setCommandEcho(false) emits ::echo::off", () => {
+		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		setCommandEcho(false);
+		expect(writeSpy).toHaveBeenCalledWith("::echo::off\n");
 		writeSpy.mockRestore();
 	});
 });

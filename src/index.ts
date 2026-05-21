@@ -155,10 +155,12 @@ export { WorkspaceDetectorLive } from "./layers/WorkspaceDetectorLive.js";
 export type { WorkspaceDetectorTestState } from "./layers/WorkspaceDetectorTest.js";
 export { WorkspaceDetectorTest } from "./layers/WorkspaceDetectorTest.js";
 // -- Runtime --
+export { ActionInput } from "./runtime/ActionInput.js";
 export { ActionsConfigProvider } from "./runtime/ActionsConfigProvider.js";
 export { ActionsLogger } from "./runtime/ActionsLogger.js";
 export { ActionsRuntime } from "./runtime/ActionsRuntime.js";
 export * as Step from "./runtime/Step.js";
+export type { AnnotationProperties } from "./runtime/WorkflowCommand.js";
 export type { AttestInput, AttestationRecord } from "./schemas/Attestation.js";
 export {
 	CYCLONEDX_BOM,
@@ -179,6 +181,8 @@ export type {
 export { BumpType, Changeset, ChangesetFile } from "./schemas/Changeset.js";
 export type { GitHubContext as GitHubContextType, RunnerContext as RunnerContextType } from "./schemas/Environment.js";
 export { GitHubContext, RunnerContext } from "./schemas/Environment.js";
+export type { WebhookPayload as WebhookPayloadType } from "./schemas/EventPayload.js";
+export { WebhookPayload } from "./schemas/EventPayload.js";
 export { CapturedOutput, ChecklistItem, Status } from "./schemas/GithubMarkdown.js";
 export type { FileChange as FileChangeType, TreeEntry as TreeEntryType } from "./schemas/GitTree.js";
 export {
@@ -291,6 +295,7 @@ export type { AccumulateResult } from "./utils/ErrorAccumulator.js";
 export { ErrorAccumulator } from "./utils/ErrorAccumulator.js";
 export { GithubMarkdown } from "./utils/GithubMarkdown.js";
 export { buildStatement, npmPurl, serializeStatement, subject } from "./utils/intoto.js";
+export { PathUtils } from "./utils/PathUtils.js";
 export type { RegistryType } from "./utils/RegistryClassifier.js";
 export {
 	generatePackageViewUrl,

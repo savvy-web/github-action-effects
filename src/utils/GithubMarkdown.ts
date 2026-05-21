@@ -88,4 +88,26 @@ export const GithubMarkdown = {
 	 * Fenced code block.
 	 */
 	codeBlock: (content: string, language = ""): string => `\`\`\`${language}\n${content}\n\`\`\``,
+
+	/**
+	 * Build an `<img>` tag, matching `@actions/core` summary `addImage`.
+	 *
+	 * @param src - The image source URL.
+	 * @param alt - Alt text for the image.
+	 * @param options - Optional `width` / `height` attributes.
+	 */
+	image: (src: string, alt: string, options?: { readonly width?: string; readonly height?: string }): string => {
+		const width = options?.width !== undefined ? ` width="${options.width}"` : "";
+		const height = options?.height !== undefined ? ` height="${options.height}"` : "";
+		return `<img src="${src}" alt="${alt}"${width}${height}>`;
+	},
+
+	/**
+	 * Build a `<blockquote>`, matching `@actions/core` summary `addQuote`.
+	 *
+	 * @param text - The quoted text.
+	 * @param cite - Optional `cite` attribute (a source URL).
+	 */
+	quote: (text: string, cite?: string): string =>
+		`<blockquote${cite !== undefined ? ` cite="${cite}"` : ""}>${text}</blockquote>`,
 } as const;

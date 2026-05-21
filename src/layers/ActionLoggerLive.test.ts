@@ -91,6 +91,36 @@ describe("ActionLoggerLive", () => {
 		});
 	});
 
+	describe("notice", () => {
+		let writeSpy: ReturnType<typeof vi.spyOn>;
+
+		beforeEach(() => {
+			writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		});
+
+		afterEach(() => {
+			writeSpy.mockRestore();
+		});
+
+		it("issues a ::notice:: command", async () => {
+			await run(Effect.flatMap(ActionLogger, (svc) => svc.notice("heads up")));
+			const written = writeSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+			expect(written.some((s: string) => s.includes("::notice::heads up"))).toBe(true);
+		});
+
+		it("forwards annotation properties (startLine→line, startColumn→col)", async () => {
+			await run(Effect.flatMap(ActionLogger, (svc) => svc.notice("x", { file: "a.ts", startLine: 3, startColumn: 5 })));
+			const written = writeSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+			expect(written.some((s: string) => s.includes("::notice file=a.ts,line=3,col=5::x"))).toBe(true);
+		});
+
+		it("logInfo still emits plain stdout, not ::notice:: (no level remap)", async () => {
+			await run(Effect.logInfo("routine info"));
+			const written = writeSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+			expect(written.some((s: string) => s.includes("::notice"))).toBe(false);
+		});
+	});
+
 	describe("per-group buffer flush", () => {
 		let writeSpy: ReturnType<typeof vi.spyOn>;
 
