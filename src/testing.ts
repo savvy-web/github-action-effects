@@ -261,7 +261,15 @@ export { PullRequest } from "./services/PullRequest.js";
 export type { CommentRecord } from "./services/PullRequestComment.js";
 export { PullRequestComment } from "./services/PullRequestComment.js";
 export { RateLimiter } from "./services/RateLimiter.js";
-export type { CycloneDXBom, InFlightPackage, ResolvedDependency, SbomInput } from "./services/Sbom.js";
+export type {
+	CycloneDXBom,
+	InFlightPackage,
+	ResolvedDependency,
+	SbomAuthor,
+	SbomContact,
+	SbomInput,
+	SbomSupplier,
+} from "./services/Sbom.js";
 export { Sbom } from "./services/Sbom.js";
 export type { SigstoreSignerConfig } from "./services/SigstoreSigner.js";
 export { IN_TOTO_PAYLOAD_TYPE, SIGSTORE_OIDC_AUDIENCE, SigstoreSigner } from "./services/SigstoreSigner.js";

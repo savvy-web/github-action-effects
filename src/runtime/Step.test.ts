@@ -113,6 +113,56 @@ describe("Step", () => {
 	});
 
 	// -----------------------------------------------------------------
+	// failure — non-throwing failed step
+	// -----------------------------------------------------------------
+
+	describe("failure — non-throwing failed step", () => {
+		it("renders the ❌ block and spills the buffer, but returns the value", async () => {
+			const result = await run(
+				Step.withStep(
+					"publish",
+					Effect.gen(function* () {
+						yield* Effect.logDebug("probe https://registry.npmjs.org/: HTTP 404");
+						yield* Step.failure("publish-failed");
+						return "still-a-value";
+					}),
+				),
+			);
+
+			// The wrapped effect resolves normally so the caller's loop continues.
+			expect(result).toBe("still-a-value");
+			const out = output();
+			// Rendered as a failure, not a success.
+			expect(out).toContain("❌ publish: publish-failed");
+			expect(out).toContain("│ [DEBUG] probe https://registry.npmjs.org/: HTTP 404");
+			expect(out).not.toContain("✅ publish");
+		});
+
+		it("failure wins when both success and failure are called on the same step", async () => {
+			await run(
+				Step.withStep(
+					"publish",
+					Effect.gen(function* () {
+						yield* Step.success("published");
+						yield* Step.failure("publish-failed");
+						return null;
+					}),
+				),
+			);
+
+			const out = output();
+			expect(out).toContain("❌ publish: publish-failed");
+			expect(out).not.toContain("✅ publish");
+		});
+
+		it("is a no-op outside a withStep envelope", async () => {
+			await run(Step.failure("orphan"));
+			const out = output();
+			expect(out).not.toContain("❌");
+		});
+	});
+
+	// -----------------------------------------------------------------
 	// withStep — fallback hierarchy
 	// -----------------------------------------------------------------
 

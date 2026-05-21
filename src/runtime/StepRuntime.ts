@@ -43,9 +43,13 @@ export interface BufferedLine {
 /**
  * One frame on the active step stack.
  *
- * `successLine` is the only mutable field; it is set by
- * {@link "./Step.js".success} during the step body and read by
- * {@link "./Step.js".withStep} after the body resolves.
+ * `successLine` and `failureLine` are the mutable fields. `successLine`
+ * is set by {@link "./Step.js".success}; `failureLine` by
+ * {@link "./Step.js".failure}. Both are read by
+ * {@link "./Step.js".withStep} after the body resolves — when
+ * `failureLine` is set the step renders its `❌` block even though the
+ * wrapped effect succeeded, letting a loop record a non-fatal failure
+ * without throwing.
  *
  * `buffer` is the step's debug buffer — held on the frame rather than
  * in a separate FiberRef so the parent step can read the child's
@@ -57,6 +61,7 @@ export interface StepFrame {
 	readonly name: string;
 	readonly depth: number;
 	successLine: string | null;
+	failureLine: string | null;
 	readonly buffer: StepBuffer;
 }
 
