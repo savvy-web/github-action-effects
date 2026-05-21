@@ -15,7 +15,7 @@
  * synchronously so we cover both code paths.
  */
 
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	Attest,
@@ -81,6 +81,7 @@ const fixedGitHubClient = (
 			}).pipe(Effect.map((r) => r.data)),
 		graphql: () => Effect.die("graphql not used"),
 		paginate: () => Effect.die("paginate not used"),
+		paginateStream: () => Stream.die("paginateStream not used"),
 		repo: Effect.succeed(repo),
 	});
 
@@ -101,6 +102,7 @@ const throwingGitHubClient = (status: number): Layer.Layer<GitHubClient> =>
 			}).pipe(Effect.map((r) => r.data)),
 		graphql: () => Effect.die("graphql not used"),
 		paginate: () => Effect.die("paginate not used"),
+		paginateStream: () => Stream.die("paginateStream not used"),
 		repo: Effect.succeed({ owner: "savvy-web", repo: "workflow-release-action" }),
 	});
 

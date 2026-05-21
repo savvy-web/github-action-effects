@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Chunk, Effect, Layer, Stream } from "effect";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
 import type { GitHubClient } from "../services/GitHubClient.js";
 import { GitHubClient as GitHubClientTag } from "../services/GitHubClient.js";
@@ -34,6 +34,7 @@ const makeTestClient = (state: GitHubClientTestState): typeof GitHubClient.Servi
 					status: 404,
 					reason: `No test response recorded for operation "${operation}"`,
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 			);
 		}
@@ -49,6 +50,7 @@ const makeTestClient = (state: GitHubClientTestState): typeof GitHubClient.Servi
 					status: undefined,
 					reason: "No test response recorded for query",
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 			);
 		}
@@ -68,11 +70,34 @@ const makeTestClient = (state: GitHubClientTestState): typeof GitHubClient.Servi
 					status: 404,
 					reason: `No paginate responses recorded for "${operation}"`,
 					retryable: false,
+					retryAfterMs: undefined,
 				}),
 			);
 		}
 		const allData = pages.flat() as T[];
 		return Effect.succeed(allData);
+	},
+
+	paginateStream: <T>(
+		operation: string,
+		_fn: (octokit: unknown, page: number, perPage: number) => Promise<{ data: T[] }>,
+		_options?: { perPage?: number; maxPages?: number },
+	) => {
+		const pages = state.paginateResponses.get(operation);
+		if (!pages) {
+			return Stream.fail(
+				new GitHubClientError({
+					operation,
+					status: 404,
+					reason: `No paginate responses recorded for "${operation}"`,
+					retryable: false,
+					retryAfterMs: undefined,
+				}),
+			);
+		}
+		// Replay one recorded page per chunk so consumers can takeWhile / take and
+		// stop early without consuming later pages.
+		return Stream.fromIterable(pages).pipe(Stream.mapConcatChunk((page) => Chunk.fromIterable(page as T[])));
 	},
 
 	repo: Effect.succeed(state.repo),
