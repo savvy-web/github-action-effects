@@ -122,8 +122,6 @@ const repoFromEnvOrPayload = (
 const issueNumber = (payload: WebhookPayload): number | undefined =>
 	payload.issue?.number ?? payload.pull_request?.number ?? payload.number;
 
-const buildPayload: Effect.Effect<WebhookPayload, ActionEnvironmentError, FileSystem.FileSystem> = readPayload;
-
 const buildRepo: Effect.Effect<{ owner: string; repo: string }, ActionEnvironmentError, FileSystem.FileSystem> =
 	readPayload.pipe(Effect.flatMap(repoFromEnvOrPayload));
 
@@ -156,7 +154,7 @@ export const ActionEnvironmentLive: Layer.Layer<ActionEnvironment> = Layer.succe
 	github: buildGitHubContext,
 	runner: buildRunnerContext,
 	isDebug: Effect.sync(() => process.env.RUNNER_DEBUG === "1"),
-	payload: buildPayload,
+	payload: readPayload,
 	repo: buildRepo,
 	issue: buildIssue,
 });
