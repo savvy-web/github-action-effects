@@ -1,14 +1,14 @@
+import type { HttpClient } from "@effect/platform";
 import { Octokit } from "@octokit/rest";
-import type { Redacted } from "effect";
-import { Chunk, Effect, Layer, Option, Ref, Stream } from "effect";
+import { Chunk, Effect, Layer, Metric, Option, Redacted, Ref, Stream } from "effect";
 import type { GitHubAppError } from "../errors/GitHubAppError.js";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
+import { githubApiCalls } from "../runtime/Telemetry.js";
 import * as WorkflowCommand from "../runtime/WorkflowCommand.js";
 import { GitHubApp } from "../services/GitHubApp.js";
 import { GitHubClient } from "../services/GitHubClient.js";
 import type { RateLimitSnapshot } from "../services/RateLimitState.js";
 import { RateLimitState } from "../services/RateLimitState.js";
-import { unwrapRedacted } from "../utils/unwrapRedacted.js";
 import { GitHubAppLive } from "./GitHubAppLive.js";
 import { OctokitAuthAppLive } from "./OctokitAuthAppLive.js";
 import type { ResilienceOptions } from "./resilience.js";
@@ -156,11 +156,12 @@ const parseSnapshot = (response: WithHeaders): Option.Option<RateLimitSnapshot> 
  * retry/backoff applied to every call.
  */
 const makeClient = (
-	token: string,
+	token: Redacted.Redacted<string>,
 	snapshotRef: Ref.Ref<Option.Option<RateLimitSnapshot>>,
 	resilience?: ResilienceOptions,
 ): typeof GitHubClient.Service => {
-	const octokit = new Octokit({ auth: token, log: silentOctokitLog });
+	// Unwrap the token only at the single Octokit `auth` wire boundary.
+	const octokit = new Octokit({ auth: Redacted.value(token), log: silentOctokitLog });
 
 	/** Record a successful response's rate-limit headers into the shared snapshot. */
 	const recordSnapshot = (response: WithHeaders): Effect.Effect<void> => {
@@ -168,18 +169,50 @@ const makeClient = (
 		return Option.isSome(parsed) ? Ref.set(snapshotRef, parsed) : Effect.void;
 	};
 
+	/**
+	 * Count one GitHub API call tagged by `kind` (rest/graphql), `operation`,
+	 * and `outcome`. Inert without a metric reader.
+	 */
+	const countApiCall = (kind: "rest" | "graphql", operation: string, outcome: "success" | "failure") =>
+		Metric.update(
+			githubApiCalls.pipe(
+				Metric.tagged("kind", kind),
+				Metric.tagged("operation", operation),
+				Metric.tagged("outcome", outcome),
+			),
+			1,
+		);
+
+	/**
+	 * Wrap the OUTERMOST resilient effect in a span and the per-call counter, so
+	 * one span (and one counter increment) covers a logical operation including
+	 * all of WS2's internal retries. `retried` records whether more than one
+	 * attempt ran.
+	 */
+	const instrument = <T>(
+		kind: "rest" | "graphql",
+		operation: string,
+		effect: Effect.Effect<T, GitHubClientError>,
+	): Effect.Effect<T, GitHubClientError> =>
+		effect.pipe(
+			Effect.tap(() => countApiCall(kind, operation, "success")),
+			Effect.tapError(() => countApiCall(kind, operation, "failure")),
+			Effect.withSpan(`GitHubClient.${kind}`, { attributes: { operation } }),
+		);
+
 	return {
 		rest: <T>(operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
-			withResilience(
-				Effect.tryPromise({
-					try: () => fn(octokit),
-					catch: (error) => wrapError(operation, error),
-				}),
-				resilience,
-			).pipe(
-				Effect.tap((response) => recordSnapshot(response as WithHeaders)),
-				Effect.map((response) => response.data),
-			),
+			instrument(
+				"rest",
+				operation,
+				withResilience(
+					Effect.tryPromise({
+						try: () => fn(octokit),
+						catch: (error) => wrapError(operation, error),
+					}),
+					resilience,
+				).pipe(Effect.tap((response) => recordSnapshot(response as WithHeaders))),
+			).pipe(Effect.map((response) => response.data)),
 
 		paginate: <T>(
 			operation: string,
@@ -237,12 +270,16 @@ const makeClient = (
 		},
 
 		graphql: <T>(query: string, variables: Record<string, unknown> = {}) =>
-			withResilience(
-				Effect.tryPromise({
-					try: () => octokit.graphql<T>(query, variables),
-					catch: (error) => wrapError("graphql", error),
-				}),
-				resilience,
+			instrument(
+				"graphql",
+				"graphql",
+				withResilience(
+					Effect.tryPromise({
+						try: () => octokit.graphql<T>(query, variables),
+						catch: (error) => wrapError("graphql", error),
+					}),
+					resilience,
+				),
 			),
 
 		repo: Effect.try({
@@ -296,22 +333,24 @@ const fromEnv = (resilience?: ResilienceOptions): Layer.Layer<GitHubClient, GitH
 			if (!token) {
 				return yield* Effect.fail(wrapError("getOctokit", new Error("GITHUB_TOKEN not set")));
 			}
-			return makeClient(token, snapshotRef, resilience);
+			// Wrap the weak ambient token immediately so it stays redacted.
+			return makeClient(Redacted.make(token), snapshotRef, resilience);
 		}),
 	);
 
 /**
  * Build a client from an explicit token. No `process.env` dependency.
  *
+ * The token must be a {@link Redacted} string — wrap a bare string with
+ * `Redacted.make(...)` at the call site. This keeps secrets redacted by
+ * default and prevents an unredacted token from reaching this boundary.
+ *
  * Resilient by default; pass `resilience` to tune or disable retries.
  */
-const fromToken = (
-	token: string | Redacted.Redacted<string>,
-	resilience?: ResilienceOptions,
-): Layer.Layer<GitHubClient> =>
+const fromToken = (token: Redacted.Redacted<string>, resilience?: ResilienceOptions): Layer.Layer<GitHubClient> =>
 	Layer.effect(
 		GitHubClient,
-		Effect.map(resolveSnapshotRef, (snapshotRef) => makeClient(unwrapRedacted(token), snapshotRef, resilience)),
+		Effect.map(resolveSnapshotRef, (snapshotRef) => makeClient(token, snapshotRef, resilience)),
 	);
 
 /**
@@ -345,18 +384,18 @@ const fromToken = (
 const fromApp = (
 	options: {
 		clientId: string;
-		privateKey: string | Redacted.Redacted<string>;
+		privateKey: Redacted.Redacted<string>;
 		installationId?: number;
 	},
 	resilience?: ResilienceOptions,
-): Layer.Layer<GitHubClient, GitHubAppError> =>
+): Layer.Layer<GitHubClient, GitHubAppError, HttpClient.HttpClient> =>
 	Layer.scoped(
 		GitHubClient,
 		Effect.gen(function* () {
 			const app = yield* GitHubApp;
 			const snapshotRef = yield* resolveSnapshotRef;
 			const installationToken = yield* Effect.acquireRelease(
-				app.generateToken(options.clientId, unwrapRedacted(options.privateKey), options.installationId),
+				app.generateToken(options.clientId, options.privateKey, options.installationId),
 				// Best-effort revoke on scope close; ignore failures (token expires anyway).
 				(token) => app.revokeToken(token.token).pipe(Effect.ignore),
 			);

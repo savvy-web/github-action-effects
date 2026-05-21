@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { HttpClient } from "@effect/platform";
 import { Config, Effect, Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionLogger } from "../services/ActionLogger.js";
@@ -202,6 +203,16 @@ describe("ActionsRuntime", () => {
 			const output = captured.join("");
 			expect(output).toContain("::group::my-group");
 			expect(output).toContain("::endgroup::");
+		});
+	});
+
+	describe("HttpClient integration", () => {
+		it("provides HttpClient.HttpClient so Oidc/GitHubApp/ActionCache resolve through ActionsRuntime.Default", async () => {
+			// Resolving the HttpClient service confirms FetchHttpClient.layer is
+			// merged into the common path; the migrated layers depend on it.
+			const client = await runWithDefault(Effect.map(HttpClient.HttpClient, (c) => c));
+			expect(client).toBeDefined();
+			expect(typeof client.execute).toBe("function");
 		});
 	});
 });

@@ -1,3 +1,4 @@
+import { FetchHttpClient } from "@effect/platform";
 import { NodeFileSystem } from "@effect/platform-node";
 import { Layer, Logger } from "effect";
 import { ActionEnvironmentLive } from "../layers/ActionEnvironmentLive.js";
@@ -19,6 +20,8 @@ import { ActionsLogger } from "./ActionsLogger.js";
  * - `ActionLogger` for group markers and buffered logging
  * - `ActionEnvironment` for reading GitHub/runner context variables
  * - `FileSystem` (Node.js) required by `ActionOutputs` and `ActionState`
+ * - `HttpClient` (fetch-backed) required by `OidcTokenIssuerLive`,
+ *   `GitHubAppLive`, and `ActionCacheLive`
  *
  * @example
  * ```ts
@@ -43,5 +46,6 @@ export const ActionsRuntime = {
 		ActionLoggerLive,
 		ActionOutputsLive,
 		ActionStateLive,
+		FetchHttpClient.layer,
 	).pipe(Layer.provideMerge(NodeFileSystem.layer)),
 } as const;

@@ -1,4 +1,4 @@
-import { Data, Effect, Exit, Schema } from "effect";
+import { Data, Effect, Exit, Redacted, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { GitHubAppError } from "../errors/GitHubAppError.js";
 import { GitHubAppTest } from "../layers/GitHubAppTest.js";
@@ -18,12 +18,15 @@ const runExit = <A, E>(state: ReturnType<typeof GitHubAppTest.empty>, effect: Ef
 // -- Service method shorthands --
 
 const generateToken = (appId: string, privateKey: string, installationId?: number) =>
-	Effect.flatMap(GitHubApp, (svc) => svc.generateToken(appId, privateKey, installationId));
+	Effect.flatMap(GitHubApp, (svc) => svc.generateToken(appId, Redacted.make(privateKey), installationId));
 
-const revokeToken = (token: string) => Effect.flatMap(GitHubApp, (svc) => svc.revokeToken(token));
+const revokeToken = (token: string) => Effect.flatMap(GitHubApp, (svc) => svc.revokeToken(Redacted.make(token)));
 
-const withToken = <A, E, R>(appId: string, privateKey: string, effect: (token: string) => Effect.Effect<A, E, R>) =>
-	Effect.flatMap(GitHubApp, (svc) => svc.withToken(appId, privateKey, effect));
+const withToken = <A, E, R>(
+	appId: string,
+	privateKey: string,
+	effect: (token: Redacted.Redacted<string>) => Effect.Effect<A, E, R>,
+) => Effect.flatMap(GitHubApp, (svc) => svc.withToken(appId, Redacted.make(privateKey), effect));
 
 describe("GitHubApp", () => {
 	describe("generateToken", () => {
@@ -37,11 +40,9 @@ describe("GitHubApp", () => {
 			const state = GitHubAppTest.empty();
 			await run(state, generateToken("app-1", "private-key", 42));
 			expect(state.generateCalls).toHaveLength(1);
-			expect(state.generateCalls[0]).toEqual({
-				appId: "app-1",
-				privateKey: "private-key",
-				installationId: 42,
-			});
+			expect(state.generateCalls[0]?.appId).toBe("app-1");
+			expect(state.generateCalls[0]?.installationId).toBe(42);
+			expect(Redacted.value(state.generateCalls[0]?.privateKey as Redacted.Redacted<string>)).toBe("private-key");
 		});
 	});
 
@@ -50,7 +51,7 @@ describe("GitHubApp", () => {
 			const state = GitHubAppTest.empty();
 			await run(state, revokeToken("ghs_abc123"));
 			expect(state.revokeCalls).toHaveLength(1);
-			expect(state.revokeCalls[0]).toBe("ghs_abc123");
+			expect(Redacted.value(state.revokeCalls[0] as Redacted.Redacted<string>)).toBe("ghs_abc123");
 		});
 	});
 
@@ -59,9 +60,9 @@ describe("GitHubApp", () => {
 			const state = GitHubAppTest.empty();
 			const result = await run(
 				state,
-				withToken("app-1", "pk", (token) => Effect.succeed(`used:${token}`)),
+				withToken("app-1", "pk", (token) => Effect.succeed(`used:${Redacted.value(token)}`)),
 			);
-			expect(result).toBe(`used:${state.tokenToReturn.token}`);
+			expect(result).toBe(`used:${Redacted.value(state.tokenToReturn.token)}`);
 			expect(state.generateCalls).toHaveLength(1);
 			expect(state.revokeCalls).toHaveLength(1);
 			expect(state.revokeCalls[0]).toBe(state.tokenToReturn.token);

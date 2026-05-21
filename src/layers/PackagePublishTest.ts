@@ -1,3 +1,4 @@
+import type { Redacted } from "effect";
 import { Effect, Layer } from "effect";
 import { PackagePublishError } from "../errors/PackagePublishError.js";
 import type {
@@ -20,7 +21,7 @@ export interface PackagePublishTestState {
 	readonly integrityMatch: boolean;
 	readonly publishedVersions: ReadonlyArray<string>;
 	readonly dryRunOk: boolean;
-	readonly setupAuthCalls: Array<{ registry: string; token: string }>;
+	readonly setupAuthCalls: Array<{ registry: string; token: Redacted.Redacted<string> }>;
 	readonly packCalls: Array<{ packageDir: string }>;
 	readonly publishCalls: Array<{ packageDir: string; options?: Record<string, unknown> }>;
 	readonly publishTarballCalls: Array<{ tarballPath: string; options: Record<string, unknown> }>;
