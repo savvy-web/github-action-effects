@@ -97,4 +97,36 @@ describe("GithubMarkdown", () => {
 			expect(GithubMarkdown.codeBlock("hello")).toBe("```\nhello\n```");
 		});
 	});
+
+	describe("image", () => {
+		it("emits an img tag with src and alt", () => {
+			expect(GithubMarkdown.image("u", "a")).toBe('<img src="u" alt="a">');
+		});
+
+		it("includes width and height when given", () => {
+			expect(GithubMarkdown.image("u", "a", { width: "100", height: "50" })).toBe(
+				'<img src="u" alt="a" width="100" height="50">',
+			);
+		});
+
+		it("omits width/height when absent", () => {
+			const result = GithubMarkdown.image("u", "a");
+			expect(result).not.toContain("width=");
+			expect(result).not.toContain("height=");
+		});
+
+		it("includes width only", () => {
+			expect(GithubMarkdown.image("u", "a", { width: "100" })).toBe('<img src="u" alt="a" width="100">');
+		});
+	});
+
+	describe("quote", () => {
+		it("emits a blockquote", () => {
+			expect(GithubMarkdown.quote("hi")).toBe("<blockquote>hi</blockquote>");
+		});
+
+		it("includes cite when given", () => {
+			expect(GithubMarkdown.quote("hi", "http://x")).toBe('<blockquote cite="http://x">hi</blockquote>');
+		});
+	});
 });

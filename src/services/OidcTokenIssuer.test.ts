@@ -107,6 +107,56 @@ describe("OidcTokenIssuer — step 2: token issuance", () => {
 			expect(capturedAuth).toBe("Bearer runner-bearer-token");
 		});
 
+		it("omits the audience query param when not provided", async () => {
+			let capturedUrl = "";
+			const http = mockHttpClient((url) => {
+				capturedUrl = url;
+				return { status: 200, body: JSON.stringify({ value: "header.payload.signature" }) };
+			});
+
+			const program = Effect.gen(function* () {
+				const issuer = yield* OidcTokenIssuer;
+				return yield* issuer.getToken();
+			});
+
+			const token = await Effect.runPromise(
+				withEnv(
+					{
+						ACTIONS_ID_TOKEN_REQUEST_TOKEN: "runner-bearer-token",
+						ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/foo?api-version=2.0",
+					},
+					program.pipe(Effect.provide(Layer.provide(OidcTokenIssuerLive, http))),
+				),
+			);
+
+			expect(Redacted.value(token)).toBe("header.payload.signature");
+			expect(capturedUrl).toBe("https://token.actions.githubusercontent.com/foo?api-version=2.0");
+			expect(capturedUrl).not.toContain("audience");
+		});
+
+		it("url-encodes the audience", async () => {
+			let capturedUrl = "";
+			const http = mockHttpClient((url) => {
+				capturedUrl = url;
+				return { status: 200, body: JSON.stringify({ value: "x" }) };
+			});
+
+			await Effect.runPromise(
+				withEnv(
+					{
+						ACTIONS_ID_TOKEN_REQUEST_TOKEN: "tok",
+						ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.example/",
+					},
+					Effect.gen(function* () {
+						const issuer = yield* OidcTokenIssuer;
+						return yield* issuer.getToken("a b/c");
+					}).pipe(Effect.provide(Layer.provide(OidcTokenIssuerLive, http))),
+				),
+			);
+
+			expect(capturedUrl).toContain("audience=a%20b%2Fc");
+		});
+
 		it("fails with `reason: env` when ACTIONS_ID_TOKEN_REQUEST_TOKEN is missing", async () => {
 			const http = mockHttpClient(() => ({ status: 200, body: JSON.stringify({ value: "x" }) }));
 

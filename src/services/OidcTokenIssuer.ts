@@ -18,9 +18,12 @@ export class OidcTokenIssuer extends Context.Tag("github-action-effects/OidcToke
 		/**
 		 * Request an OIDC ID token from the GitHub Actions token service.
 		 *
-		 * @param audience - The `aud` claim to encode in the JWT
-		 *   (e.g. `"sigstore"` for Fulcio cert issuance).
+		 * @param audience - Optional `aud` claim to encode in the JWT
+		 *   (e.g. `"sigstore"` for Fulcio cert issuance). When omitted, no
+		 *   `audience` query param is sent — matching
+		 *   `@actions/core.getIDToken(audience?)`, which cloud-provider OIDC
+		 *   federation (AWS/GCP/Azure) routinely relies on.
 		 */
-		readonly getToken: (audience: string) => Effect.Effect<Redacted.Redacted<string>, OidcTokenError>;
+		readonly getToken: (audience?: string) => Effect.Effect<Redacted.Redacted<string>, OidcTokenError>;
 	}
 >() {}

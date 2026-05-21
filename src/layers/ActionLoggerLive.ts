@@ -87,4 +87,6 @@ export const ActionLoggerLive: Layer.Layer<ActionLogger> = Layer.succeed(ActionL
 				Effect.tapErrorCause(() => Effect.sync(() => flushBuffer(state))),
 			);
 		}) as Effect.Effect<A, E, Exclude<R, Scope>>,
+
+	notice: (message, properties) => Effect.sync(() => WorkflowCommand.notice(properties ?? {}, message)),
 });

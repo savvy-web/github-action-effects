@@ -1,5 +1,6 @@
 import { Effect, FiberRef, Layer, LogLevel } from "effect";
 import type { Scope } from "effect/Scope";
+import type { AnnotationProperties } from "../runtime/WorkflowCommand.js";
 import { ActionLogger } from "../services/ActionLogger.js";
 
 /**
@@ -14,6 +15,10 @@ export interface ActionLoggerTestState {
 	readonly flushedBuffers: Array<{
 		readonly label: string;
 		readonly entries: Array<string>;
+	}>;
+	readonly notices: Array<{
+		readonly message: string;
+		readonly properties: AnnotationProperties | undefined;
 	}>;
 }
 
@@ -34,6 +39,7 @@ export const ActionLoggerTest = {
 		entries: [],
 		groups: [],
 		flushedBuffers: [],
+		notices: [],
 	}),
 
 	/**
@@ -64,5 +70,10 @@ export const ActionLoggerTest = {
 						),
 					);
 				}) as Effect.Effect<A, E, Exclude<R, Scope>>,
+
+			notice: (message, properties) =>
+				Effect.sync(() => {
+					state.notices.push({ message, properties });
+				}),
 		}),
 } as const;
