@@ -81,27 +81,15 @@
 		"effect": "catalog:silk"
 	},
 	"peerDependencies": {
-		"@effect/cluster": "catalog:silkPeers",
 		"@effect/platform": "catalog:silkPeers",
 		"@effect/platform-node": "catalog:silkPeers",
-		"@effect/rpc": "catalog:silkPeers",
-		"@effect/sql": "catalog:silkPeers",
 		"effect": "catalog:silkPeers"
 	},
 	"peerDependenciesMeta": {
-		"@effect/cluster": {
-			"optional": false
-		},
 		"@effect/platform": {
 			"optional": false
 		},
 		"@effect/platform-node": {
-			"optional": false
-		},
-		"@effect/rpc": {
-			"optional": false
-		},
-		"@effect/sql": {
 			"optional": false
 		},
 		"effect": {
