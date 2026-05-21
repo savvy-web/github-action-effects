@@ -51,7 +51,7 @@ pnpm vitest run src/services/ActionOutputs.test.ts
 - **Build**: Rslib with dual output (`dist/dev/` and `dist/npm/`)
 - **Build Orchestration**: Turbo for caching and task dependencies
 - **Core Dependency**: Effect-TS for service composition, error handling, and schema validation
-- **Direct deps**: `@octokit/rest`, `@octokit/auth-app`, jsonc/semver/yaml-effect
+- **Direct deps**: `@octokit/rest`, `@octokit/auth-app`, `@sigstore/sign`, `@sigstore/bundle`, `@cyclonedx/cyclonedx-library`, jsonc/semver/yaml-effect
 - **Required peers**: `effect`, `@effect/platform`, `@effect/platform-node`
 
 ### Source Layout
@@ -61,7 +61,7 @@ src/
   Action.ts        -- Action namespace (run, resolveLogLevel, formatCause)
   GitHubToken.ts   -- GitHubToken namespace (App installation-token lifecycle)
   runtime/         -- ConfigProvider, Logger, WorkflowCommand, RuntimeFile, ActionsRuntime
-  services/        -- Effect service interfaces (27 services)
+  services/        -- Effect service interfaces (37 services)
   layers/          -- Live and Test layer implementations
   errors/          -- Tagged error types (Data.TaggedError)
   schemas/         -- Effect Schema definitions (LogLevel, Changeset, PackageManager, etc.)
@@ -79,6 +79,7 @@ The `src/runtime/` directory contains the GitHub Actions runtime protocol implem
 - `ActionsConfigProvider` — ConfigProvider reading INPUT_* env vars
 - `ActionsLogger` — Effect Logger emitting workflow commands
 - `ActionsRuntime.Default` — Single convenience Layer wiring everything
+- `Step` — Step-buffered logging: `Step.withStep(name, effect)` buffers debug/info, emits one success line on pass, spills buffer with `❌` header on failure; `Step.success(line)` sets custom success text; `Step.collapse(steps, reducer)` runs N steps in parallel with optional collapsed output; `Step.groupStep(name, effect)` wraps in both `ActionLogger.group` and `withStep`
 
 Consumer pattern:
 
@@ -112,12 +113,15 @@ For GitHub App actions, `GitHubToken` provides phase-oriented installation-token
 | GitHubClient | Octokit REST/GraphQL wrapper (direct @octokit/rest) |
 | GitHubGraphQL | Typed GraphQL query/mutation execution |
 | GitHubApp | App authentication lifecycle |
+| OctokitAuthApp | Wrapper for @octokit/auth-app createAppAuth |
 | GitHubIssue | Issue CRUD (list, get, create, update, label) |
-| GitHubRelease | Release + asset management |
+| GitHubRelease | Release + asset management (create, update, list assets) |
+| GitHubContent | Read repository file contents at a ref |
+| GitHubCommit | Read commit graph (get, list, compare) |
+| GitHubArtifactMetadata | GitHub Packages artifact-metadata storage records |
 | RateLimiter | API rate limit awareness + retry |
-| CheckRun | Check runs + annotations |
-| CommandRunner | Structured shell execution (node:child_process) |
-| PullRequest | PR lifecycle (CRUD, merge, labels, reviewers) |
+| CheckRun | Check runs + annotations; create/get return CheckRunData |
+| PullRequest | PR lifecycle (CRUD, merge, labels, reviewers, listFiles, baseSha, listAssociatedWithCommit) |
 | PullRequestComment | PR comment management |
 | WorkflowDispatch | Trigger + poll workflows |
 | TokenPermissionChecker | Token permission validation + enforcement |
@@ -127,10 +131,14 @@ For GitHub App actions, `GitHubToken` provides phase-oriented installation-token
 | GitTag | Tag CRUD via Git Data API |
 | ConfigLoader | JSON/JSONC/YAML config loading |
 | ToolInstaller | Tool binary management (native fetch + child_process) |
-| NpmRegistry | npm registry queries (versions, dist-tags, info) |
-| PackagePublish | Pack + publish to registries |
+| NpmRegistry | npm registry queries (versions, dist-tags, info, per-registry probe) |
+| PackagePublish | Pack + publish to registries (dryRun, publishIdempotent, publishTarball, sha256-hex result) |
 | PackageManagerAdapter | Unified PM interface |
 | WorkspaceDetector | Monorepo workspace detection + listing |
+| Attest | End-to-end attest/sign/upload + listForSubject |
+| OidcTokenIssuer | GitHub Actions OIDC token for Sigstore |
+| SigstoreSigner | Sign an in-toto statement into a Sigstore bundle |
+| Sbom | CycloneDX 1.5 BOM generation and serialization |
 
 ### Key Patterns
 
@@ -141,6 +149,7 @@ For GitHub App actions, `GitHubToken` provides phase-oriented installation-token
 - Test layers use namespace object pattern: `ActionLoggerTest.empty()` / `ActionLoggerTest.layer(state)`
 - Inputs via `Config.*` backed by `ActionsConfigProvider`
 - Logging via Effect `Logger` backed by `ActionsLogger`; `ActionLogger.group` flushes buffered verbose logs inside a failing group before `::endgroup::`
+- `Step.withStep` (runtime) buffers debug/info logs per-step, emits one success line or spills buffer on failure; warnings/errors always pass through
 
 ### Code Quality
 

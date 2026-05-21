@@ -8,7 +8,7 @@ export class CheckRunError extends Data.TaggedError("CheckRunError")<{
 	readonly name: string;
 
 	/** The operation that failed. */
-	readonly operation: "create" | "update" | "complete";
+	readonly operation: "create" | "update" | "complete" | "get";
 
 	/** Human-readable description. */
 	readonly reason: string;

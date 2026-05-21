@@ -28,6 +28,20 @@ const makeTestClient = (state: GitHubIssueTestState): typeof GitHubIssue.Service
 		return Effect.succeed(issues);
 	},
 
+	get: (issueNumber) => {
+		const issue = state.issues.get(issueNumber);
+		return issue
+			? Effect.succeed(issue)
+			: Effect.fail(
+					new GitHubIssueError({
+						operation: "get",
+						issueNumber,
+						reason: `Issue #${issueNumber} not found`,
+						retryable: false,
+					}),
+				);
+	},
+
 	close: (issueNumber, reason) => {
 		const issue = state.issues.get(issueNumber);
 		if (!issue) {

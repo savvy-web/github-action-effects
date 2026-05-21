@@ -8,6 +8,8 @@ export class PullRequestError extends Data.TaggedError("PullRequestError")<{
 	readonly operation:
 		| "get"
 		| "list"
+		| "listFiles"
+		| "listAssociatedWithCommit"
 		| "create"
 		| "update"
 		| "getOrCreate"

@@ -13,6 +13,7 @@ interface OctokitIssues {
 			readonly listForRepo: (args: Record<string, unknown>) => Promise<{ data: RawIssue[] }>;
 			readonly update: (args: Record<string, unknown>) => Promise<{ data: RawIssue }>;
 			readonly createComment: (args: Record<string, unknown>) => Promise<{ data: { id: number } }>;
+			readonly get: (args: Record<string, unknown>) => Promise<{ data: RawIssue }>;
 		};
 	};
 }
@@ -22,6 +23,8 @@ interface RawIssue {
 	readonly title: string;
 	readonly state: string;
 	readonly labels: Array<{ name?: string } | string>;
+	readonly html_url: string;
+	readonly node_id: string;
 }
 
 interface LinkedIssuesResponse {
@@ -51,10 +54,12 @@ const toIssueData = (raw: RawIssue): IssueData => ({
 	title: raw.title,
 	state: raw.state,
 	labels: raw.labels.map((l) => (typeof l === "string" ? l : (l.name ?? ""))),
+	htmlUrl: raw.html_url,
+	nodeId: raw.node_id,
 });
 
 const mapClientError =
-	(operation: "list" | "close" | "comment", issueNumber?: number) =>
+	(operation: "list" | "close" | "comment" | "get", issueNumber?: number) =>
 	(error: GitHubClientError): GitHubIssueError =>
 		new GitHubIssueError({
 			operation,
@@ -89,6 +94,16 @@ export const GitHubIssueLive: Layer.Layer<GitHubIssue, never, GitHubClient | Git
 				).pipe(
 					Effect.map((items) => items.map((item) => toIssueData(item as unknown as RawIssue))),
 					Effect.mapError(mapClientError("list")),
+				),
+
+			get: (issueNumber) =>
+				Effect.flatMap(client.repo, ({ owner, repo }) =>
+					client.rest("issues.get", (octokit) =>
+						asIssues(octokit).rest.issues.get({ owner, repo, issue_number: issueNumber }),
+					),
+				).pipe(
+					Effect.map((data) => toIssueData(data as unknown as RawIssue)),
+					Effect.mapError(mapClientError("get", issueNumber)),
 				),
 
 			close: (issueNumber, reason) =>

@@ -4,7 +4,7 @@ import type { GitHubGraphQLError } from "../errors/GitHubGraphQLError.js";
 import { PullRequestError } from "../errors/PullRequestError.js";
 import { GitHubClient } from "../services/GitHubClient.js";
 import { GitHubGraphQL } from "../services/GitHubGraphQL.js";
-import type { PullRequestInfo } from "../services/PullRequest.js";
+import type { PullRequestFile, PullRequestInfo } from "../services/PullRequest.js";
 import { PullRequest } from "../services/PullRequest.js";
 import { DISABLE_MUTATION, ENABLE_MUTATION, MERGE_METHOD_MAP } from "../utils/AutoMerge.js";
 
@@ -15,9 +15,17 @@ interface RawPull {
 	readonly title: string;
 	readonly state: string;
 	readonly head: { readonly ref: string };
-	readonly base: { readonly ref: string };
+	readonly base: { readonly ref: string; readonly sha: string };
 	readonly draft: boolean;
 	readonly merged: boolean;
+	readonly merged_at: string | null;
+	readonly body: string | null;
+	readonly merge_commit_sha: string | null;
+}
+
+interface RawPullFile {
+	readonly filename: string;
+	readonly status: string;
 }
 
 /** Minimal Octokit shape for pulls API calls. */
@@ -26,6 +34,7 @@ interface OctokitPulls {
 		readonly pulls: {
 			readonly get: (args: Record<string, unknown>) => Promise<{ data: RawPull }>;
 			readonly list: (args: Record<string, unknown>) => Promise<{ data: RawPull[] }>;
+			readonly listFiles: (args: Record<string, unknown>) => Promise<{ data: RawPullFile[] }>;
 			readonly create: (args: Record<string, unknown>) => Promise<{ data: RawPull }>;
 			readonly update: (args: Record<string, unknown>) => Promise<{ data: RawPull }>;
 			readonly merge: (args: Record<string, unknown>) => Promise<{ data: unknown }>;
@@ -33,6 +42,9 @@ interface OctokitPulls {
 		};
 		readonly issues: {
 			readonly addLabels: (args: Record<string, unknown>) => Promise<{ data: unknown }>;
+		};
+		readonly repos: {
+			readonly listPullRequestsAssociatedWithCommit: (args: Record<string, unknown>) => Promise<{ data: RawPull[] }>;
 		};
 	};
 }
@@ -49,6 +61,15 @@ const toInfo = (raw: RawPull): PullRequestInfo => ({
 	base: raw.base.ref,
 	draft: raw.draft,
 	merged: raw.merged,
+	mergedAt: raw.merged_at,
+	body: raw.body,
+	mergeCommitSha: raw.merge_commit_sha,
+	baseSha: raw.base.sha,
+});
+
+const toPullRequestFile = (raw: RawPullFile): PullRequestFile => ({
+	filename: raw.filename,
+	status: raw.status,
 });
 
 const mapClientError =
@@ -129,6 +150,29 @@ export const PullRequestLive: Layer.Layer<PullRequest, never, GitHubClient | Git
 					}).pipe(
 						Effect.map((items) => (items as unknown as RawPull[]).map(toInfo)),
 						Effect.mapError(mapClientError("list")),
+					),
+
+				listFiles: (number) =>
+					Effect.flatMap(client.repo, ({ owner, repo }) =>
+						client.paginate(
+							"pulls.listFiles",
+							(octokit, page, perPage) =>
+								asPulls(octokit).rest.pulls.listFiles({ owner, repo, pull_number: number, page, per_page: perPage }),
+							{},
+						),
+					).pipe(
+						Effect.map((items) => (items as unknown as RawPullFile[]).map(toPullRequestFile)),
+						Effect.mapError(mapClientError("listFiles", number)),
+					),
+
+				listAssociatedWithCommit: (sha) =>
+					Effect.flatMap(client.repo, ({ owner, repo }) =>
+						client.rest("repos.listPullRequestsAssociatedWithCommit", (octokit) =>
+							asPulls(octokit).rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: sha }),
+						),
+					).pipe(
+						Effect.map((items) => (items as unknown as RawPull[]).map(toInfo)),
+						Effect.mapError(mapClientError("listAssociatedWithCommit")),
 					),
 
 				create: (options) =>

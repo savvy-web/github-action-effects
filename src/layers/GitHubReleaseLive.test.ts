@@ -9,6 +9,8 @@ const mockCreateRelease = vi.fn();
 const mockUploadReleaseAsset = vi.fn();
 const mockGetReleaseByTag = vi.fn();
 const mockListReleases = vi.fn();
+const mockUpdateRelease = vi.fn();
+const mockListReleaseAssets = vi.fn();
 
 const mockClient: typeof GitHubClient.Service = {
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
@@ -21,6 +23,8 @@ const mockClient: typeof GitHubClient.Service = {
 							uploadReleaseAsset: mockUploadReleaseAsset,
 							getReleaseByTag: mockGetReleaseByTag,
 							listReleases: mockListReleases,
+							updateRelease: mockUpdateRelease,
+							listReleaseAssets: mockListReleaseAssets,
 						},
 					},
 				}),
@@ -48,6 +52,8 @@ const mockClient: typeof GitHubClient.Service = {
 								uploadReleaseAsset: mockUploadReleaseAsset,
 								getReleaseByTag: mockGetReleaseByTag,
 								listReleases: mockListReleases,
+								updateRelease: mockUpdateRelease,
+								listReleaseAssets: mockListReleaseAssets,
 							},
 						},
 					},
@@ -284,6 +290,69 @@ describe("GitHubReleaseLive", () => {
 			expect(result).toHaveLength(2);
 			expect(result[0]?.tag).toBe("v1.0.0");
 			expect(result[1]?.tag).toBe("v2.0.0");
+		});
+	});
+
+	describe("updateRelease", () => {
+		it("updates a release body and returns the updated release", async () => {
+			mockUpdateRelease.mockResolvedValue({
+				data: {
+					id: 42,
+					tag_name: "v1.0.0",
+					name: "Release 1.0.0",
+					body: "new body",
+					draft: false,
+					prerelease: false,
+					upload_url: "https://uploads.github.com/releases/42/assets",
+				},
+			});
+			const result = await run(Effect.flatMap(GitHubRelease, (svc) => svc.updateRelease(42, { body: "new body" })));
+			expect(result.body).toBe("new body");
+			expect(mockUpdateRelease).toHaveBeenCalledWith(
+				expect.objectContaining({
+					owner: "test-owner",
+					repo: "test-repo",
+					release_id: 42,
+					body: "new body",
+				}),
+			);
+		});
+
+		it("fails on API error", async () => {
+			mockUpdateRelease.mockRejectedValue(new Error("api error"));
+			const exit = await runExit(Effect.flatMap(GitHubRelease, (svc) => svc.updateRelease(42, { body: "x" })));
+			expect(exit._tag).toBe("Failure");
+		});
+	});
+
+	describe("listReleaseAssets", () => {
+		it("returns the release's assets", async () => {
+			mockListReleaseAssets.mockResolvedValue({
+				data: [
+					{
+						id: 1,
+						name: "dist.tar.gz",
+						browser_download_url: "https://github.com/releases/download/v1.0.0/dist.tar.gz",
+						size: 2048,
+					},
+					{
+						id: 2,
+						name: "checksums.txt",
+						browser_download_url: "https://github.com/releases/download/v1.0.0/checksums.txt",
+						size: 128,
+					},
+				],
+			});
+			const result = await run(Effect.flatMap(GitHubRelease, (svc) => svc.listReleaseAssets(42)));
+			expect(result).toHaveLength(2);
+			expect(result[0]?.url).toBe("https://github.com/releases/download/v1.0.0/dist.tar.gz");
+			expect(mockListReleaseAssets).toHaveBeenCalledWith(
+				expect.objectContaining({
+					owner: "test-owner",
+					repo: "test-repo",
+					release_id: 42,
+				}),
+			);
 		});
 	});
 });

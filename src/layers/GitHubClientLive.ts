@@ -3,11 +3,47 @@ import type { Redacted } from "effect";
 import { Effect, Layer } from "effect";
 import type { GitHubAppError } from "../errors/GitHubAppError.js";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
+import * as WorkflowCommand from "../runtime/WorkflowCommand.js";
 import { GitHubApp } from "../services/GitHubApp.js";
 import { GitHubClient } from "../services/GitHubClient.js";
 import { unwrapRedacted } from "../utils/unwrapRedacted.js";
 import { GitHubAppLive } from "./GitHubAppLive.js";
 import { OctokitAuthAppLive } from "./OctokitAuthAppLive.js";
+
+/**
+ * Custom `log` sink installed on every Octokit instance to suppress the
+ * `@octokit/plugin-request-log` per-request lines that would otherwise
+ * leak past `Step.withStep`'s buffer.
+ *
+ * The plugin is enabled by default in `@octokit/rest`. Its wrap-hook
+ * calls `octokit.log.info(...)` after every successful request and
+ * `octokit.log.error(...)` on failure — the latter producing lines
+ * like `POST /repos/owner/name/git/refs - 422 with id ... in 412ms`
+ * that we see in the runner UI even after the orchestrator has caught
+ * the error and recovered (idempotent recovery, `getReleaseByTag`
+ * fallback, etc).
+ *
+ * Routing through `WorkflowCommand.issue("debug", …)` emits a
+ * `::debug::` workflow command — visible only when the workflow
+ * exports `ACTIONS_STEP_DEBUG=true`. The full error context the user
+ * needs on a real failure is already carried by the `GitHubClientError`
+ * that `wrapError` constructs and surfaces through Effect's error
+ * channel.
+ */
+const silentOctokitLog = {
+	debug: (message: string): void => {
+		WorkflowCommand.issue("debug", {}, message);
+	},
+	info: (message: string): void => {
+		WorkflowCommand.issue("debug", {}, message);
+	},
+	warn: (message: string): void => {
+		WorkflowCommand.issue("debug", {}, message);
+	},
+	error: (message: string): void => {
+		WorkflowCommand.issue("debug", {}, message);
+	},
+};
 
 const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
 
@@ -32,7 +68,7 @@ const wrapError = (operation: string, error: unknown): GitHubClientError => {
 
 /** Build the GitHubClient service object from a concrete token. */
 const makeClient = (token: string): typeof GitHubClient.Service => {
-	const octokit = new Octokit({ auth: token });
+	const octokit = new Octokit({ auth: token, log: silentOctokitLog });
 	return {
 		rest: <T>(operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
 			Effect.tryPromise({

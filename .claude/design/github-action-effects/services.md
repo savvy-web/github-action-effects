@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-16
-last-synced: 2026-05-16
+updated: 2026-05-20
+last-synced: 2026-05-20
 completeness: 97
 related:
   - ./index.md
@@ -26,7 +26,7 @@ See [layers.md](./layers.md) for live and test layer implementations.
 
 ## Overview
 
-Twenty-nine service modules plus six namespace/utility objects, each
+Thirty-seven service modules plus six namespace/utility objects, each
 independently usable. `Action.run()` automatically provides
 `ActionsRuntime.Default`, which includes `NodeFileSystem.layer` from
 `@effect/platform-node`. Programs also have access to Node.js platform
@@ -40,11 +40,12 @@ by `ActionsLogger`.
 ```text
 @savvy-web/github-action-effects
 ├── Runtime Layer (replaces @actions/*)
-│   ├── WorkflowCommand     — ::command:: protocol formatter with escaping
+│   ├── WorkflowCommand      — ::command:: protocol formatter with escaping
 │   ├── RuntimeFile          — Env file appender (GITHUB_OUTPUT, GITHUB_ENV, etc.)
 │   ├── ActionsConfigProvider — ConfigProvider reading INPUT_* env vars
 │   ├── ActionsLogger        — Effect Logger emitting workflow commands
-│   └── ActionsRuntime       — Single convenience Layer wiring everything
+│   ├── ActionsRuntime       — Single convenience Layer wiring everything
+│   └── Step                 — Step-buffered logging (withStep, success, collapse, groupStep)
 │
 ├── Core Action I/O
 │   ├── ActionLogger        — Log groups + buffered output
@@ -61,20 +62,23 @@ by `ActionsLogger`.
 ├── GitHub API
 │   ├── GitHubClient        — Direct @octokit/rest; namespace layer (fromEnv/fromToken/fromApp)
 │   ├── GitHubGraphQL       — GitHub GraphQL API operations
-│   ├── GitHubRelease       — Create/manage GitHub releases
+│   ├── GitHubRelease       — Create/manage GitHub releases + assets
 │   ├── GitHubIssue         — Issue management + linked issues
 │   ├── GitHubApp           — GitHub App authentication lifecycle
 │   ├── OctokitAuthApp      — Wrapper for @octokit/auth-app createAppAuth
-│   ├── CheckRun            — Check runs with bracket pattern
-│   ├── PullRequest         — PR lifecycle (CRUD, merge, labels, reviewers)
+│   ├── CheckRun            — Check runs with bracket pattern + get
+│   ├── PullRequest         — PR lifecycle (CRUD, merge, labels, reviewers, files)
 │   ├── PullRequestComment  — Sticky (upsert) PR comments
 │   ├── RateLimiter         — Rate limit awareness and retry
-│   └── WorkflowDispatch    — Trigger and monitor workflow runs
+│   ├── WorkflowDispatch    — Trigger and monitor workflow runs
+│   ├── GitHubContent       — Read repository file contents at a ref
+│   ├── GitHubCommit        — Read the commit graph (get/list/compare)
+│   └── GitHubArtifactMetadata — GitHub Packages artifact-metadata storage records
 │
 ├── Build Tooling
 │   ├── CommandRunner       — Structured shell execution (node:child_process)
-│   ├── NpmRegistry         — npm registry queries
-│   ├── PackagePublish      — Multi-registry package publishing
+│   ├── NpmRegistry         — npm registry queries + per-registry integrity probe
+│   ├── PackagePublish      — Multi-registry publishing (pack/publish/publishTarball/dryRun/publishIdempotent)
 │   ├── PackageManagerAdapter — Unified PM operations (npm/pnpm/yarn/bun)
 │   ├── WorkspaceDetector   — Monorepo workspace detection
 │   ├── ToolInstaller       — Low-level tool binary management (native fetch + child_process)
@@ -82,6 +86,12 @@ by `ActionsLogger`.
 │   ├── ConfigLoader        — JSON/JSONC/YAML config loading with schema validation
 │   ├── TokenPermissionChecker — Token permission validation + enforcement
 │   └── DryRun              — Mutation interception for dry-run mode
+│
+├── Attestation
+│   ├── Attest              — End-to-end attest/sign/upload + listForSubject
+│   ├── OidcTokenIssuer     — GitHub Actions OIDC token for Sigstore
+│   ├── SigstoreSigner      — Sign an in-toto statement → Sigstore bundle
+│   └── Sbom                — CycloneDX 1.5 BOM generation and serialization
 │
 ├── Namespace Objects
 │   ├── Action.*            — run, resolveLogLevel, formatCause
@@ -92,7 +102,8 @@ by `ActionsLogger`.
     ├── AutoMerge           — PR auto-merge enable/disable via GraphQL
     ├── SemverResolver      — Semver comparison, parsing, resolution
     ├── ErrorAccumulator    — Process-all-collect-failures pattern
-    └── ReportBuilder       — Fluent markdown report builder
+    ├── ReportBuilder       — Fluent markdown report builder
+    └── RegistryClassifier  — URL-safe registry detection and display utilities
 ```
 
 ---
@@ -104,17 +115,9 @@ single export, reducing barrel clutter and improving discoverability.
 
 **`Action`** (from `src/Action.ts`) groups top-level action helpers:
 
-- `Action.run(program)` / `Action.run(program, options?)` -- Run a GitHub
-  Action program with standard boilerplate. Provides `ActionsRuntime.Default`
-  (ConfigProvider, Logger, ActionLogger, ActionOutputs, ActionState,
-  ActionEnvironment, FileSystem). Wraps the program in
-  `ActionLogger.withBuffer` for buffered output. Catches all errors via
-  `Effect.catchAllCause` and emits `::error::` workflow commands using
-  `WorkflowCommand.issue`. `options` accepts a `layer` field for additional
-  services to merge.
+- `Action.run(program)` / `Action.run(program, options?)` -- Run a GitHub Action program with standard boilerplate. Provides `ActionsRuntime.Default` (ConfigProvider, Logger, ActionLogger, ActionOutputs, ActionState, ActionEnvironment, FileSystem). Wraps the program in `ActionLogger.withBuffer` for buffered output. Catches all errors via `Effect.catchAllCause` and emits `::error::` workflow commands using `WorkflowCommand.issue`. `options` accepts a `layer` field for additional services to merge.
 - `Action.resolveLogLevel(input)` -- Resolve LogLevelInput to ActionLogLevel
-- `Action.formatCause(cause)` -- Extract human-readable error message from an
-  Effect `Cause` using a `[Tag] message` fallback chain
+- `Action.formatCause(cause)` -- Extract human-readable error message from an Effect `Cause` using a `[Tag] message` fallback chain
 
 **`GitHubToken`** (from `src/GitHubToken.ts`) groups phase-oriented helpers for
 the GitHub App installation-token lifecycle. See [GitHubToken Lifecycle](#githubtoken-lifecycle)
@@ -150,13 +153,8 @@ additional GitHub Actions-specific operations.
 
 **Interface:**
 
-- `group(name, effect)` -- Wraps an effect in a collapsible log group
-  (`::group::` / `::endgroup::`). If the wrapped effect fails and a buffer is
-  active, the buffered diagnostics are flushed *inside* the group, before
-  `::endgroup::`, so a failure's context stays within its own group.
-- `withBuffer(label, effect)` -- Captures verbose output in memory; on
-  success the buffer is discarded; on failure the buffer is flushed before
-  the error is reported. At Debug log level, passes through without buffering.
+- `group(name, effect)` -- Wraps an effect in a collapsible log group (`::group::` / `::endgroup::`). If the wrapped effect fails and a buffer is active, the buffered diagnostics are flushed *inside* the group, before `::endgroup::`, so a failure's context stays within its own group.
+- `withBuffer(label, effect)` -- Captures verbose output in memory; on success the buffer is discarded; on failure the buffer is flushed before the error is reported. At Debug log level, passes through without buffering.
 
 The buffer is fiber-scoped (a module-level `FiberRef`), so nested `group`
 calls and the outer `withBuffer` boundary share one buffer. Each buffered chunk
@@ -176,11 +174,9 @@ WorkflowCommand.
 - `set(name, value)` -- Set an output value (appends to `GITHUB_OUTPUT` file)
 - `setJson(name, value, schema)` -- Serialize and set a JSON output
 - `summary(content)` -- Write to `$GITHUB_STEP_SUMMARY`
-- `exportVariable(name, value)` -- Export an environment variable (appends to
-  `GITHUB_ENV` file)
+- `exportVariable(name, value)` -- Export an environment variable (appends to `GITHUB_ENV` file)
 - `addPath(path)` -- Add to PATH (appends to `GITHUB_PATH` file)
-- `setFailed(message)` -- Mark the action as failed via `::error::` command
-  and `process.exitCode = 1`
+- `setFailed(message)` -- Mark the action as failed via `::error::` command and `process.exitCode = 1`
 - `setSecret(value)` -- Mask a runtime value in logs via `::add-mask::` command
 
 **Error type:** `ActionOutputError`
@@ -223,13 +219,8 @@ dependency on `@actions/cache`.
 
 **Interface:**
 
-- `save(paths, key)` -- Create tar.gz archive of paths with `-P` (absolute-names)
-  to preserve absolute paths, upload via `CreateCacheEntry` + Azure Blob
-  `BlockBlobClient.uploadFile()` + `FinalizeCacheEntryUpload`
-- `restore(paths, primaryKey, restoreKeys?)` -- Look up cache entry via
-  `GetCacheEntryDownloadURL`, download via Azure Blob `BlobClient.downloadToFile()`,
-  extract with `-P` to restore absolute paths correctly. Returns `Option<string>`
-  (matched key or none on miss)
+- `save(paths, key)` -- Create tar.gz archive of paths with `-P` (absolute-names) to preserve absolute paths, upload via `CreateCacheEntry` + Azure Blob `BlockBlobClient.uploadFile()` + `FinalizeCacheEntryUpload`
+- `restore(paths, primaryKey, restoreKeys?)` -- Look up cache entry via `GetCacheEntryDownloadURL`, download via Azure Blob `BlobClient.downloadToFile()`, extract with `-P` to restore absolute paths correctly. Returns `Option<string>` (matched key or none on miss)
 
 **Error type:** `ActionCacheError`
 
@@ -257,9 +248,7 @@ additions/updates and file deletions.
 - `createTree(entries, baseTree?)` -- Create a tree object, return SHA
 - `createCommit(message, treeSha, parentShas)` -- Create a commit object
 - `updateRef(ref, sha, force?)` -- Update a ref to point at a new SHA
-- `commitFiles(branch, message, files)` -- Convenience: commit files to a
-  branch. Each file is a `FileChange` (union of `FileChangeContent` for
-  add/update and `FileChangeDeletion` with `sha: null` for deletion)
+- `commitFiles(branch, message, files)` -- Convenience: commit files to a branch. Each file is a `FileChange` (union of `FileChangeContent` for add/update and `FileChangeDeletion` with `sha: null` for deletion)
 
 **Error type:** `GitCommitError`
 
@@ -272,7 +261,7 @@ Tag management via the GitHub Git refs API.
 - `create(tag, sha)` -- Create a lightweight tag pointing at the given SHA
 - `delete(tag)` -- Delete a tag
 - `list(prefix?)` -- List tags, optionally filtered by prefix. Returns `Array<TagRef>`
-- `resolve(tag)` -- Resolve a tag to its SHA
+- `resolve(tag)` -- Resolve a tag to its commit SHA. Annotated tags are unwrapped: when the ref object type is `tag` the implementation dereferences the tag object to retrieve the target commit SHA, so the result is always a commit SHA regardless of tag type
 
 **Types:** `TagRef` -- `{ tag: string; sha: string }`
 
@@ -287,10 +276,8 @@ Uses `@octokit/rest` directly.
 
 - `rest(operation, fn)` -- Execute a REST API call via callback
 - `graphql(query, variables?)` -- Execute a GraphQL query
-- `paginate(operation, fn, options?)` -- Paginate a REST API call, collecting
-  all results. Options: `{ perPage?, maxPages? }`
-- `repo` -- Get the repository context (`{ owner, repo }`) from
-  `GITHUB_REPOSITORY` env var
+- `paginate(operation, fn, options?)` -- Paginate a REST API call, collecting all results. Options: `{ perPage?, maxPages? }`
+- `repo` -- Get the repository context (`{ owner, repo }`) from `GITHUB_REPOSITORY` env var
 
 **Error type:** `GitHubClientError` -- includes `retryable` flag for 429/5xx
 
@@ -318,10 +305,11 @@ Create and manage GitHub releases via the REST API.
 **Interface:**
 
 - `create(options)` -- Create a new release. Returns `ReleaseData`
-- `uploadAsset(releaseId, name, data, contentType)` -- Upload an asset.
-  Returns `ReleaseAsset`
+- `uploadAsset(releaseId, name, data, contentType)` -- Upload an asset. Returns `ReleaseAsset`
 - `getByTag(tag)` -- Get a release by tag name. Returns `ReleaseData`
 - `list(options?)` -- List releases. Returns `Array<ReleaseData>`
+- `updateRelease(releaseId, options)` -- Update an existing release's fields. Returns updated `ReleaseData`
+- `listReleaseAssets(releaseId)` -- List all assets attached to a release. Returns `Array<ReleaseAsset>`
 
 **Types:** `ReleaseData`, `ReleaseAsset`
 
@@ -334,11 +322,12 @@ Issue management and linked issue queries.
 **Interface:**
 
 - `list(options?)` -- List issues filtered by state, labels, milestone
+- `get(issueNumber)` -- Get a single issue by number
 - `close(issueNumber, reason?)` -- Close an issue
 - `comment(issueNumber, body)` -- Add a comment
 - `getLinkedIssues(prNumber)` -- Get issues linked to a PR via closing references
 
-**Types:** `IssueData` -- `{ number, title, state, labels }`
+**Types:** `IssueData` -- `{ number, title, state, labels, htmlUrl?, nodeId? }`
 
 **Error type:** `GitHubIssueError`
 
@@ -362,13 +351,11 @@ token revocation.
 
 ### OctokitAuthApp Service
 
-Wrapper service for `@octokit/auth-app`. This is the only service that
-imports `@octokit/auth-app` directly (via `OctokitAuthAppLive`).
+Wrapper service for `@octokit/auth-app`. This is the only service that imports `@octokit/auth-app` directly (via `OctokitAuthAppLive`).
 
 **Interface:**
 
-- `createAppAuth(options)` -- Create an `AppAuth` callable for JWT-based
-  app and installation authentication
+- `createAppAuth(options)` -- Create an `AppAuth` callable for JWT-based app and installation authentication
 
 **Types:** `AppAuth` -- callable interface for app/installation auth
 
@@ -378,13 +365,13 @@ Create, update, and complete GitHub check runs with bracket pattern.
 
 **Interface:**
 
-- `create(name, headSha)` -- Create a new check run. Returns check run ID
+- `create(name, headSha)` -- Create a new check run. Returns `CheckRunData` (id, name, status, conclusion, htmlUrl)
+- `get(checkRunId)` -- Get a check run by id. Returns `CheckRunData`
 - `update(checkRunId, output)` -- Update with output content
 - `complete(checkRunId, conclusion, output?)` -- Complete with conclusion
 - `withCheckRun(name, headSha, effect)` -- Bracket: create, run, complete
 
-**Types:** `CheckRunConclusion`, `AnnotationLevel`, `CheckRunAnnotation`,
-`CheckRunOutput`
+**Types:** `CheckRunConclusion`, `AnnotationLevel`, `CheckRunAnnotation`, `CheckRunOutput`, `CheckRunData`
 
 **Error type:** `CheckRunError`
 
@@ -396,6 +383,8 @@ Full pull request lifecycle management.
 
 - `get(number)` -- Get a single PR by number
 - `list(options?)` -- List PRs matching filters
+- `listFiles(number)` -- List files changed in a PR. Returns `Array<PullRequestFile>`
+- `listAssociatedWithCommit(sha)` -- List PRs associated with a commit SHA
 - `create(options)` -- Create a new PR
 - `update(number, options)` -- Update an existing PR
 - `getOrCreate(options)` -- Find existing PR for head->base or create one
@@ -403,7 +392,9 @@ Full pull request lifecycle management.
 - `addLabels(number, labels)` -- Add labels to a PR
 - `requestReviewers(number, options)` -- Request reviewers
 
-**Types:** `PullRequestInfo`, `PullRequestListOptions`
+**Types:** `PullRequestInfo`, `PullRequestListOptions`, `PullRequestFile`
+
+`PullRequestInfo` carries optional fields added in this cycle: `mergedAt`, `body`, `mergeCommitSha` and `baseSha`.
 
 **Error type:** `PullRequestError`
 
@@ -442,8 +433,7 @@ Trigger and monitor GitHub Actions workflow runs.
 **Interface:**
 
 - `dispatch(workflow, ref, inputs?)` -- Trigger a workflow run
-- `dispatchAndWait(workflow, ref, inputs?, pollOptions?)` -- Trigger and poll
-  until completion
+- `dispatchAndWait(workflow, ref, inputs?, pollOptions?)` -- Trigger and poll until completion
 - `getRunStatus(runId)` -- Get status of a workflow run
 
 **Types:** `WorkflowRunStatus`, `PollOptions`
@@ -461,8 +451,7 @@ Structured shell command execution via `node:child_process` `spawn`.
 - `execJson(command, args?, schema?)` -- Run, parse stdout as JSON, validate
 - `execLines(command, args?, options?)` -- Run and return stdout split into lines
 
-**Types:** `ExecOptions` -- `{ cwd?, env?, timeout?, silent?, streaming? }`,
-`ExecOutput` -- `{ exitCode, stdout, stderr }`
+**Types:** `ExecOptions` -- `{ cwd?, env?, timeout?, silent?, streaming? }`, `ExecOutput` -- `{ exitCode, stdout, stderr }`
 
 **Error type:** `CommandRunnerError`
 
@@ -474,10 +463,11 @@ Query npm registry for package metadata.
 
 - `getLatestVersion(pkg)` -- Get latest version string
 - `getDistTags(pkg)` -- Get dist-tags record
-- `getPackageInfo(pkg, version?)` -- Get package info
-- `getVersions(pkg)` -- Get all version strings
+- `getPackageInfo(pkg, version?, options?)` -- Get package info. `options.registry` routes to a specific registry
+- `getVersions(pkg, options?)` -- Get all version strings. `options.registry` routes to a specific registry
+- `getPublishedIntegrity(pkg, version, options)` -- Probe a specific registry for the published `dist.integrity` hash of a version. Returns `Option<string>` — `none` when the version is absent (404), `some(integrity)` when found. Other failures propagate as `NpmRegistryError`. `options.registry` is required
 
-**Error type:** `NpmRegistryError`
+**Error type:** `NpmRegistryError` (carries a `message` getter for readable error surfaces)
 
 ### PackagePublish Service
 
@@ -485,15 +475,18 @@ Multi-registry npm package publishing workflow.
 
 **Interface:**
 
-- `setupAuth(registry, token)` -- Configure npm authentication
-- `pack(packageDir)` -- Pack into tarball and compute digest
-- `publish(packageDir, options?)` -- Publish to a registry
-- `verifyIntegrity(packageName, version, expectedDigest)` -- Verify integrity
-- `publishToRegistries(packageDir, registries)` -- Publish to multiple registries
+- `setupAuth(registry, token)` -- Configure npm authentication. URL scheme is stripped from the key written to `.npmrc` (only the hostname+path is used, not `https://`)
+- `pack(packageDir)` -- Pack into a tarball; returns `PackResult` with `tarballPath`, `digest` (sha512-base64 integrity), `sha256Hex` (lowercase hex SHA-256 of the tarball for use with attestation APIs), `name`, `version`, `packedSize`, `unpackedSize`, `fileCount`
+- `publish(packageDir, options?)` -- Publish to a registry. `options.packageManager` routes through the active PM's executor (e.g. `pnpm dlx npm` or `yarn npm`) so callers can use npm ≥ 11.5.1 for OIDC trusted publishing regardless of which PM manages the workspace. Verbose npm logging is enabled so the OIDC exchange is visible in the action log
+- `publishTarball(tarballPath, options)` -- Upload a previously-packed tarball to a specific registry without re-packing. `options.registry` is required. Suitable for publishing byte-identical content to multiple registries
+- `verifyIntegrity(packageName, version, expectedDigest)` -- Verify a published package's integrity hash against the expected digest
+- `publishToRegistries(packageDir, registries)` -- Publish to multiple registries in sequence; each `RegistryTarget` carries an optional `packageManager` so per-registry publishes route through the same PM executor dispatch as `publish`
+- `publishIdempotent(input)` -- Skip when an identical version already exists; fail on content mismatch. Deprecated: new callers should compose `pack`, `NpmRegistry.getPublishedIntegrity` and `publishTarball` directly
+- `dryRun(packageDir, options?)` -- Simulate publishing via `npm publish --dry-run`. Returns `DryRunResult { ok, packedSize?, unpackedSize?, fileCount?, output }`. A non-zero exit is reported as `ok: false`, not as an error
 
-**Types:** `PackResult`, `RegistryTarget`
+**Types:** `PackResult`, `RegistryTarget`, `IdempotentPublishInput`, `IdempotentPublishResult`, `DryRunResult`
 
-**Error type:** `PackagePublishError`
+**Error type:** `PackagePublishError` (carries a `message` getter for readable error surfaces; captures the source error as `cause`; surfaces the tail of long stderr output)
 
 ### PackageManagerAdapter Service
 
@@ -589,6 +582,96 @@ Check GitHub token permissions against requirements.
 
 **Error type:** `TokenPermissionError`
 
+### GitHubContent Service
+
+Read repository file contents via the GitHub REST API.
+
+**Interface:**
+
+- `getFile(path, ref?)` -- Read a file's decoded UTF-8 contents at a ref. `ref` defaults to the repository's default branch. Fails when the path resolves to a directory, submodule, or is missing
+
+**Error type:** `GitHubContentError`
+
+### GitHubCommit Service
+
+Read the GitHub commit graph via the REST API. Distinct from `GitCommit`, which wraps the local `git` CLI — this service wraps `repos.getCommit` / `listCommits` / `compareCommits`.
+
+**Interface:**
+
+- `get(ref)` -- Get a single commit by ref (SHA or branch name). Returns `CommitDetail`
+- `list(ref)` -- List commits reachable from a ref, paginated. Returns `Array<CommitSummary>`
+- `compare(base, head)` -- Compare two commits/refs; returns the commits and changed files between base and head. Returns `CommitComparison`
+
+**Types:** `CommitSummary { sha, message, author }`, `CommitDetail extends CommitSummary { parents }`, `CommitFile { filename, status }`, `CommitComparison { commits, files }`
+
+**Error type:** `GitHubCommitError`
+
+### GitHubArtifactMetadata Service
+
+GitHub Packages artifact-metadata operations for linking attestations to published artifacts.
+
+**Interface:**
+
+- `createStorageRecord(input)` -- Create an artifact-metadata storage record linking an attestation to a published GitHub Packages artifact. Returns `ReadonlyArray<number>` (created record IDs). `input` carries `name` (purl), `digest`, `version`, `registryUrl`, `artifactUrl` and `repo`
+
+**Error type:** `GitHubArtifactMetadataError`
+
+### Attest Service
+
+End-to-end attestation: build in-toto statements, sign via Sigstore, upload to GitHub's attestation store, and query existing attestations.
+
+**Interface:**
+
+- `buildStatement(input)` -- Build an `InTotoStatement` from subjects + predicate. Pure aside from Effect wrapping
+- `save(data, path)` -- Write an in-toto statement or Sigstore bundle to disk. Requires `FileSystem`
+- `buildBundle(input)` -- Build a signed Sigstore bundle (no upload). Requires `SigstoreSigner | OidcTokenIssuer`
+- `attest(input)` -- Full end-to-end: build statement, sign, POST to `POST /repos/{owner}/{repo}/attestations`. Returns `AttestationRecord`. Requires `SigstoreSigner | OidcTokenIssuer | GitHubClient`
+- `sbom(input)` -- Generate a CycloneDX SBOM and attest it (`CYCLONEDX_BOM` predicateType). `input` accepts either `dependencies` (the service builds the BOM) or a pre-built `bomDocument` (attested verbatim). Requires `Sbom | SigstoreSigner | OidcTokenIssuer | GitHubClient`
+- `provenance(input)` -- Attest with a caller-supplied SLSA Provenance v1 predicate. Requires `SigstoreSigner | OidcTokenIssuer | GitHubClient`
+- `listForSubject(subjectSha256, options?)` -- List existing attestations for a tarball digest (`GET /repos/{owner}/{repo}/attestations/sha256:{hex}`). `options.predicateType` filters client-side. Returns an empty array on 404 (never-attested subject). Requires `GitHubClient`
+
+**Types:** `SbomAttestationInput`, `ProvenanceAttestationInput`, `AttestationListEntry { attestationUrl, predicateType }`, `AttestationRecord` (see `schemas/Attestation.ts`)
+
+**Error type:** `AttestError`
+
+### OidcTokenIssuer Service
+
+Fetch OIDC ID tokens from the GitHub Actions token service. Requires `id-token: write` in the workflow permissions.
+
+**Interface:**
+
+- `getToken(audience)` -- Request an OIDC ID token from `ACTIONS_ID_TOKEN_REQUEST_URL`. `audience` is the `aud` claim (e.g. `"sigstore"` for Fulcio cert issuance). Returns `Redacted<string>`
+
+**Error type:** `OidcTokenError`
+
+### SigstoreSigner Service
+
+Sign an in-toto statement to produce a Sigstore DSSE bundle.
+
+**Interface:**
+
+- `signStatement(statement)` -- Build a Sigstore bundle from an `InTotoStatement`. Fetches an OIDC token via `OidcTokenIssuer` (audience: `"sigstore"`), signs through Fulcio, and witnesses on Rekor. Returns `SigstoreBundle`. Requires `OidcTokenIssuer`
+
+**Constants:** `IN_TOTO_PAYLOAD_TYPE`, `SIGSTORE_OIDC_AUDIENCE`
+
+**Config:** `SigstoreSignerConfig { fulcioBaseURL?, rekorBaseURL? }` for overriding public-good defaults
+
+**Error type:** `SigstoreSignerError`
+
+### Sbom Service
+
+CycloneDX 1.5 SBOM generation for npm packages.
+
+**Interface:**
+
+- `generate(input)` -- Build an in-memory CycloneDX 1.5 BOM from a resolved dependency graph. `input` includes NTIA-required fields: `rootName`, `rootVersion`, `dependencies`, optional `supplier` (`SbomSupplier { name, url?, contact? }`) and `authors` (`Array<SbomAuthor>`) for NTIA "author of SBOM data". `inFlightPackages` handles workspace packages not yet on a registry
+- `serializeJson(bom)` -- Serialize a BOM to canonical CycloneDX JSON
+- `save(bom, path)` -- Write a BOM to disk as pretty-printed JSON. Requires `FileSystem`
+
+**Types:** `SbomInput`, `CycloneDXBom`, `ResolvedDependency`, `InFlightPackage`, `SbomSupplier`, `SbomContact`, `SbomAuthor`
+
+**Error type:** `SbomError`
+
 ---
 
 ## Utility Namespaces
@@ -628,17 +711,22 @@ Process-all-collect-failures pattern.
 
 Composable markdown report builder with multiple output targets.
 
-- `ReportBuilder.create(title)`, `report.stat(label, value)`,
-  `report.section(title, content)`, `report.details(summary, content)`,
-  `report.toMarkdown()`, `report.toSummary()`, `report.toComment(prNumber, markerKey)`,
-  `report.toCheckRun(checkRunId)`
+- `ReportBuilder.create(title)`, `report.stat(label, value)`, `report.section(title, content)`, `report.details(summary, content)`, `report.toMarkdown()`, `report.toSummary()`, `report.toComment(prNumber, markerKey)`, `report.toCheckRun(checkRunId)`
+
+### RegistryClassifier (Pure Functions)
+
+URL-safe registry detection. Parses URLs and checks hostnames (not substrings) to prevent CWE-20 bypass attacks.
+
+- `isNpmRegistry(url)`, `isGitHubPackagesRegistry(url)`, `isJsrRegistry(url)`, `isCustomRegistry(url)` -- boolean predicates
+- `getRegistryType(url)` -- returns `RegistryType` (`"npm" | "github-packages" | "jsr" | "custom"`); a null/undefined `url` resolves to `"npm"` (an absent registry is the public npm registry, this library's default)
+- `getRegistryDisplayName(url)` -- human-readable name; defaults to `"npm"` when `url` is null/undefined, matching `getRegistryType`
+- `generatePackageViewUrl(registry, packageName)` -- generates a browse URL for npm and GitHub Packages registries
 
 ---
 
 ## Action.run Helper
 
-Top-level convenience function that eliminates boilerplate for wiring Effect
-programs into GitHub Action entry points.
+Top-level convenience function that eliminates boilerplate for wiring Effect programs into GitHub Action entry points.
 
 **Signatures:**
 
@@ -718,11 +806,7 @@ post.ts  GitHubToken.dispose()    — read envelope, revoke token via GitHubApp
 
 ## Current State
 
-All 29 service modules and 6 namespace/utility objects are fully defined with
-interfaces, error types, and live layer implementations. All services also have
-test layer implementations. The runtime layer (`src/runtime/`) provides native
-implementations of the GitHub Actions protocol, eliminating all `@actions/*`
-dependencies.
+All 37 service modules and 6 namespace/utility objects are fully defined with interfaces, error types, and live layer implementations. All services also have test layer implementations. The runtime layer (`src/runtime/`) provides native implementations of the GitHub Actions protocol, eliminating all `@actions/*` dependencies. The attestation cluster (`Attest`, `OidcTokenIssuer`, `SigstoreSigner`, `Sbom`) and three new GitHub API services (`GitHubContent`, `GitHubCommit`, `GitHubArtifactMetadata`) landed in this cycle.
 
 ## Rationale
 

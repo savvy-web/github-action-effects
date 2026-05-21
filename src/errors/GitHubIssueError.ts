@@ -5,7 +5,7 @@ import { Data } from "effect";
  */
 export class GitHubIssueError extends Data.TaggedError("GitHubIssueError")<{
 	/** The operation that failed. */
-	readonly operation: "list" | "close" | "comment" | "getLinkedIssues";
+	readonly operation: "list" | "close" | "comment" | "getLinkedIssues" | "get";
 
 	/** The issue number, if applicable. */
 	readonly issueNumber?: number;

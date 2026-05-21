@@ -104,6 +104,7 @@ describe("ReportBuilder", () => {
 				id: 99,
 				name: "test",
 				headSha: "abc",
+				htmlUrl: "https://github.com/test/checks/99",
 				status: "in_progress",
 				outputs: [],
 			});

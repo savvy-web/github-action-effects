@@ -5,7 +5,7 @@ import { Data } from "effect";
  */
 export class GitHubReleaseError extends Data.TaggedError("GitHubReleaseError")<{
 	/** The operation that failed. */
-	readonly operation: "create" | "uploadAsset" | "getByTag" | "list";
+	readonly operation: "create" | "uploadAsset" | "getByTag" | "list" | "updateRelease" | "listReleaseAssets";
 
 	/** The release tag, if applicable. */
 	readonly tag?: string;

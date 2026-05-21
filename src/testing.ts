@@ -14,6 +14,7 @@ export { ActionEnvironmentError } from "./errors/ActionEnvironmentError.js";
 export { ActionInputError } from "./errors/ActionInputError.js";
 export { ActionOutputError } from "./errors/ActionOutputError.js";
 export { ActionStateError } from "./errors/ActionStateError.js";
+export { AttestError } from "./errors/AttestError.js";
 export { ChangesetError } from "./errors/ChangesetError.js";
 export { CheckRunError } from "./errors/CheckRunError.js";
 export { CommandRunnerError } from "./errors/CommandRunnerError.js";
@@ -21,19 +22,26 @@ export { ConfigLoaderError } from "./errors/ConfigLoaderError.js";
 export { GitBranchError } from "./errors/GitBranchError.js";
 export { GitCommitError } from "./errors/GitCommitError.js";
 export { GitHubAppError } from "./errors/GitHubAppError.js";
+export { GitHubArtifactMetadataError } from "./errors/GitHubArtifactMetadataError.js";
 export { GitHubClientError } from "./errors/GitHubClientError.js";
+export { GitHubCommitError } from "./errors/GitHubCommitError.js";
+export { GitHubContentError } from "./errors/GitHubContentError.js";
 export { GitHubGraphQLError } from "./errors/GitHubGraphQLError.js";
 export { GitHubIssueError } from "./errors/GitHubIssueError.js";
 export { GitHubReleaseError } from "./errors/GitHubReleaseError.js";
 export { GitTagError } from "./errors/GitTagError.js";
 export { NpmRegistryError } from "./errors/NpmRegistryError.js";
+export { OidcTokenError } from "./errors/OidcTokenError.js";
 export { PackageManagerError } from "./errors/PackageManagerError.js";
 export { PackagePublishError } from "./errors/PackagePublishError.js";
 export { PullRequestCommentError } from "./errors/PullRequestCommentError.js";
 export { PullRequestError } from "./errors/PullRequestError.js";
 export { RateLimitError } from "./errors/RateLimitError.js";
 export { RuntimeEnvironmentError } from "./errors/RuntimeEnvironmentError.js";
+export { SbomError } from "./errors/SbomError.js";
 export { SemverResolverError } from "./errors/SemverResolverError.js";
+export { SigstoreSignerError } from "./errors/SigstoreSignerError.js";
+export { SlsaError } from "./errors/SlsaError.js";
 export { TokenPermissionError } from "./errors/TokenPermissionError.js";
 export { ToolInstallerError } from "./errors/ToolInstallerError.js";
 export { WorkflowDispatchError } from "./errors/WorkflowDispatchError.js";
@@ -53,6 +61,9 @@ export { ActionOutputsTest } from "./layers/ActionOutputsTest.js";
 export { ActionStateLive } from "./layers/ActionStateLive.js";
 export type { ActionStateTestState } from "./layers/ActionStateTest.js";
 export { ActionStateTest } from "./layers/ActionStateTest.js";
+export { AttestLive } from "./layers/AttestLive.js";
+export type { AttestTestState } from "./layers/AttestTest.js";
+export { AttestTest, AttestTestFullLayer, makeAttestTestState } from "./layers/AttestTest.js";
 export { ChangesetAnalyzerLive } from "./layers/ChangesetAnalyzerLive.js";
 export type { ChangesetAnalyzerTestState } from "./layers/ChangesetAnalyzerTest.js";
 export { ChangesetAnalyzerTest } from "./layers/ChangesetAnalyzerTest.js";
@@ -77,8 +88,17 @@ export { GitCommitTest } from "./layers/GitCommitTest.js";
 export { GitHubAppLive } from "./layers/GitHubAppLive.js";
 export type { GitHubAppTestState } from "./layers/GitHubAppTest.js";
 export { GitHubAppTest } from "./layers/GitHubAppTest.js";
+export { GitHubArtifactMetadataLive } from "./layers/GitHubArtifactMetadataLive.js";
+export type { GitHubArtifactMetadataTestState } from "./layers/GitHubArtifactMetadataTest.js";
+export { GitHubArtifactMetadataTest } from "./layers/GitHubArtifactMetadataTest.js";
 export type { GitHubClientTestState, RestResponse } from "./layers/GitHubClientTest.js";
 export { GitHubClientTest } from "./layers/GitHubClientTest.js";
+export { GitHubCommitLive } from "./layers/GitHubCommitLive.js";
+export type { GitHubCommitTestState } from "./layers/GitHubCommitTest.js";
+export { GitHubCommitTest } from "./layers/GitHubCommitTest.js";
+export { GitHubContentLive } from "./layers/GitHubContentLive.js";
+export type { GitHubContentTestState } from "./layers/GitHubContentTest.js";
+export { GitHubContentTest } from "./layers/GitHubContentTest.js";
 export { GitHubGraphQLLive } from "./layers/GitHubGraphQLLive.js";
 export type { GitHubGraphQLTestState } from "./layers/GitHubGraphQLTest.js";
 export { GitHubGraphQLTest } from "./layers/GitHubGraphQLTest.js";
@@ -94,6 +114,8 @@ export { GitTagTest } from "./layers/GitTagTest.js";
 export { NpmRegistryLive } from "./layers/NpmRegistryLive.js";
 export type { NpmRegistryTestState } from "./layers/NpmRegistryTest.js";
 export { NpmRegistryTest } from "./layers/NpmRegistryTest.js";
+export { OidcTokenIssuerLive, saveToken } from "./layers/OidcTokenIssuerLive.js";
+export { OidcTokenIssuerTest } from "./layers/OidcTokenIssuerTest.js";
 export { PackageManagerAdapterLive } from "./layers/PackageManagerAdapterLive.js";
 export type { PackageManagerAdapterTestState } from "./layers/PackageManagerAdapterTest.js";
 export { PackageManagerAdapterTest } from "./layers/PackageManagerAdapterTest.js";
@@ -109,6 +131,11 @@ export { PullRequestTest } from "./layers/PullRequestTest.js";
 export { RateLimiterLive } from "./layers/RateLimiterLive.js";
 export type { RateLimiterTestState } from "./layers/RateLimiterTest.js";
 export { RateLimiterTest } from "./layers/RateLimiterTest.js";
+export { SbomLive } from "./layers/SbomLive.js";
+export type { SbomTestState } from "./layers/SbomTest.js";
+export { SbomTest, makeSbomTestState } from "./layers/SbomTest.js";
+export { SigstoreSignerLive, makeSigstoreSignerLive } from "./layers/SigstoreSignerLive.js";
+export { SigstoreSignerTest } from "./layers/SigstoreSignerTest.js";
 export { TokenPermissionCheckerLive } from "./layers/TokenPermissionCheckerLive.js";
 export type { TokenPermissionCheckerTestState } from "./layers/TokenPermissionCheckerTest.js";
 export { TokenPermissionCheckerTest } from "./layers/TokenPermissionCheckerTest.js";
@@ -125,6 +152,17 @@ export { WorkspaceDetectorTest } from "./layers/WorkspaceDetectorTest.js";
 export { ActionsConfigProvider } from "./runtime/ActionsConfigProvider.js";
 export { ActionsLogger } from "./runtime/ActionsLogger.js";
 export { ActionsRuntime } from "./runtime/ActionsRuntime.js";
+export type { AttestInput, AttestationRecord } from "./schemas/Attestation.js";
+export {
+	CYCLONEDX_BOM,
+	IN_TOTO_STATEMENT_V1,
+	InTotoStatement,
+	InTotoSubject,
+	SIGSTORE_BUNDLE_V0_3_MEDIA_TYPE,
+	SLSA_PROVENANCE_V1,
+	SPDX_V2_3,
+	SigstoreBundle,
+} from "./schemas/Attestation.js";
 // -- Schemas --
 export type {
 	BumpType as BumpTypeType,
@@ -173,8 +211,16 @@ export { ActionEnvironment } from "./services/ActionEnvironment.js";
 export { ActionLogger } from "./services/ActionLogger.js";
 export { ActionOutputs } from "./services/ActionOutputs.js";
 export { ActionState } from "./services/ActionState.js";
+export type { AttestationListEntry, ProvenanceAttestationInput, SbomAttestationInput } from "./services/Attest.js";
+export { Attest } from "./services/Attest.js";
 export { ChangesetAnalyzer } from "./services/ChangesetAnalyzer.js";
-export type { AnnotationLevel, CheckRunAnnotation, CheckRunConclusion, CheckRunOutput } from "./services/CheckRun.js";
+export type {
+	AnnotationLevel,
+	CheckRunAnnotation,
+	CheckRunConclusion,
+	CheckRunData,
+	CheckRunOutput,
+} from "./services/CheckRun.js";
 export { CheckRun } from "./services/CheckRun.js";
 export type { ExecOptions, ExecOutput } from "./services/CommandRunner.js";
 export { CommandRunner } from "./services/CommandRunner.js";
@@ -184,7 +230,12 @@ export { GitBranch } from "./services/GitBranch.js";
 export { GitCommit } from "./services/GitCommit.js";
 export type { BotIdentity, InstallationToken as InstallationTokenType } from "./services/GitHubApp.js";
 export { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
+export type { StorageRecordInput } from "./services/GitHubArtifactMetadata.js";
+export { GitHubArtifactMetadata } from "./services/GitHubArtifactMetadata.js";
 export { GitHubClient } from "./services/GitHubClient.js";
+export type { CommitComparison, CommitDetail, CommitFile, CommitSummary } from "./services/GitHubCommit.js";
+export { GitHubCommit } from "./services/GitHubCommit.js";
+export { GitHubContent } from "./services/GitHubContent.js";
 export { GitHubGraphQL } from "./services/GitHubGraphQL.js";
 export type { IssueData } from "./services/GitHubIssue.js";
 export { GitHubIssue } from "./services/GitHubIssue.js";
@@ -195,15 +246,25 @@ export { GitTag } from "./services/GitTag.js";
 export { NpmRegistry } from "./services/NpmRegistry.js";
 export type { AppAuth } from "./services/OctokitAuthApp.js";
 export { OctokitAuthApp } from "./services/OctokitAuthApp.js";
+export { OidcTokenIssuer } from "./services/OidcTokenIssuer.js";
 export type { InstallOptions } from "./services/PackageManagerAdapter.js";
 export { PackageManagerAdapter } from "./services/PackageManagerAdapter.js";
-export type { PackResult, RegistryTarget } from "./services/PackagePublish.js";
+export type {
+	IdempotentPublishInput,
+	IdempotentPublishResult,
+	PackResult,
+	RegistryTarget,
+} from "./services/PackagePublish.js";
 export { PackagePublish } from "./services/PackagePublish.js";
-export type { PullRequestInfo, PullRequestListOptions } from "./services/PullRequest.js";
+export type { PullRequestFile, PullRequestInfo, PullRequestListOptions } from "./services/PullRequest.js";
 export { PullRequest } from "./services/PullRequest.js";
 export type { CommentRecord } from "./services/PullRequestComment.js";
 export { PullRequestComment } from "./services/PullRequestComment.js";
 export { RateLimiter } from "./services/RateLimiter.js";
+export type { CycloneDXBom, InFlightPackage, ResolvedDependency, SbomInput } from "./services/Sbom.js";
+export { Sbom } from "./services/Sbom.js";
+export type { SigstoreSignerConfig } from "./services/SigstoreSigner.js";
+export { IN_TOTO_PAYLOAD_TYPE, SIGSTORE_OIDC_AUDIENCE, SigstoreSigner } from "./services/SigstoreSigner.js";
 export { TokenPermissionChecker } from "./services/TokenPermissionChecker.js";
 export { ToolInstaller } from "./services/ToolInstaller.js";
 export type { PollOptions, WorkflowRunStatus } from "./services/WorkflowDispatch.js";
@@ -213,6 +274,9 @@ export { AutoMerge } from "./utils/AutoMerge.js";
 export type { AccumulateResult } from "./utils/ErrorAccumulator.js";
 export { ErrorAccumulator } from "./utils/ErrorAccumulator.js";
 export { GithubMarkdown } from "./utils/GithubMarkdown.js";
+export { buildStatement, npmPurl, serializeStatement, subject } from "./utils/intoto.js";
 export type { Report } from "./utils/ReportBuilder.js";
 export { ReportBuilder } from "./utils/ReportBuilder.js";
 export { SemverResolver } from "./utils/SemverResolver.js";
+export type { OidcClaims } from "./utils/slsa.js";
+export { GITHUB_BUILD_TYPE, buildSLSAProvenancePredicate, decodeJwtClaims } from "./utils/slsa.js";

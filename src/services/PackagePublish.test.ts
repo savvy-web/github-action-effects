@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
 import { PackagePublishTest } from "../layers/PackagePublishTest.js";
 import { PackagePublish } from "./PackagePublish.js";
@@ -15,9 +15,18 @@ describe("PackagePublish", () => {
 		expect(state.setupAuthCalls).toEqual([{ registry: "npm.pkg.github.com", token: "ghp_abc123" }]);
 	});
 
-	it("pack returns tarball and digest", async () => {
+	it("pack returns tarballPath, digest, and pack metadata", async () => {
 		const { state, layer } = PackagePublishTest.layer({
-			packResult: { tarball: "my-pkg-2.0.0.tgz", digest: "sha256-def456" },
+			packResult: {
+				tarballPath: "/path/to/pkg/my-pkg-2.0.0.tgz",
+				digest: "sha512-def456",
+				sha256Hex: "abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abc1",
+				name: "my-pkg",
+				version: "2.0.0",
+				packedSize: 1234,
+				unpackedSize: 5678,
+				fileCount: 9,
+			},
 		});
 		const result = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -25,7 +34,16 @@ describe("PackagePublish", () => {
 				Effect.provide(layer),
 			),
 		);
-		expect(result).toEqual({ tarball: "my-pkg-2.0.0.tgz", digest: "sha256-def456" });
+		expect(result).toEqual({
+			tarballPath: "/path/to/pkg/my-pkg-2.0.0.tgz",
+			digest: "sha512-def456",
+			sha256Hex: "abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abc1",
+			name: "my-pkg",
+			version: "2.0.0",
+			packedSize: 1234,
+			unpackedSize: 5678,
+			fileCount: 9,
+		});
 		expect(state.packCalls).toEqual([{ packageDir: "/path/to/pkg" }]);
 	});
 
@@ -80,5 +98,94 @@ describe("PackagePublish", () => {
 			),
 		);
 		expect(state.publishToRegistriesCalls).toEqual([{ packageDir: "/path/to/pkg", registries }]);
+	});
+
+	it("publishIdempotent publishes when the version is absent", async () => {
+		const { state, layer } = PackagePublishTest.layer({ publishedVersions: [] });
+		const result = await Effect.runPromise(
+			PackagePublish.pipe(
+				Effect.flatMap((svc) =>
+					svc.publishIdempotent({
+						packageDir: "/pkg",
+						packageName: "my-pkg",
+						version: "1.0.0",
+						digest: "sha512-abc",
+					}),
+				),
+				Effect.provide(layer),
+			),
+		);
+		expect(result).toEqual({ status: "published", packageName: "my-pkg", version: "1.0.0" });
+		expect(state.publishIdempotentCalls).toHaveLength(1);
+	});
+
+	it("publishIdempotent skips when an identical version is already published", async () => {
+		const { layer } = PackagePublishTest.layer({ publishedVersions: ["1.0.0"], integrityMatch: true });
+		const result = await Effect.runPromise(
+			PackagePublish.pipe(
+				Effect.flatMap((svc) =>
+					svc.publishIdempotent({
+						packageDir: "/pkg",
+						packageName: "my-pkg",
+						version: "1.0.0",
+						digest: "sha512-abc",
+					}),
+				),
+				Effect.provide(layer),
+			),
+		);
+		expect(result).toEqual({
+			status: "skipped",
+			packageName: "my-pkg",
+			version: "1.0.0",
+			skipReason: "already-published-identical",
+		});
+	});
+
+	it("publishIdempotent fails on a content mismatch", async () => {
+		const { layer } = PackagePublishTest.layer({ publishedVersions: ["1.0.0"], integrityMatch: false });
+		const exit = await Effect.runPromiseExit(
+			PackagePublish.pipe(
+				Effect.flatMap((svc) =>
+					svc.publishIdempotent({
+						packageDir: "/pkg",
+						packageName: "my-pkg",
+						version: "1.0.0",
+						digest: "sha512-wrong",
+					}),
+				),
+				Effect.provide(layer),
+			),
+		);
+		expect(Exit.isFailure(exit)).toBe(true);
+	});
+
+	it("dryRun returns ok: true by default and records the call", async () => {
+		const { state, layer } = PackagePublishTest.empty();
+		const result = await Effect.runPromise(
+			PackagePublish.pipe(
+				Effect.flatMap((svc) => svc.dryRun("/path/to/pkg", { registry: "https://registry.npmjs.org" })),
+				Effect.provide(layer),
+			),
+		);
+		expect(result.ok).toBe(true);
+		expect(result.output).toBe("dry-run ok");
+		expect(state.dryRunCalls).toEqual([
+			{ packageDir: "/path/to/pkg", options: { registry: "https://registry.npmjs.org" } },
+		]);
+	});
+
+	it("dryRun returns ok: false when dryRunOk is false", async () => {
+		const { state, layer } = PackagePublishTest.layer({ dryRunOk: false });
+		const result = await Effect.runPromise(
+			PackagePublish.pipe(
+				Effect.flatMap((svc) => svc.dryRun("/path/to/pkg")),
+				Effect.provide(layer),
+			),
+		);
+		expect(result.ok).toBe(false);
+		expect(result.output).toBe("dry-run failed");
+		expect(state.dryRunCalls).toHaveLength(1);
+		expect(state.dryRunCalls[0]?.packageDir).toBe("/path/to/pkg");
 	});
 });

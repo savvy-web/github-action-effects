@@ -58,8 +58,11 @@
 	},
 	"dependencies": {
 		"@azure/storage-blob": "^12.31.0",
+		"@cyclonedx/cyclonedx-library": "^10.0.0",
 		"@octokit/auth-app": "^8.2.0",
 		"@octokit/rest": "^22.0.1",
+		"@sigstore/bundle": "^4.0.0",
+		"@sigstore/sign": "^4.1.1",
 		"jsonc-effect": "^0.2.1",
 		"semver-effect": "^0.2.1",
 		"yaml-effect": "^0.6.0"
@@ -73,7 +76,7 @@
 		"@savvy-web/changesets": "^0.10.0",
 		"@savvy-web/commitlint": "^0.9.0",
 		"@savvy-web/lint-staged": "^1.0.1",
-		"@savvy-web/rslib-builder": "^0.20.3",
+		"@savvy-web/rslib-builder": "^0.20.4",
 		"@savvy-web/vitest": "^1.3.2",
 		"effect": "catalog:silk"
 	},

@@ -90,6 +90,11 @@ const failOnNonZero = (
 					args,
 					exitCode: output.exitCode,
 					stderr: output.stderr,
+					// Surface stdout too — npm emits progress, notices, and
+					// (occasionally) error context on stdout, so a downstream
+					// `CommandRunnerError.message` getter can fall back to it
+					// when stderr is empty.
+					stdout: output.stdout,
 					reason: `Command exited with code ${output.exitCode}`,
 				}),
 			);

@@ -26,8 +26,8 @@ describe("CheckRun", () => {
 	describe("create", () => {
 		it("creates a check run and returns an ID", async () => {
 			const state = CheckRunTest.empty();
-			const id = await run(state, create("lint", "abc123"));
-			expect(id).toBe(1);
+			const data = await run(state, create("lint", "abc123"));
+			expect(data.id).toBe(1);
 			expect(state.runs).toHaveLength(1);
 			expect(state.runs[0]).toMatchObject({
 				id: 1,
@@ -39,10 +39,18 @@ describe("CheckRun", () => {
 
 		it("assigns incrementing IDs", async () => {
 			const state = CheckRunTest.empty();
-			const id1 = await run(state, create("lint", "abc"));
-			const id2 = await run(state, create("test", "def"));
-			expect(id2).toBe(id1 + 1);
+			const data1 = await run(state, create("lint", "abc"));
+			const data2 = await run(state, create("test", "def"));
+			expect(data2.id).toBe(data1.id + 1);
 			expect(state.runs).toHaveLength(2);
+		});
+
+		it("returns CheckRunData with htmlUrl", async () => {
+			const state = CheckRunTest.empty();
+			const data = await run(state, create("build", "sha1"));
+			expect(data.htmlUrl).toBe("https://github.com/test/checks/1");
+			expect(data.status).toBe("in_progress");
+			expect(data.conclusion).toBeNull();
 		});
 	});
 
@@ -63,8 +71,8 @@ describe("CheckRun", () => {
 				state,
 				Effect.gen(function* () {
 					const svc = yield* CheckRun;
-					const id = yield* svc.create("lint", "abc123");
-					yield* svc.update(id, { title: "Results", summary: "All good" });
+					const checkRun = yield* svc.create("lint", "abc123");
+					yield* svc.update(checkRun.id, { title: "Results", summary: "All good" });
 				}),
 			);
 			expect(state.runs[0].outputs).toHaveLength(1);
@@ -80,9 +88,9 @@ describe("CheckRun", () => {
 				state,
 				Effect.gen(function* () {
 					const svc = yield* CheckRun;
-					const id = yield* svc.create("lint", "abc123");
-					yield* svc.update(id, { title: "Step 1", summary: "Done" });
-					yield* svc.update(id, { title: "Step 2", summary: "Done" });
+					const checkRun = yield* svc.create("lint", "abc123");
+					yield* svc.update(checkRun.id, { title: "Step 1", summary: "Done" });
+					yield* svc.update(checkRun.id, { title: "Step 2", summary: "Done" });
 				}),
 			);
 			expect(state.runs[0].outputs).toHaveLength(2);
@@ -105,8 +113,8 @@ describe("CheckRun", () => {
 				state,
 				Effect.gen(function* () {
 					const svc = yield* CheckRun;
-					const id = yield* svc.create("lint", "abc123");
-					yield* svc.complete(id, "success");
+					const checkRun = yield* svc.create("lint", "abc123");
+					yield* svc.complete(checkRun.id, "success");
 				}),
 			);
 			expect(state.runs[0].status).toBe("completed");
@@ -119,8 +127,8 @@ describe("CheckRun", () => {
 				state,
 				Effect.gen(function* () {
 					const svc = yield* CheckRun;
-					const id = yield* svc.create("lint", "abc123");
-					yield* svc.complete(id, "failure", { title: "Failed", summary: "2 errors" });
+					const checkRun = yield* svc.create("lint", "abc123");
+					yield* svc.complete(checkRun.id, "failure", { title: "Failed", summary: "2 errors" });
 				}),
 			);
 			expect(state.runs[0].conclusion).toBe("failure");

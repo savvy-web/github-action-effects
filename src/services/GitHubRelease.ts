@@ -63,5 +63,19 @@ export class GitHubRelease extends Context.Tag("github-action-effects/GitHubRele
 			readonly perPage?: number;
 			readonly maxPages?: number;
 		}) => Effect.Effect<Array<ReleaseData>, GitHubReleaseError>;
+
+		/** Update an existing release's fields; returns the updated release. */
+		readonly updateRelease: (
+			releaseId: number,
+			options: {
+				readonly body?: string;
+				readonly name?: string;
+				readonly draft?: boolean;
+				readonly prerelease?: boolean;
+			},
+		) => Effect.Effect<ReleaseData, GitHubReleaseError>;
+
+		/** List all assets attached to a release. */
+		readonly listReleaseAssets: (releaseId: number) => Effect.Effect<Array<ReleaseAsset>, GitHubReleaseError>;
 	}
 >() {}
