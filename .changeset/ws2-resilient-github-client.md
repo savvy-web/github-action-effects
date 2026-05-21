@@ -49,9 +49,10 @@ fetching the remaining pages. The eager `paginate` is unchanged and agrees with
 guarded effect, wasting a request and quota per call. It now reads the
 `x-ratelimit-*` headers observed on real responses (cached in a shared `Ref`
 via an internal `RateLimitState`) and only waits or fails when the cached
-remaining quota is below the 10 percent threshold. `checkRest` and `checkGraphQL`
-are cache-first and probe only on a cache miss. Strictly fewer requests,
-identical wait/fail policy. To share the observed snapshot between the client
+remaining quota is below the 10 percent threshold. `checkRest` is cache-first
+(the shared snapshot holds the core/REST bucket) and probes only on a cache
+miss; `checkGraphQL` always probes, since REST and GraphQL have independent
+quotas. Strictly fewer requests, identical wait/fail policy. To share the observed snapshot between the client
 and the rate limiter, provide `RateLimitState.Default` once at the graph root;
 without it each falls back to a private cache (still probe-free).
 

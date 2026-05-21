@@ -117,6 +117,31 @@ describe("RateLimiterLive", () => {
 			const result = await run(Effect.flatMap(RateLimiter, (svc) => svc.checkGraphQL()));
 			expect(result).toEqual({ limit: 5000, remaining: 3000, reset: 1700000000, used: 2000 });
 		});
+
+		it("always probes the graphql resource even when the REST-sourced cache is warm", async () => {
+			// A warm snapshot represents the core (REST) bucket. checkGraphQL must
+			// NOT serve it — REST and GraphQL have independent quotas — so it probes.
+			mockRateLimitGet.mockResolvedValue({
+				data: {
+					resources: {
+						core: { limit: 5000, remaining: 4500, reset: 1700000000, used: 500 },
+						graphql: { limit: 5000, remaining: 3000, reset: 1700000000, used: 2000 },
+					},
+				},
+			});
+
+			const result = await Effect.runPromise(
+				withSeededSnapshot(
+					{ remaining: 4500, limit: 5000, resetEpochSeconds: 1700000000, observedAt: Date.now() },
+					Effect.flatMap(RateLimiter, (svc) => svc.checkGraphQL()),
+				),
+			);
+
+			// Returns the graphql bucket (3000), not the seeded core snapshot (4500).
+			expect(result).toEqual({ limit: 5000, remaining: 3000, reset: 1700000000, used: 2000 });
+			expect(restOperations).toContain("rate_limit");
+			expect(mockRateLimitGet).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	describe("withRateLimit", () => {

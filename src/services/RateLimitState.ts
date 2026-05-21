@@ -12,7 +12,12 @@ export interface RateLimitSnapshot {
 	readonly remaining: number;
 	readonly limit: number;
 	readonly resetEpochSeconds: number;
-	/** `Date.now()` at observation, for staleness checks. */
+	/**
+	 * `Date.now()` at observation. Reserved for a future staleness-eviction
+	 * gate — it is recorded on every snapshot but is not currently read by any
+	 * policy (the snapshot is refreshed on every REST call, so it stays fresh
+	 * for active workflows).
+	 */
 	readonly observedAt: number;
 }
 
