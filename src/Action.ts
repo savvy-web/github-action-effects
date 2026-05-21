@@ -56,8 +56,15 @@ export const Action = {
 	 * to avoid timing issues.
 	 */
 	run: ((program: Effect.Effect<void, unknown, CoreServices>, options?: ActionRunOptions): Promise<void> => {
+		// `ActionsRuntime.Default` and any user-supplied `options.layer` may
+		// each surface their own remaining context requirements (e.g.
+		// `FileSystem` from `@effect/platform`); `Layer.mergeAll` widens the
+		// requires-channel to the union of both sides. The annotation accepts
+		// `any` in every slot — this is a deliberate type-erasure seam at the
+		// run boundary so callers do not have to construct a single concrete
+		// Layer<…> annotation that names every transitively-required service.
 		// biome-ignore lint/suspicious/noExplicitAny: Layer type erasure at the run boundary
-		const fullLayer: Layer.Layer<any, never, never> = options?.layer
+		const fullLayer: Layer.Layer<any, never, any> = options?.layer
 			? Layer.mergeAll(ActionsRuntime.Default, options.layer)
 			: ActionsRuntime.Default;
 
@@ -103,7 +110,12 @@ export const Action = {
 			}),
 		);
 
-		return Effect.runPromise(runnable).catch(() => {
+		// `runnable` has `R: any` because `fullLayer` was annotated `Layer<…, …, any>` —
+		// see the comment above where `fullLayer` is declared. Cast back to
+		// `R: never` at the run boundary; the layer has fully resolved the
+		// program by this point so no requirements actually remain.
+		// biome-ignore lint/suspicious/noExplicitAny: matches the type-erasure seam at fullLayer
+		return Effect.runPromise(runnable as Effect.Effect<void, never, never>).catch(() => {
 			// Last resort — if even the error handler fails, the process should still exit
 			process.exitCode = 1;
 		});

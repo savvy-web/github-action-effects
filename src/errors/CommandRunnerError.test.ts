@@ -58,8 +58,14 @@ describe("CommandRunnerError", () => {
 		expect(error.message).not.toContain("node  ");
 	});
 
-	it("truncates long stderr to 500 characters", () => {
-		const longStderr = "x".repeat(1000);
+	it("shows the tail of long stderr (where errors live) with a head-truncated marker", () => {
+		// `npm` writes warnings and notices first and the actual `npm error`
+		// lines last; the formatter shows the trailing 2000 chars to surface
+		// the cause, with a `...[N chars truncated from head]...` marker
+		// before the tail.
+		const head = "h".repeat(1000);
+		const tail = "t".repeat(2000);
+		const longStderr = `${head}\n${tail}`;
 		const error = new CommandRunnerError({
 			command: "git",
 			args: ["push"],
@@ -67,8 +73,41 @@ describe("CommandRunnerError", () => {
 			stderr: longStderr,
 			reason: "Command exited with code 1",
 		});
-		// The stderr portion should be at most 500 chars
-		expect(error.message).toContain("x".repeat(500));
-		expect(error.message).not.toContain("x".repeat(501));
+
+		// The tail (the actual error) is preserved …
+		expect(error.message).toContain(tail);
+		// … the head is not …
+		expect(error.message).not.toContain(head);
+		// … and a truncation marker appears.
+		expect(error.message).toMatch(/\.\.\.\[\d+ chars truncated from head\]\.\.\./);
+	});
+
+	it("includes the full stderr when shorter than the cap", () => {
+		const stderr = "npm error 403 Forbidden";
+		const error = new CommandRunnerError({
+			command: "npm",
+			args: ["publish"],
+			exitCode: 1,
+			stderr,
+			reason: "Command exited with code 1",
+		});
+
+		expect(error.message).toContain(stderr);
+		expect(error.message).not.toContain("truncated from head");
+	});
+
+	it("falls back to stdout when stderr is empty", () => {
+		// Some CLIs route error context to stdout. Carry it on the error too
+		// so the formatter can surface it as a last resort.
+		const error = new CommandRunnerError({
+			command: "npm",
+			args: ["publish"],
+			exitCode: 1,
+			stderr: "",
+			stdout: "npm error E403 Forbidden",
+			reason: "Command exited with code 1",
+		});
+
+		expect(error.message).toContain("npm error E403 Forbidden");
 	});
 });

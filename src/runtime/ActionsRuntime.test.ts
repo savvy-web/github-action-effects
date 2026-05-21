@@ -10,11 +10,23 @@ import { ActionsRuntime } from "./ActionsRuntime.js";
 
 // -- Helpers --
 
-const run = <A>(effect: Effect.Effect<A, unknown, never>) => Effect.runPromise(effect);
+// `Effect.runPromise` wants `R: never` but `tsgo`'s narrowing of layer
+// composition leaks `any` through `Effect.provide`. Cast at the seam so each
+// call site doesn't carry the type-variance noise.
+const run = <A>(effect: Effect.Effect<A, unknown, never> | Effect.Effect<A, unknown, unknown>): Promise<A> =>
+	Effect.runPromise(effect as Effect.Effect<A, unknown, never>);
 
 const runWithDefault = <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<A> =>
-	// Cast is safe: ActionsRuntime.Default satisfies all R requirements in these tests
-	Effect.runPromise(Effect.provide(effect as unknown as Effect.Effect<A, E, never>, ActionsRuntime.Default));
+	// Cast is safe: ActionsRuntime.Default satisfies all R requirements in these tests.
+	// Two casts because `tsgo` leaks `any` from the layer composition through both
+	// the input effect's R-channel and the provided effect's R-channel.
+	Effect.runPromise(
+		Effect.provide(effect as unknown as Effect.Effect<A, E, never>, ActionsRuntime.Default) as Effect.Effect<
+			A,
+			E,
+			never
+		>,
+	);
 
 // Temp file management
 

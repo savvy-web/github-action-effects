@@ -12,6 +12,10 @@ export interface IssueData {
 	readonly title: string;
 	readonly state: string;
 	readonly labels: Array<string>;
+	/** The issue's HTML URL. */
+	readonly htmlUrl?: string;
+	/** The issue's GraphQL node id. */
+	readonly nodeId?: string;
 }
 
 /**
@@ -39,6 +43,9 @@ export class GitHubIssue extends Context.Tag("github-action-effects/GitHubIssue"
 
 		/** Add a comment to an issue. */
 		readonly comment: (issueNumber: number, body: string) => Effect.Effect<{ id: number }, GitHubIssueError>;
+
+		/** Get a single issue by number. */
+		readonly get: (issueNumber: number) => Effect.Effect<IssueData, GitHubIssueError>;
 
 		/** Get issues linked to a pull request via closing references. */
 		readonly getLinkedIssues: (

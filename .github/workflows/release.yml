@@ -20,7 +20,7 @@ concurrency:
 jobs:
   workflow:
     name: Workflow
-    uses: savvy-web/.github/.github/workflows/release.yml@main
+    uses: savvy-web/.github/.github/workflows/release.yml@dev
     permissions:
       contents: write
       pull-requests: write
@@ -28,6 +28,7 @@ jobs:
       packages: write
       attestations: write
       checks: write
+      artifact-metadata: write
     with:
       dry-run: ${{ inputs.dry_run || false }}
       app-bot-id: ${{ vars.APP_BOT_ID }}

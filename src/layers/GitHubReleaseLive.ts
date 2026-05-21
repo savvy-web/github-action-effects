@@ -13,6 +13,8 @@ interface OctokitReleases {
 			readonly uploadReleaseAsset: (args: Record<string, unknown>) => Promise<{ data: RawAsset }>;
 			readonly getReleaseByTag: (args: Record<string, unknown>) => Promise<{ data: RawRelease }>;
 			readonly listReleases: (args: Record<string, unknown>) => Promise<{ data: RawRelease[] }>;
+			readonly updateRelease: (args: Record<string, unknown>) => Promise<{ data: RawRelease }>;
+			readonly listReleaseAssets: (args: Record<string, unknown>) => Promise<{ data: RawAsset[] }>;
 		};
 	};
 }
@@ -54,7 +56,7 @@ const toReleaseAsset = (raw: RawAsset): ReleaseAsset => ({
 });
 
 const mapError =
-	(operation: "create" | "uploadAsset" | "getByTag" | "list", tag?: string) =>
+	(operation: "create" | "uploadAsset" | "getByTag" | "list" | "updateRelease" | "listReleaseAssets", tag?: string) =>
 	(error: GitHubClientError): GitHubReleaseError =>
 		new GitHubReleaseError({
 			operation,
@@ -135,6 +137,40 @@ export const GitHubReleaseLive: Layer.Layer<GitHubRelease, never, GitHubClient> 
 			).pipe(
 				Effect.map((items) => items.map((item) => toReleaseData(item as unknown as RawRelease))),
 				Effect.mapError(mapError("list")),
+			),
+
+		updateRelease: (releaseId, options) =>
+			Effect.flatMap(client.repo, ({ owner, repo }) =>
+				client.rest("repos.updateRelease", (octokit) =>
+					asReleases(octokit).rest.repos.updateRelease({
+						owner,
+						repo,
+						release_id: releaseId,
+						...(options.body !== undefined ? { body: options.body } : {}),
+						...(options.name !== undefined ? { name: options.name } : {}),
+						...(options.draft !== undefined ? { draft: options.draft } : {}),
+						...(options.prerelease !== undefined ? { prerelease: options.prerelease } : {}),
+					}),
+				),
+			).pipe(
+				Effect.map((data) => toReleaseData(data as unknown as RawRelease)),
+				Effect.mapError(mapError("updateRelease")),
+			),
+
+		listReleaseAssets: (releaseId) =>
+			Effect.flatMap(client.repo, ({ owner, repo }) =>
+				client.paginate("repos.listReleaseAssets", (octokit, page, perPage) =>
+					asReleases(octokit).rest.repos.listReleaseAssets({
+						owner,
+						repo,
+						release_id: releaseId,
+						page,
+						per_page: perPage,
+					}),
+				),
+			).pipe(
+				Effect.map((items) => items.map((item) => toReleaseAsset(item as unknown as RawAsset))),
+				Effect.mapError(mapError("listReleaseAssets")),
 			),
 	})),
 );

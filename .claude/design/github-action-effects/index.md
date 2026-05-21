@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-15
-last-synced: 2026-05-15
+updated: 2026-05-20
+last-synced: 2026-05-20
 completeness: 95
 related:
   - ./services.md
@@ -34,10 +34,10 @@ Effect primitives and the GitHub Actions runtime protocol.
 
 ## Current State
 
-The library provides 29 Effect service interfaces plus 6 namespace/utility
+The library provides 37 Effect service interfaces plus 6 namespace/utility
 objects spanning core action I/O, GitHub API integration, git operations,
-build tooling, and a runtime layer that implements the GitHub Actions protocol
-natively (no `@actions/*` packages).
+build tooling, attestation, and a runtime layer that implements the GitHub
+Actions protocol natively (no `@actions/*` packages).
 
 ## Overview
 
@@ -49,19 +49,21 @@ building blocks.
 
 ### Scope
 
-The library provides 29 service interfaces, 6 utility namespaces, 29 error
-types, and 11 schema modules. Services cover five domains:
+The library provides 37 service interfaces, 6 utility namespaces, and a growing
+error and schema catalog. Services cover six domains:
 
 - **Core action I/O** -- outputs, state, logging, environment, cache
 - **Git operations** -- branches, commits, tags via Git Data API
 - **GitHub API** -- REST client, GraphQL, releases, issues, PR lifecycle, PR
-  comments, check runs, workflow dispatch, app auth, rate limiting
+  comments, check runs, workflow dispatch, app auth, rate limiting, content
+  reading, commit graph, artifact metadata
 - **Build tooling** -- command execution, npm registry, package publishing,
   workspace detection, package manager adaptation, tool installation, changeset
   analysis, config loading
+- **Attestation** -- in-toto/SLSA statement construction, Sigstore signing, CycloneDX SBOM generation, full attest-and-upload workflow
 - **Runtime layer** -- native implementations of the GitHub Actions workflow
   command protocol, environment file appending, ConfigProvider for `INPUT_*`
-  variables, and Effect Logger integration
+  variables, Effect Logger integration, and the Step buffered-logging primitive
 
 ### Problem Statement
 
@@ -113,6 +115,9 @@ Actions runtime protocol, replacing all `@actions/*` packages:
 - **`ActionsRuntime.Default`** -- Single convenience Layer wiring everything
   together: ConfigProvider, Logger, ActionLogger, ActionOutputs, ActionState,
   ActionEnvironment, and NodeFileSystem.
+- **`Step`** -- Step-buffered logging primitive. `Step.withStep(name, effect)` opens a per-step debug buffer, emits one `✅ <name>: <line>` info line on success (discarding the buffer) and spills the buffer as `│ [DEBUG]` / `│ [INFO]` lines under a `❌ <name>: <error>` header on failure. Nested calls track depth via a fiber-local stack (`StepStack`). Warnings and errors always pass through to GitHub Actions workflow commands — buffering only applies to debug and info. `Step.success(line)` sets the custom success summary for the current step. `Step.collapse(steps, reducer)` runs N steps in parallel; if the reducer returns a string, one collapsed line is emitted instead of N per-step lines. `Step.groupStep(name, effect)` wraps an effect in both `ActionLogger.group` and `withStep`.
+
+The Step buffering logger replaces all pre-installed loggers (including `ActionsLogger`) for the duration of a step via `Effect.locally(FiberRef.currentLoggers, ...)` so debug lines are not double-printed.
 
 Consumer pattern:
 

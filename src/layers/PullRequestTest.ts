@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 import { PullRequestError } from "../errors/PullRequestError.js";
-import type { PullRequestInfo } from "../services/PullRequest.js";
+import type { PullRequestFile, PullRequestInfo } from "../services/PullRequest.js";
 import { PullRequest } from "../services/PullRequest.js";
 
 /**
@@ -19,7 +19,7 @@ export interface PullRequestRecord extends PullRequestInfo {
 	readonly reviewers: Array<string>;
 	readonly teamReviewers: Array<string>;
 	autoMerge: "merge" | "squash" | "rebase" | false | undefined;
-	body: string;
+	body: string | null;
 }
 
 /**
@@ -31,11 +31,18 @@ export interface PullRequestTestState {
 	readonly prs: Array<PullRequestRecord>;
 	readonly mergedPrs: Array<number>;
 	nextNumber: number;
+	/** Files per PR number, returned by listFiles. */
+	readonly files: Map<number, Array<PullRequestFile>>;
+	/** PRs associated with a commit SHA, returned by listAssociatedWithCommit. */
+	readonly associatedByCommit: Map<string, Array<PullRequestInfo>>;
 }
 
 const findPr = (state: PullRequestTestState, number: number): PullRequestRecord | undefined =>
 	state.prs.find((pr) => pr.number === number);
 
+// `body` is always present on the record (required field), while `mergedAt`, `mergeCommitSha`,
+// and `baseSha` are optional (inherited from PullRequestInfo), hence the direct assignment vs
+// conditional spreads.
 const toInfo = (record: PullRequestRecord): PullRequestInfo => ({
 	number: record.number,
 	url: record.url,
@@ -46,6 +53,10 @@ const toInfo = (record: PullRequestRecord): PullRequestInfo => ({
 	base: record.base,
 	draft: record.draft,
 	merged: record.merged,
+	...(record.mergedAt !== undefined ? { mergedAt: record.mergedAt } : {}),
+	body: record.body,
+	...(record.mergeCommitSha !== undefined ? { mergeCommitSha: record.mergeCommitSha } : {}),
+	...(record.baseSha !== undefined ? { baseSha: record.baseSha } : {}),
 });
 
 const makeTestPullRequest = (state: PullRequestTestState): typeof PullRequest.Service => ({
@@ -205,6 +216,10 @@ const makeTestPullRequest = (state: PullRequestTestState): typeof PullRequest.Se
 				return Effect.void;
 			}),
 		),
+
+	listFiles: (number) => Effect.succeed(state.files.get(number) ?? []),
+
+	listAssociatedWithCommit: (sha) => Effect.succeed(state.associatedByCommit.get(sha) ?? []),
 });
 
 /**
@@ -222,5 +237,7 @@ export const PullRequestTest = {
 		prs: [],
 		mergedPrs: [],
 		nextNumber: 1,
+		files: new Map(),
+		associatedByCommit: new Map(),
 	}),
 } as const;

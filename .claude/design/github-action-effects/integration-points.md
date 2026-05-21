@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-15
-last-synced: 2026-05-15
+updated: 2026-05-20
+last-synced: 2026-05-20
 completeness: 95
 related:
   - ./index.md
@@ -46,6 +46,8 @@ PackagePublish) depend on `FileSystem` from `@effect/platform`.
 | `@octokit/rest` | GitHub REST + GraphQL API client | `GitHubClientLive` |
 | `@octokit/auth-app` | GitHub App JWT authentication | `OctokitAuthAppLive` |
 | `@azure/storage-blob` | Azure Blob Storage upload/download for cache | `ActionCacheLive` |
+| `@sigstore/sign` | Sigstore DSSE signing (Fulcio + Rekor) | `SigstoreSignerLive` |
+| `@cyclonedx/cyclonedx-library` | CycloneDX 1.5 BOM model + JSON serialization | `SbomLive` |
 | `jsonc-effect` | JSONC parsing with Effect | `ConfigLoaderLive` |
 | `semver-effect` | Semver operations with Effect | `SemverResolver` |
 | `yaml-effect` | YAML parsing with Effect | `ConfigLoaderLive` |

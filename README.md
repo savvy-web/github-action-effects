@@ -10,9 +10,11 @@
 ## Features
 
 - **Zero CJS dependencies** — native ESM implementations of the GitHub Actions runtime protocol replace all `@actions/*` packages
-- **29 composable services** — action I/O, GitHub API calls, git operations and package publishing, each with its own `Context.Tag`
+- **37 composable services** — action I/O, GitHub API calls, git operations, package publishing and software attestation, each with its own `Context.Tag`
 - **Schema-validated inputs** — read action inputs via Effect's `Config` API with built-in parsing and defaults
 - **Structured logging** — Effect Logger maps to workflow commands with collapsible groups; buffered verbose output flushes inside its group when a step fails
+- **Step-buffered execution** — `Step.withStep` buffers debug output per logical step, emits one success line on pass and spills the full buffer prefixed with the step name on failure
+- **Software attestation** — sign and upload SLSA provenance and CycloneDX SBOMs to GitHub's attestation store via the `Attest`, `SigstoreSigner`, `OidcTokenIssuer` and `Sbom` services
 - **In-memory test layers** — every service ships a test layer for fast, deterministic unit tests
 
 ## Install

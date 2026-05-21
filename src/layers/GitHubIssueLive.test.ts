@@ -10,6 +10,7 @@ import { GitHubIssueLive } from "./GitHubIssueLive.js";
 const mockListForRepo = vi.fn();
 const mockUpdate = vi.fn();
 const mockCreateComment = vi.fn();
+const mockGet = vi.fn();
 
 const mockClient: typeof GitHubClient.Service = {
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
@@ -21,6 +22,7 @@ const mockClient: typeof GitHubClient.Service = {
 							listForRepo: mockListForRepo,
 							update: mockUpdate,
 							createComment: mockCreateComment,
+							get: mockGet,
 						},
 					},
 				}),
@@ -47,6 +49,7 @@ const mockClient: typeof GitHubClient.Service = {
 								listForRepo: mockListForRepo,
 								update: mockUpdate,
 								createComment: mockCreateComment,
+								get: mockGet,
 							},
 						},
 					},
@@ -208,6 +211,31 @@ describe("GitHubIssueLive", () => {
 					body: "Hello",
 				}),
 			);
+		});
+	});
+
+	describe("get", () => {
+		it("get returns the issue, mapping htmlUrl and nodeId", async () => {
+			mockGet.mockResolvedValue({
+				data: {
+					number: 7,
+					title: "t",
+					state: "open",
+					labels: [],
+					html_url: "https://gh/i/7",
+					node_id: "I_node7",
+				},
+			});
+			const result = await run(Effect.flatMap(GitHubIssue, (svc) => svc.get(7)));
+			expect(result.number).toBe(7);
+			expect(result.htmlUrl).toBe("https://gh/i/7");
+			expect(result.nodeId).toBe("I_node7");
+		});
+
+		it("get fails with a GitHubIssueError when the API call fails", async () => {
+			mockGet.mockRejectedValue(new Error("not found"));
+			const exit = await runExit(Effect.flatMap(GitHubIssue, (svc) => svc.get(999)));
+			expect(exit._tag).toBe("Failure");
 		});
 	});
 

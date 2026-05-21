@@ -1,4 +1,5 @@
 import { FileSystem } from "@effect/platform";
+import type { Exit } from "effect";
 import { Cause, Chunk, Effect, Layer, Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionOutputs } from "../services/ActionOutputs.js";
@@ -72,15 +73,30 @@ const makeTestLayer = (state: MockFsState) => Layer.succeed(FileSystem.FileSyste
 
 const makeFaultyTestLayer = (state: MockFsState) => Layer.succeed(FileSystem.FileSystem, makeFaultyMockFs(state));
 
+// `ActionOutputsLive` is `Layer<ActionOutputs, never, FileSystem.FileSystem>`;
+// providing the test FS layer fully resolves it. `tsgo` does not always narrow
+// `Effect.provide`'s requires-channel to `never` through the layer composition,
+// so an explicit `as Effect<..., never>` at each runner site keeps the test
+// helpers callable without leaking type variance noise into every invocation.
 const run = <A, E>(state: MockFsState, effect: Effect.Effect<A, E, ActionOutputs>) =>
-	Effect.runPromise(Effect.provide(effect, ActionOutputsLive.pipe(Layer.provide(makeTestLayer(state)))));
+	Effect.runPromise(
+		Effect.provide(effect, ActionOutputsLive.pipe(Layer.provide(makeTestLayer(state)))) as Effect.Effect<A, E, never>,
+	);
 
 const runExit = <A, E>(state: MockFsState, effect: Effect.Effect<A, E, ActionOutputs>) =>
-	Effect.runPromise(Effect.exit(Effect.provide(effect, ActionOutputsLive.pipe(Layer.provide(makeTestLayer(state))))));
+	Effect.runPromise(
+		Effect.exit(Effect.provide(effect, ActionOutputsLive.pipe(Layer.provide(makeTestLayer(state))))) as Effect.Effect<
+			Exit.Exit<A, E>,
+			never,
+			never
+		>,
+	);
 
 const runExitFaulty = <A, E>(state: MockFsState, effect: Effect.Effect<A, E, ActionOutputs>) =>
 	Effect.runPromise(
-		Effect.exit(Effect.provide(effect, ActionOutputsLive.pipe(Layer.provide(makeFaultyTestLayer(state))))),
+		Effect.exit(
+			Effect.provide(effect, ActionOutputsLive.pipe(Layer.provide(makeFaultyTestLayer(state)))),
+		) as Effect.Effect<Exit.Exit<A, E>, never, never>,
 	);
 
 // -- Tests --

@@ -3,12 +3,16 @@ import { Context } from "effect";
 import type { GitTagError } from "../errors/GitTagError.js";
 
 /**
- * A tag name and the SHA it points to.
+ * A tag name and the commit SHA it resolves to.
  *
  * @public
  */
 export interface TagRef {
 	readonly tag: string;
+	/**
+	 * The commit SHA the tag resolves to. Annotated tags are dereferenced,
+	 * so this is always a commit SHA — never a raw tag-object SHA.
+	 */
 	readonly sha: string;
 }
 
@@ -29,7 +33,7 @@ export class GitTag extends Context.Tag("github-action-effects/GitTag")<
 		/** List tags, optionally filtered by prefix. */
 		readonly list: (prefix?: string) => Effect.Effect<Array<TagRef>, GitTagError>;
 
-		/** Resolve a tag to its SHA. */
+		/** Resolve a tag to its commit SHA, dereferencing annotated tags. */
 		readonly resolve: (tag: string) => Effect.Effect<string, GitTagError>;
 	}
 >() {}

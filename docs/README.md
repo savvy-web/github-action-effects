@@ -1,6 +1,6 @@
 # github-action-effects documentation
 
-An Effect library for building GitHub Actions. It covers structured logging, typed outputs, GitHub API calls and package publishing, and every service ships a test layer. None of it depends on `@actions/*`: the GitHub Actions runtime protocol is reimplemented in native ESM.
+An Effect library for building GitHub Actions. It covers structured logging, typed outputs, GitHub API calls, package publishing and software attestation, and every service ships a test layer. None of it depends on `@actions/*`: the GitHub Actions runtime protocol is reimplemented in native ESM.
 
 ## Install
 
@@ -53,11 +53,14 @@ const program = Effect.gen(function* () {
 | ActionCache | Save/restore with withCache bracket pattern |
 | GitHubClient | Octokit REST/GraphQL with pagination (uses @octokit/rest directly) |
 | GitHubGraphQL | Typed GraphQL queries and mutations |
-| GitHubRelease | Create releases, upload assets, list/get by tag |
-| GitHubIssue | List, close, comment, get linked issues |
+| GitHubRelease | Create, update and list releases and assets |
+| GitHubIssue | List, close, comment and get issues |
+| GitHubContent | Read repository file contents at a ref |
+| GitHubCommit | Read the commit graph (get, list, compare) |
+| GitHubArtifactMetadata | Read and write GitHub Packages artifact-metadata storage records |
 | GitHubApp | GitHub App token lifecycle with bracket pattern |
-| CheckRun | Create, update, complete check runs with annotations |
-| PullRequest | PR lifecycle: get, list, create, update, merge, getOrCreate, labels, reviewers |
+| CheckRun | Create, update and complete check runs with annotations |
+| PullRequest | PR lifecycle: get, list, create, update, merge, listFiles, baseSha, labels, reviewers |
 | PullRequestComment | Sticky (upsert) PR comments with marker keys |
 | GitTag | CRUD for tags via Git Data API |
 | GitBranch | CRUD for branches via Git Data API |
@@ -65,21 +68,26 @@ const program = Effect.gen(function* () {
 | CommandRunner | Structured shell execution with capture and JSON parsing |
 | ConfigLoader | Load and validate JSON, JSONC, YAML config files |
 | DryRun | Mutation guard with fallback values |
-| NpmRegistry | Query npm for versions, dist-tags, package info |
-| PackagePublish | Auth, pack, publish, verify, multi-registry |
+| NpmRegistry | Query npm for versions, dist-tags, package info and per-registry version probes |
+| PackagePublish | Pack and publish to registries; supports `dryRun`, `publishIdempotent` and `publishTarball` |
 | PackageManagerAdapter | Auto-detect and use npm/pnpm/yarn/bun/deno |
 | WorkspaceDetector | Detect monorepo type and list packages |
 | ChangesetAnalyzer | Parse and generate changeset files |
-| TokenPermissionChecker | Check/assert GitHub token permissions |
+| TokenPermissionChecker | Check and assert GitHub token permissions |
 | RateLimiter | Rate limit guard with exponential backoff |
 | WorkflowDispatch | Trigger workflows and poll until completion |
-| ToolInstaller | Download, extract, cache tool binaries (archives and standalone binaries) |
+| ToolInstaller | Download, extract and cache tool binaries (archives and standalone binaries) |
+| Attest | Sign and upload SLSA provenance and SBOM attestations to GitHub's attestation store |
+| OidcTokenIssuer | Request a GitHub Actions OIDC token for use with Sigstore |
+| SigstoreSigner | Sign an in-toto statement into a Sigstore bundle |
+| Sbom | Generate and serialize CycloneDX 1.5 software bills of materials |
 
 ## Namespace objects
 
 | Namespace | Purpose |
 | --- | --- |
 | `Action` | Top-level helpers: `run`, `formatCause`, `resolveLogLevel` |
+| `Step` | Step-buffered execution: `withStep`, `success`, `collapse`, `groupStep` |
 | `GitHubToken` | GitHub App installation-token lifecycle: `provision`, `client`, `read`, `botIdentity`, `dispose` |
 | `GitHubClientLive` | `GitHubClient` layer constructors: `fromEnv`, `fromToken`, `fromApp` |
 | `GithubMarkdown` | Pure GFM builder functions: `table`, `heading`, `bold`, `details`, `checklist`, etc. |
@@ -87,6 +95,7 @@ const program = Effect.gen(function* () {
 | `SemverResolver` | Semver comparison, range satisfaction, increment, parse |
 | `ErrorAccumulator` | Process items collecting all successes and failures |
 | `ReportBuilder` | Fluent builder for markdown reports |
+| `RegistryClassifier` | Classify a registry URL as npm, GitHub Packages, a private registry or unknown |
 
 ## See also
 

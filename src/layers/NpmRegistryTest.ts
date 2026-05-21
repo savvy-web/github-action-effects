@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { NpmRegistryError } from "../errors/NpmRegistryError.js";
 import type { NpmRegistry } from "../services/NpmRegistry.js";
 import { NpmRegistry as NpmRegistryTag } from "../services/NpmRegistry.js";
@@ -64,6 +64,14 @@ const makeTestClient = (state: NpmRegistryTestState): typeof NpmRegistry.Service
 		),
 
 	getVersions: (pkg: string) => getEntry(state, pkg, "versions").pipe(Effect.map((entry) => entry.versions)),
+
+	getPublishedIntegrity: (pkg: string, version: string, _options: { readonly registry: string }) =>
+		Effect.sync(() => {
+			const entry = state.packages.get(pkg);
+			if (entry === undefined) return Option.none<string>();
+			if (!entry.versions.includes(version)) return Option.none<string>();
+			return entry.integrity !== undefined ? Option.some(entry.integrity) : Option.none<string>();
+		}),
 });
 
 /**

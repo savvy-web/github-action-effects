@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-15
-last-synced: 2026-05-15
+updated: 2026-05-20
+last-synced: 2026-05-20
 completeness: 95
 related:
   - ./index.md
@@ -46,18 +46,20 @@ No separate `Base` export is needed.
 
 ### Error Types
 
-| Error | Service | Key Fields |
+See `src/errors/` for all tagged error definitions. Key types:
+
+| Error | Service | Notes |
 | --- | --- | --- |
 | `ActionInputError` | (Config validation) | input name, raw value, schema validation issues |
 | `ActionOutputError` | ActionOutputs | output name, reason |
 | `ActionStateError` | ActionState | key name, reason, optional raw value |
 | `ActionEnvironmentError` | ActionEnvironment | variable name, reason |
-| `ActionCacheError` | ActionCache | key, operation (save/restore), reason |
+| `ActionCacheError` | ActionCache | key, operation, reason |
 | `RuntimeEnvironmentError` | RuntimeFile | variable name, message |
-| `CommandRunnerError` | CommandRunner | command, args, exitCode, stderr, reason |
+| `CommandRunnerError` | CommandRunner | command, exitCode, reason; surfaces tail of long stderr for diagnostics |
 | `ConfigLoaderError` | ConfigLoader | path, operation, reason |
 | `ChangesetError` | ChangesetAnalyzer | operation, reason |
-| `GitHubClientError` | GitHubClient | operation, status (HTTP), reason, retryable (boolean) |
+| `GitHubClientError` | GitHubClient | operation, status (HTTP), reason, retryable |
 | `GitHubGraphQLError` | GitHubGraphQL | operation, reason, errors array |
 | `GitHubAppError` | GitHubApp | operation (`"jwt"` \| `"token"` \| `"revoke"` \| `"identity"`), reason |
 | `GitBranchError` | GitBranch | operation, name, reason |
@@ -70,13 +72,20 @@ No separate `Base` export is needed.
 | `PullRequestError` | PullRequest | operation, prNumber (optional), reason |
 | `RateLimitError` | RateLimiter | reason |
 | `WorkflowDispatchError` | WorkflowDispatch | operation, workflow, reason |
-| `NpmRegistryError` | NpmRegistry | pkg, operation, reason |
-| `PackagePublishError` | PackagePublish | operation, pkg, registry, reason |
+| `NpmRegistryError` | NpmRegistry | pkg, operation, reason; carries a `message` getter |
+| `PackagePublishError` | PackagePublish | operation, pkg, registry, reason; carries `message` getter, source `cause`, and stderr tail |
 | `PackageManagerError` | PackageManagerAdapter | operation, reason |
 | `WorkspaceDetectorError` | WorkspaceDetector | operation, reason |
 | `ToolInstallerError` | ToolInstaller | operation, tool, version, reason |
 | `TokenPermissionError` | TokenPermissionChecker | missing permissions array |
 | `SemverResolverError` | SemverResolver | operation, version, reason |
+| `GitHubContentError` | GitHubContent | path, ref, reason |
+| `GitHubCommitError` | GitHubCommit | ref, operation, reason |
+| `GitHubArtifactMetadataError` | GitHubArtifactMetadata | operation, reason |
+| `AttestError` | Attest | operation, reason |
+| `OidcTokenError` | OidcTokenIssuer | audience, reason |
+| `SigstoreSignerError` | SigstoreSigner | reason |
+| `SbomError` | Sbom | operation, reason |
 
 ### RuntimeEnvironmentError
 
@@ -101,9 +110,14 @@ to their own domain-specific error type:
 - `WorkflowDispatchError` wraps with dispatch-specific context
 - `RateLimitError` wraps with rate-limit context
 - `PullRequestError` wraps with PR-specific context
+- `GitHubContentError` wraps with content-fetch context
+- `GitHubCommitError` wraps with commit-graph context
+- `GitHubArtifactMetadataError` wraps with artifact-metadata context
+- `AttestError` wraps with attestation context
 
-The `retryable` flag on `GitHubClientError` is `true` for 429 (rate limit)
-and 5xx status codes, enabling consumers to implement retry logic.
+The `retryable` flag on `GitHubClientError` is `true` for 429 (rate limit) and 5xx status codes, enabling consumers to implement retry logic.
+
+`NpmRegistryError` and `PackagePublishError` both carry a `message` getter so caught errors remain readable at the surface (e.g. in `console.error` or workflow command output) without forcing callers to destructure the tagged error. `PackagePublishError` also carries the source error as `cause` and surfaces the tail of long stderr output to aid diagnostics in CI logs. HTTP errors from `OidcTokenIssuerLive` route through `Effect.logDebug` so they appear in the step's debug buffer (visible on failure) rather than cluttering the success log.
 
 ---
 
@@ -120,20 +134,40 @@ TypeScript interfaces exported from service files:
 | --- | --- | --- |
 | `AppAuth` | `services/OctokitAuthApp.ts` | Callable auth function for app/installation tokens |
 | `BotIdentity` | `services/GitHubApp.ts` | Bot identity for commit attribution (`name`, `email`) |
-| `PullRequestInfo` | `services/PullRequest.ts` | PR data (number, url, nodeId, title, state, head, base, draft, merged) |
+| `PullRequestInfo` | `services/PullRequest.ts` | PR data (number, url, nodeId, title, state, head, base, draft, merged, mergedAt?, body?, mergeCommitSha?, baseSha?) |
 | `PullRequestListOptions` | `services/PullRequest.ts` | PR list filter options |
+| `PullRequestFile` | `services/PullRequest.ts` | File changed in a PR (filename, status) |
 | `ExecOptions` | `services/CommandRunner.ts` | Command execution options (cwd, env, timeout) |
 | `ExecOutput` | `services/CommandRunner.ts` | Command execution result (exitCode, stdout, stderr) |
 | `CommentRecord` | `services/PullRequestComment.ts` | PR comment data (id, body) |
-| `IssueData` | `services/GitHubIssue.ts` | Issue data (number, title, state, labels) |
+| `IssueData` | `services/GitHubIssue.ts` | Issue data (number, title, state, labels, htmlUrl?, nodeId?) |
 | `ReleaseData` | `services/GitHubRelease.ts` | Release data |
 | `ReleaseAsset` | `services/GitHubRelease.ts` | Release asset data |
 | `TagRef` | `services/GitTag.ts` | Tag reference (tag, sha) |
-| `PackResult` | `services/PackagePublish.ts` | Pack result (tarball, digest) |
+| `PackResult` | `services/PackagePublish.ts` | Pack result: tarballPath, digest (sha512-base64 integrity), sha256Hex (hex SHA-256 for attestation), name, version, packedSize, unpackedSize, fileCount |
 | `RegistryTarget` | `services/PackagePublish.ts` | Registry publishing target |
+| `IdempotentPublishInput` | `services/PackagePublish.ts` | Input for publishIdempotent |
+| `IdempotentPublishResult` | `services/PackagePublish.ts` | Outcome of publishIdempotent (published or skipped) |
+| `DryRunResult` | `services/PackagePublish.ts` | Result of npm publish --dry-run |
 | `InstallOptions` | `services/PackageManagerAdapter.ts` | PM install options |
 | `PollOptions` | `services/WorkflowDispatch.ts` | Workflow dispatch poll options |
 | `WorkflowRunStatus` | `services/WorkflowDispatch.ts` | Workflow run status |
+| `CheckRunData` | `services/CheckRun.ts` | Check run record returned from create/get (id, name, status, conclusion, htmlUrl) |
+| `CommitSummary` | `services/GitHubCommit.ts` | Commit summary (sha, message, author) |
+| `CommitDetail` | `services/GitHubCommit.ts` | Commit with parent SHAs |
+| `CommitFile` | `services/GitHubCommit.ts` | File changed between commits (filename, status) |
+| `CommitComparison` | `services/GitHubCommit.ts` | Compare result (commits, files) |
+| `StorageRecordInput` | `services/GitHubArtifactMetadata.ts` | Input for createStorageRecord |
+| `AttestationListEntry` | `services/Attest.ts` | Entry from listForSubject (attestationUrl, predicateType) |
+| `SbomAttestationInput` | `services/Attest.ts` | Input for Attest.sbom; accepts dependencies or pre-built bomDocument |
+| `ProvenanceAttestationInput` | `services/Attest.ts` | Input for Attest.provenance |
+| `ResolvedDependency` | `services/Sbom.ts` | Dependency for SBOM generation |
+| `InFlightPackage` | `services/Sbom.ts` | In-flight workspace package for SBOM generation |
+| `SbomSupplier` | `services/Sbom.ts` | NTIA supplier metadata |
+| `SbomAuthor` | `services/Sbom.ts` | NTIA author-of-SBOM-data metadata |
+| `SbomContact` | `services/Sbom.ts` | Supplier/author contact info |
+| `SbomInput` | `services/Sbom.ts` | Input for Sbom.generate |
+| `SigstoreSignerConfig` | `services/SigstoreSigner.ts` | Fulcio/Rekor URL overrides |
 
 ### Action Run Interfaces
 
@@ -174,6 +208,11 @@ TypeScript interfaces exported from service files:
 | `WorkspaceInfo` | `schemas/Workspace.ts` | Detected workspace metadata |
 | `WorkspacePackage` | `schemas/Workspace.ts` | Individual workspace package |
 | `InstallationToken` | `services/GitHubApp.ts` | GitHub App installation token (Schema.Struct). Required fields: `token`, `expiresAt`, `installationId`. Optional identity fields: `appSlug`, `appUserId`, `appName` — populated by `GitHubToken.provision` when `resolveAppIdentity` succeeds. |
+| `InTotoSubject` | `schemas/Attestation.ts` | Subject of an in-toto statement: `name` (PURL) + `digest` (algorithm → hex map) |
+| `InTotoStatement` | `schemas/Attestation.ts` | In-toto Statement v1: `_type`, `subject[]`, `predicateType`, `predicate` (unknown) |
+| `SigstoreBundle` | `schemas/Attestation.ts` | Sigstore bundle v0.3 wire format: `mediaType`, `verificationMaterial`, `dsseEnvelope` (both unknown) |
+| `AttestInput` | `schemas/Attestation.ts` | Input for Attest.buildStatement: `subjects`, `predicateType`, `predicate` |
+| `AttestationRecord` | `schemas/Attestation.ts` | Full attestation result: `statement`, `bundle`, `attestationId`, `attestationUrl` |
 
 ### Shared Decode Helpers
 
@@ -298,14 +337,35 @@ TokenPermissionChecker.assertSufficient(requirements)
   -> fails with TokenPermissionError if missing permissions
 ```
 
+### Attestation Flow
+
+```text
+Attest.attest(input)
+  -> buildStatement(input)           — pure; assembles InTotoStatement
+  -> SigstoreSigner.signStatement()  — fetches OIDC token (audience: "sigstore")
+                                       via OidcTokenIssuer, signs through Fulcio,
+                                       witnesses on Rekor, returns SigstoreBundle
+  -> POST /repos/{owner}/{repo}/attestations
+  -> returns AttestationRecord (statement + bundle + id + url)
+
+Attest.sbom(input)
+  -> if bomDocument provided: use as predicate verbatim
+  -> else: Sbom.generate(input) -> CycloneDXBom -> Sbom.serializeJson() -> predicate
+  -> Attest.attest({ subjects, predicateType: CYCLONEDX_BOM, predicate })
+
+Attest.listForSubject(sha256Hex, options?)
+  -> GET /repos/{owner}/{repo}/attestations/sha256:{hex}
+  -> 404 -> return []
+  -> parse each bundle's dsseEnvelope to extract predicateType
+  -> client-side filter by options.predicateType if provided
+  -> returns Array<AttestationListEntry>
+```
+
 ---
 
 ## Current State
 
-All 29 error types and 25+ schemas are fully defined and in use across the
-service catalog. The error hierarchy with domain-specific wrapping of
-`GitHubClientError` is stable. `RuntimeEnvironmentError` is new, used by
-the runtime layer for missing environment variables.
+All error types and schemas are fully defined and in use across the service catalog. The error hierarchy with domain-specific wrapping of `GitHubClientError` is stable. The attestation cluster added `AttestError`, `OidcTokenError`, `SigstoreSignerError` and `SbomError` plus the `schemas/Attestation.ts` cluster (`InTotoSubject`, `InTotoStatement`, `SigstoreBundle`, predicate-type URI constants). `NpmRegistryError` and `PackagePublishError` gained `message` getters for readable error surfaces. `CommandRunnerError` and `PackagePublishError` surface stderr tails. `PackResult` gained `sha256Hex` for attestation API compatibility. `IssueData` gained `htmlUrl` and `nodeId`. `PullRequestInfo` gained `mergedAt`, `body`, `mergeCommitSha` and `baseSha`. `CheckRunData` is now returned from `CheckRun.create` (was just a number).
 
 ## Rationale
 

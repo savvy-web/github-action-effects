@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-16
-last-synced: 2026-05-16
+updated: 2026-05-20
+last-synced: 2026-05-20
 completeness: 95
 related:
   - ./index.md
@@ -29,9 +29,11 @@ This document describes the layer architecture for all services. Each domain
 service has a `Live` layer and a `Test` layer backed by in-memory state for
 unit testing. All `@actions/*` packages have been removed. The runtime layer
 (`src/runtime/`) provides native implementations of the GitHub Actions
-protocol. Three Live layers import external packages directly:
+protocol. Four Live layers import external packages directly:
 `GitHubClientLive` imports `@octokit/rest`, `OctokitAuthAppLive` imports
-`@octokit/auth-app`, and `ActionCacheLive` imports `@azure/storage-blob`.
+`@octokit/auth-app`, `ActionCacheLive` imports `@azure/storage-blob`, and
+`SigstoreSignerLive` imports `@sigstore/sign`. `SbomLive` imports
+`@cyclonedx/cyclonedx-library`.
 
 ---
 
@@ -46,6 +48,10 @@ Runtime Layer (src/runtime/ — replaces @actions/*):
   ActionsRuntime.Default   — Layer.mergeAll of ConfigProvider, Logger,
                              ActionLoggerLive, ActionOutputsLive, ActionStateLive,
                              ActionEnvironmentLive, NodeFileSystem.layer
+  Step (module, not a Layer) — withStep/success/collapse/groupStep; fiber-local
+                             StepStack FiberRef tracks depth; installs a per-step
+                             buffering logger via Effect.locally that replaces all
+                             pre-installed loggers for that scope
 
 Core Action I/O:
   ActionLoggerLive         — Layer.succeed; uses WorkflowCommand for group markers,
@@ -70,7 +76,7 @@ Core Action I/O:
                              (absolute-names) to preserve absolute paths. Windows
                              extract uses -k to skip locked files.
                              Uses @azure/storage-blob for Azure Blob upload/download.
-  ActionCacheTest           — in-memory Map for cache simulation (always-miss when empty)
+  ActionCacheTest          — in-memory Map for cache simulation (always-miss when empty)
 
 Git Operations:
   GitBranchLive            — Layer.effect depending on GitHubClient
@@ -106,13 +112,12 @@ GitHub API:
                              .empty(), absent field causes controlled failure)
 
   OctokitAuthAppLive       — Layer.succeed; imports @octokit/auth-app directly
-                             (one of only two layers importing external packages)
 
   CheckRunLive             — Layer.effect depending on GitHubClient; caps annotations at 50
   CheckRunTest             — in-memory CheckRunRecord array; resets ID counter on .empty()
 
   PullRequestLive          — Layer.effect depending on GitHubClient + GitHubGraphQL
-  PullRequestTest          — in-memory PR state with CRUD, merge, labels, reviewers
+  PullRequestTest          — in-memory PR state with CRUD, merge, labels, reviewers, files
 
   PullRequestCommentLive   — Layer.effect depending on GitHubClient; uses Issues API
   PullRequestCommentTest   — in-memory Map<prNumber, comments[]>; instance-scoped nextId
@@ -123,15 +128,30 @@ GitHub API:
   WorkflowDispatchLive     — Layer.effect depending on GitHubClient
   WorkflowDispatchTest     — in-memory dispatch records
 
+  GitHubContentLive        — Layer.effect depending on GitHubClient
+  GitHubContentTest        — in-memory file map
+
+  GitHubCommitLive         — Layer.effect depending on GitHubClient
+  GitHubCommitTest         — in-memory commit/compare state
+
+  GitHubArtifactMetadataLive — Layer.effect depending on GitHubClient
+  GitHubArtifactMetadataTest — in-memory record state
+
 Build Tooling:
   CommandRunnerLive        — Layer.succeed; uses node:child_process spawn directly.
-                             No service dependencies.
+                             No service dependencies. Surfaces tail of long stderr in
+                             CommandRunnerError for diagnostics.
   CommandRunnerTest        — Map<string, { exitCode, stdout, stderr }> keyed by command string
 
-  NpmRegistryLive          — depends on CommandRunner; runs npm view --json
+  NpmRegistryLive          — depends on CommandRunner; runs npm view --json.
+                             getPublishedIntegrity collapses E404 to Option.none().
   NpmRegistryTest          — in-memory package metadata
 
-  PackagePublishLive       — depends on CommandRunner + NpmRegistry + FileSystem
+  PackagePublishLive       — depends on CommandRunner + NpmRegistry + FileSystem.
+                             pack computes sha256Hex from the tarball file.
+                             publish routes through PM executor for OIDC-capable npm versions.
+                             publishTarball uploads an already-packed tarball.
+                             setupAuth strips the URL scheme from the .npmrc key.
   PackagePublishTest       — in-memory publish state
 
   PackageManagerAdapterLive — depends on CommandRunner + FileSystem
@@ -160,6 +180,25 @@ Build Tooling:
   TokenPermissionCheckerLive — depends on GitHubApp
   TokenPermissionCheckerTest — in-memory permission state
 
+Attestation:
+  OidcTokenIssuerLive      — Layer.succeed; reads ACTIONS_ID_TOKEN_REQUEST_TOKEN +
+                             ACTIONS_ID_TOKEN_REQUEST_URL from env; uses native fetch.
+                             No service dependencies.
+  OidcTokenIssuerTest      — in-memory token state
+
+  SigstoreSignerLive       — Layer.effect depending on OidcTokenIssuer;
+                             imports @sigstore/sign directly.
+  SigstoreSignerTest       — in-memory signing state
+
+  SbomLive                 — Layer.effect depending on FileSystem;
+                             imports @cyclonedx/cyclonedx-library directly.
+  SbomTest                 — in-memory BOM state
+
+  AttestLive               — Layer.effect depending on GitHubClient;
+                             delegates signing to SigstoreSigner + OidcTokenIssuer,
+                             BOM generation to Sbom.
+  AttestTest               — in-memory attestation state
+
 Platform:
   NodeFileSystem.layer     — @effect/platform-node: FileSystem
                              (provided by ActionsRuntime.Default)
@@ -169,16 +208,15 @@ Platform:
 
 ## Import Pattern
 
-Three Live layers import external packages directly:
+Five Live layers import external packages directly:
 
 - `GitHubClientLive` -- `import { Octokit } from "@octokit/rest"`
 - `OctokitAuthAppLive` -- `import { createAppAuth } from "@octokit/auth-app"`
 - `ActionCacheLive` -- `import { BlobClient, BlockBlobClient } from "@azure/storage-blob"`
+- `SigstoreSignerLive` -- `import` from `@sigstore/sign`
+- `SbomLive` -- `import` from `@cyclonedx/cyclonedx-library`
 
-All other Live layers either have no external imports or depend on Effect
-services via `Layer.effect` and `yield*`. The runtime layer modules
-(`WorkflowCommand`, `RuntimeFile`, `ActionsConfigProvider`, `ActionsLogger`)
-use only Node.js built-ins and Effect APIs.
+All other Live layers either have no external imports or depend on Effect services via `Layer.effect` and `yield*`. The runtime layer modules (`WorkflowCommand`, `RuntimeFile`, `ActionsConfigProvider`, `ActionsLogger`) use only Node.js built-ins and Effect APIs.
 
 Several Live layers use `Layer.succeed` (no dependencies) because they
 interact directly with process environment, stdout, or Node.js built-ins:
@@ -262,18 +300,9 @@ project-wide for api-extractor compatibility). All three modes resolve a token,
 then call a shared internal `makeClient(token)` builder that wraps an `Octokit`
 instance from `@octokit/rest`. See `src/layers/GitHubClientLive.ts`.
 
-- `fromEnv` — `Layer.Layer<GitHubClient, GitHubClientError>`. Reads the ambient
-  `process.env.GITHUB_TOKEN`, the weak repo-scoped default; fails when it is
-  unset. The self-describing call site is the explicit opt-in to ambient
-  credentials.
-- `fromToken(token)` — `Layer.Layer<GitHubClient>`. Builds from an explicit
-  token (`string` or `Redacted<string>`); no `process.env` dependency and no
-  failure channel — a provided token cannot be missing.
-- `fromApp({ clientId, privateKey, installationId? })` —
-  `Layer.Layer<GitHubClient, GitHubAppError>`. Generates a fresh GitHub App
-  installation token, composing `OctokitAuthAppLive` + `GitHubAppLive`
-  internally. Suits single-phase actions; for a token shared across pre/main/post
-  phases use the `GitHubToken` namespace instead.
+- `fromEnv` — `Layer.Layer<GitHubClient, GitHubClientError>`. Reads the ambient `process.env.GITHUB_TOKEN`, the weak repo-scoped default; fails when it is unset. The self-describing call site is the explicit opt-in to ambient credentials.
+- `fromToken(token)` — `Layer.Layer<GitHubClient>`. Builds from an explicit token (`string` or `Redacted<string>`); no `process.env` dependency and no failure channel — a provided token cannot be missing.
+- `fromApp({ clientId, privateKey, installationId? })` — `Layer.Layer<GitHubClient, GitHubAppError>`. Generates a fresh GitHub App installation token, composing `OctokitAuthAppLive` + `GitHubAppLive` internally. Suits single-phase actions; for a token shared across pre/main/post phases use the `GitHubToken` namespace instead.
 
 REST calls use `Effect.tryPromise`, GraphQL uses `octokit.graphql()`.
 Pagination handles page incrementing and empty-page termination. Error mapping
@@ -340,8 +369,15 @@ Issues API. Marker pattern uses `<!-- savvy-web:KEY -->` HTML comments.
 - `GitCommitLive` -- `Layer<GitCommit, never, GitHubClient>`
 - `RateLimiterLive` -- `Layer<RateLimiter, never, GitHubClient>`
 - `WorkflowDispatchLive` -- `Layer<WorkflowDispatch, never, GitHubClient>`
+- `GitHubContentLive` -- `Layer<GitHubContent, never, GitHubClient>`
+- `GitHubCommitLive` -- `Layer<GitHubCommit, never, GitHubClient>`
+- `GitHubArtifactMetadataLive` -- `Layer<GitHubArtifactMetadata, never, GitHubClient>`
 - `PackagePublishLive` -- `Layer<PackagePublish, never, CommandRunner | NpmRegistry | FileSystem>`
 - `TokenPermissionCheckerLive` -- `Layer<TokenPermissionChecker, never, GitHubApp>`
+- `OidcTokenIssuerLive` -- `Layer<OidcTokenIssuer>` (no service dependencies)
+- `SigstoreSignerLive` -- `Layer<SigstoreSigner, never, OidcTokenIssuer>`
+- `SbomLive` -- `Layer<Sbom, never, FileSystem>`
+- `AttestLive` -- `Layer<Attest, never, GitHubClient>`
 
 ---
 
@@ -365,8 +401,7 @@ Test layers use the namespace object pattern for ergonomic test setup:
 
 **GitHub API:**
 
-- `GitHubClientTest.empty()` / `GitHubClientTest.layer(state)` -- default
-  test repo `{ owner: "test-owner", repo: "test-repo" }`
+- `GitHubClientTest.empty()` / `GitHubClientTest.layer(state)` -- default test repo `{ owner: "test-owner", repo: "test-repo" }`
 - `GitHubGraphQLTest.empty()` / `GitHubGraphQLTest.layer(state)`
 - `GitHubReleaseTest.empty()` / `GitHubReleaseTest.layer(state)`
 - `GitHubIssueTest.empty()` / `GitHubIssueTest.layer(state)`
@@ -390,6 +425,19 @@ Test layers use the namespace object pattern for ergonomic test setup:
 - `DryRunTest.empty()` / `DryRunTest.layer(state)` -- always dry, records guarded labels
 - `TokenPermissionCheckerTest.empty()` / `TokenPermissionCheckerTest.layer(state)`
 
+**Attestation:**
+
+- `OidcTokenIssuerTest.empty()` / `OidcTokenIssuerTest.layer(state)`
+- `SigstoreSignerTest.empty()` / `SigstoreSignerTest.layer(state)`
+- `SbomTest.empty()` / `SbomTest.layer(state)`
+- `AttestTest.empty()` / `AttestTest.layer(state)`
+
+**GitHub API (new):**
+
+- `GitHubContentTest.empty()` / `GitHubContentTest.layer(state)`
+- `GitHubCommitTest.empty()` / `GitHubCommitTest.layer(state)`
+- `GitHubArtifactMetadataTest.empty()` / `GitHubArtifactMetadataTest.layer(state)`
+
 Test layers for services like CheckRun, PullRequestComment, GitBranch, etc.
 do NOT depend on GitHubClient -- they operate entirely in-memory.
 
@@ -400,8 +448,8 @@ do NOT depend on GitHubClient -- they operate entirely in-memory.
 ```text
 Tier 0 — No service dependencies (use Node.js built-ins / native APIs directly):
   ActionLogger, ActionEnvironment, CommandRunner,
-  ToolInstaller, DryRun,
-  GithubMarkdown, SemverResolver, ErrorAccumulator, ReportBuilder
+  ToolInstaller, DryRun, OidcTokenIssuer,
+  GithubMarkdown, SemverResolver, ErrorAccumulator, ReportBuilder, RegistryClassifier
 
 Tier 0 — External package import (no service dependencies):
   OctokitAuthApp            <- imports @octokit/auth-app
@@ -413,6 +461,7 @@ Tier 0 — External package import (no service dependencies):
 Tier 0.5 — Depends on FileSystem (from @effect/platform):
   ActionOutputs             <- depends on FileSystem
   ActionState               <- depends on FileSystem
+  Sbom                      <- depends on FileSystem (for save)
 
 Tier 1 — Single service dependency:
   GitHubApp                 <- depends on OctokitAuthApp
@@ -420,6 +469,7 @@ Tier 1 — Single service dependency:
   ChangesetAnalyzer         <- depends on FileSystem
   ConfigLoader              <- depends on FileSystem
   TokenPermissionChecker    <- depends on GitHubApp
+  SigstoreSigner            <- depends on OidcTokenIssuer
 
 Tier 2 — GitHubClient dependents:
   GitHubGraphQL             <- depends on GitHubClient
@@ -431,6 +481,10 @@ Tier 2 — GitHubClient dependents:
   PullRequestComment        <- depends on GitHubClient
   RateLimiter               <- depends on GitHubClient
   WorkflowDispatch          <- depends on GitHubClient
+  GitHubContent             <- depends on GitHubClient
+  GitHubCommit              <- depends on GitHubClient
+  GitHubArtifactMetadata    <- depends on GitHubClient
+  Attest                    <- depends on GitHubClient
   GitHubIssue               <- depends on GitHubClient + GitHubGraphQL
   PullRequest               <- depends on GitHubClient + GitHubGraphQL
 
@@ -447,9 +501,7 @@ Tier 3 — Composed dependencies:
 
 ## Layer Composition Example
 
-Users compose layers as needed. `Action.run()` provides
-`ActionsRuntime.Default` automatically. Extra layers are passed via the
-`layer` option:
+Users compose layers as needed. `Action.run()` provides `ActionsRuntime.Default` automatically. Extra layers are passed via the `layer` option:
 
 ```typescript
 import { Action, GitHubClientLive, CheckRunLive }
@@ -484,11 +536,7 @@ identity is provided.
 
 ## Current State
 
-All 29 services have both live and test layer implementations. The runtime
-layer provides native implementations of the GitHub Actions protocol. The
-dependency graph is simplified from the previous architecture (no platform
-wrapper tier). Many Live layers now have zero service dependencies since
-they use Node.js built-ins directly.
+All 37 services have both live and test layer implementations. The runtime layer provides native implementations of the GitHub Actions protocol. The dependency graph is simplified from the previous architecture (no platform wrapper tier). Many Live layers now have zero service dependencies since they use Node.js built-ins directly. The attestation cluster (`Attest`, `OidcTokenIssuer`, `SigstoreSigner`, `Sbom`) and three new GitHub API services (`GitHubContent`, `GitHubCommit`, `GitHubArtifactMetadata`) are fully wired with live and test layers.
 
 ## Rationale
 

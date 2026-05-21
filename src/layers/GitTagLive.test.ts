@@ -8,7 +8,8 @@ import { GitTagLive } from "./GitTagLive.js";
 const mockCreateRef = vi.fn();
 const mockDeleteRef = vi.fn();
 const mockGetRef = vi.fn();
-const mockListMatchingRefs = vi.fn();
+const mockGetTag = vi.fn();
+const mockListTags = vi.fn();
 
 const mockClient: typeof GitHubClient.Service = {
 	rest: <T>(_operation: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
@@ -20,7 +21,10 @@ const mockClient: typeof GitHubClient.Service = {
 							createRef: mockCreateRef,
 							deleteRef: mockDeleteRef,
 							getRef: mockGetRef,
-							listMatchingRefs: mockListMatchingRefs,
+							getTag: mockGetTag,
+						},
+						repos: {
+							listTags: mockListTags,
 						},
 					},
 				}),
@@ -43,8 +47,8 @@ const mockClient: typeof GitHubClient.Service = {
 				fn(
 					{
 						rest: {
-							git: {
-								listMatchingRefs: mockListMatchingRefs,
+							repos: {
+								listTags: mockListTags,
 							},
 						},
 					},
@@ -103,37 +107,58 @@ describe("GitTagLive", () => {
 	});
 
 	describe("list", () => {
-		it("lists tags via paginate and strips refs/tags/ prefix", async () => {
-			mockListMatchingRefs.mockResolvedValue({
-				data: [{ ref: "refs/tags/v1.0.0", object: { sha: "abc123" } }],
-			});
-			const result = await run(Effect.flatMap(GitTag, (svc) => svc.list("v1.")));
-			expect(result).toEqual([{ tag: "v1.0.0", sha: "abc123" }]);
-		});
-	});
-
-	describe("list", () => {
-		it("lists tags without prefix (undefined)", async () => {
-			mockListMatchingRefs.mockResolvedValue({
+		it("maps commit.sha from repos.listTags into TagRef.sha", async () => {
+			mockListTags.mockResolvedValue({
 				data: [
-					{ ref: "refs/tags/v1.0.0", object: { sha: "abc123" } },
-					{ ref: "refs/tags/v2.0.0", object: { sha: "def456" } },
+					{ name: "v1.0.0", commit: { sha: "commit-abc" } },
+					{ name: "v1.1.0", commit: { sha: "commit-xyz" } },
 				],
 			});
 			const result = await run(Effect.flatMap(GitTag, (svc) => svc.list()));
 			expect(result).toEqual([
-				{ tag: "v1.0.0", sha: "abc123" },
-				{ tag: "v2.0.0", sha: "def456" },
+				{ tag: "v1.0.0", sha: "commit-abc" },
+				{ tag: "v1.1.0", sha: "commit-xyz" },
 			]);
-			expect(mockListMatchingRefs).toHaveBeenCalledWith(
+		});
+
+		it("lists tags without prefix (undefined)", async () => {
+			mockListTags.mockResolvedValue({
+				data: [
+					{ name: "v1.0.0", commit: { sha: "commit-abc" } },
+					{ name: "v2.0.0", commit: { sha: "commit-def" } },
+				],
+			});
+			const result = await run(Effect.flatMap(GitTag, (svc) => svc.list()));
+			expect(result).toEqual([
+				{ tag: "v1.0.0", sha: "commit-abc" },
+				{ tag: "v2.0.0", sha: "commit-def" },
+			]);
+			expect(mockListTags).toHaveBeenCalledWith(
 				expect.objectContaining({
-					ref: "tags/",
+					owner: "test-owner",
+					repo: "test-repo",
 				}),
 			);
 		});
 
+		it("filters tags client-side by prefix", async () => {
+			mockListTags.mockResolvedValue({
+				data: [
+					{ name: "v1.0.0", commit: { sha: "commit-a" } },
+					{ name: "v1.2.3", commit: { sha: "commit-b" } },
+					{ name: "v2.0.0", commit: { sha: "commit-c" } },
+					{ name: "release-1", commit: { sha: "commit-d" } },
+				],
+			});
+			const result = await run(Effect.flatMap(GitTag, (svc) => svc.list("v1.")));
+			expect(result).toEqual([
+				{ tag: "v1.0.0", sha: "commit-a" },
+				{ tag: "v1.2.3", sha: "commit-b" },
+			]);
+		});
+
 		it("maps API error to GitTagError without tag field", async () => {
-			mockListMatchingRefs.mockRejectedValue(new Error("api error"));
+			mockListTags.mockRejectedValue(new Error("api error"));
 			const result = await Effect.runPromise(
 				Effect.provide(
 					Effect.flatMap(GitTag, (svc) => svc.list("v1.")).pipe(Effect.catchAll((error) => Effect.succeed(error))),
@@ -192,12 +217,61 @@ describe("GitTagLive", () => {
 	});
 
 	describe("resolve", () => {
-		it("returns the SHA from the ref", async () => {
+		it("returns the commit SHA for a lightweight tag without calling git.getTag", async () => {
 			mockGetRef.mockResolvedValue({
-				data: { ref: "refs/tags/v1.0.0", object: { sha: "abc123" } },
+				data: { ref: "refs/tags/v1.0.0", object: { sha: "commit-abc", type: "commit" } },
 			});
 			const result = await run(Effect.flatMap(GitTag, (svc) => svc.resolve("v1.0.0")));
-			expect(result).toBe("abc123");
+			expect(result).toBe("commit-abc");
+			expect(mockGetTag).not.toHaveBeenCalled();
+		});
+
+		it("dereferences an annotated tag to its commit SHA via git.getTag", async () => {
+			mockGetRef.mockResolvedValue({
+				data: { ref: "refs/tags/v2.0.0", object: { sha: "tag-obj-sha", type: "tag" } },
+			});
+			mockGetTag.mockResolvedValue({
+				data: { object: { sha: "commit-def", type: "commit" } },
+			});
+			const result = await run(Effect.flatMap(GitTag, (svc) => svc.resolve("v2.0.0")));
+			expect(result).toBe("commit-def");
+			expect(mockGetTag).toHaveBeenCalledWith(
+				expect.objectContaining({
+					owner: "test-owner",
+					repo: "test-repo",
+					tag_sha: "tag-obj-sha",
+				}),
+			);
+		});
+
+		it("peels a multi-hop tag-of-a-tag chain to the commit SHA", async () => {
+			mockGetRef.mockResolvedValue({
+				data: { ref: "refs/tags/v3.0.0", object: { sha: "tag-obj-1", type: "tag" } },
+			});
+			mockGetTag
+				.mockResolvedValueOnce({ data: { object: { sha: "tag-obj-2", type: "tag" } } })
+				.mockResolvedValueOnce({ data: { object: { sha: "commit-final", type: "commit" } } });
+			const result = await run(Effect.flatMap(GitTag, (svc) => svc.resolve("v3.0.0")));
+			expect(result).toBe("commit-final");
+			expect(mockGetTag).toHaveBeenCalledTimes(2);
+		});
+
+		it("maps a git.getTag failure during peel to GitTagError with the tag", async () => {
+			mockGetRef.mockResolvedValue({
+				data: { ref: "refs/tags/v4.0.0", object: { sha: "tag-obj-sha", type: "tag" } },
+			});
+			mockGetTag.mockRejectedValue(new Error("tag object not found"));
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitTag, (svc) => svc.resolve("v4.0.0")).pipe(
+						Effect.catchAll((error) => Effect.succeed(error)),
+					),
+					testLayer,
+				),
+			);
+			expect(result).toHaveProperty("_tag", "GitTagError");
+			expect(result).toHaveProperty("operation", "resolve");
+			expect(result).toHaveProperty("tag", "v4.0.0");
 		});
 	});
 });

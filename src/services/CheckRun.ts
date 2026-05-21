@@ -50,6 +50,19 @@ export interface CheckRunOutput {
 }
 
 /**
+ * Data describing a check run.
+ *
+ * @public
+ */
+export interface CheckRunData {
+	readonly id: number;
+	readonly name: string;
+	readonly status: "queued" | "in_progress" | "completed";
+	readonly conclusion: CheckRunConclusion | null;
+	readonly htmlUrl: string;
+}
+
+/**
  * Service for GitHub check run operations.
  *
  * @public
@@ -57,8 +70,11 @@ export interface CheckRunOutput {
 export class CheckRun extends Context.Tag("github-action-effects/CheckRun")<
 	CheckRun,
 	{
-		/** Create a new check run. Returns the check run ID. */
-		readonly create: (name: string, headSha: string) => Effect.Effect<number, CheckRunError>;
+		/** Create a new check run. Returns the created check run. */
+		readonly create: (name: string, headSha: string) => Effect.Effect<CheckRunData, CheckRunError>;
+
+		/** Get a check run by id. */
+		readonly get: (checkRunId: number) => Effect.Effect<CheckRunData, CheckRunError>;
 
 		/** Update an in-progress check run with output. */
 		readonly update: (checkRunId: number, output: CheckRunOutput) => Effect.Effect<void, CheckRunError>;

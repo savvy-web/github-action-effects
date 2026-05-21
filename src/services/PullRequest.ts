@@ -3,6 +3,16 @@ import { Context } from "effect";
 import type { PullRequestError } from "../errors/PullRequestError.js";
 
 /**
+ * A file changed in a pull request.
+ *
+ * @public
+ */
+export interface PullRequestFile {
+	readonly filename: string;
+	readonly status: string;
+}
+
+/**
  * Information about a pull request.
  *
  * @public
@@ -17,6 +27,14 @@ export interface PullRequestInfo {
 	readonly base: string;
 	readonly draft: boolean;
 	readonly merged: boolean;
+	/** ISO-8601 merge timestamp; `null` when not merged, absent from test fixtures that do not set it. */
+	readonly mergedAt?: string | null;
+	/** The PR description body; `null` when empty. */
+	readonly body?: string | null;
+	/** SHA of the merge commit; `null` when not merged. */
+	readonly mergeCommitSha?: string | null;
+	/** The base branch's commit SHA. */
+	readonly baseSha?: string;
 }
 
 /**
@@ -52,6 +70,12 @@ export class PullRequest extends Context.Tag("github-action-effects/PullRequest"
 		readonly list: (
 			options?: PullRequestListOptions,
 		) => Effect.Effect<ReadonlyArray<PullRequestInfo>, PullRequestError>;
+
+		/** List the files changed in a pull request. */
+		readonly listFiles: (number: number) => Effect.Effect<Array<PullRequestFile>, PullRequestError>;
+
+		/** List pull requests associated with a commit SHA. */
+		readonly listAssociatedWithCommit: (sha: string) => Effect.Effect<Array<PullRequestInfo>, PullRequestError>;
 
 		/** Create a new PR. */
 		readonly create: (options: {
