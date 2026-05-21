@@ -35,9 +35,9 @@ const program = Effect.gen(function* () {
 
 | Function | Returns | On miss |
 | --- | --- | --- |
-| `IoUtil.which(tool)` | `Effect<Option<string>, IoError, FileSystem>` | `Option.none()` |
+| `IoUtil.which(tool)` | `Effect<Option<string>, never, FileSystem>` | `Option.none()` |
 | `IoUtil.whichOrFail(tool)` | `Effect<string, IoError, FileSystem>` | fails with `IoError` |
-| `IoUtil.findInPath(tool)` | `Effect<ReadonlyArray<string>, IoError, FileSystem>` | `[]` |
+| `IoUtil.findInPath(tool)` | `Effect<ReadonlyArray<string>, never, FileSystem>` | `[]` |
 
 Behavior mirrors `@actions/io`:
 
