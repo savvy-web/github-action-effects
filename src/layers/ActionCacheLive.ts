@@ -4,40 +4,24 @@ import { statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform";
-import { Effect, Layer, Option, Redacted, Schedule, Schema } from "effect";
+import { HttpClient } from "@effect/platform";
+import { Effect, Layer, Option, Redacted } from "effect";
 import { ActionCacheError } from "../errors/ActionCacheError.js";
 import { ActionCache } from "../services/ActionCache.js";
+import { UPLOAD_CHUNK_SIZE, UPLOAD_CONCURRENCY, UPLOAD_MAX_SINGLE_SHOT } from "./internal/azureUpload.js";
 import { resolvePaths } from "./internal/globPaths.js";
+import { CONFLICT, makeTwirpRetrySchedule, twirpCall as twirpCallShared } from "./internal/twirp.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const TWIRP_PREFIX = "twirp/github.actions.results.api.v1.CacheService";
+const TWIRP_SERVICE = "github.actions.results.api.v1.CacheService";
 const COMPRESSION_METHOD = "gzip";
 const VERSION_SALT = "1.0";
 
-// Azure upload config (matches actions/cache)
-const UPLOAD_CHUNK_SIZE = 64 * 1024 * 1024; // 64 MiB
-const UPLOAD_CONCURRENCY = 8;
-const UPLOAD_MAX_SINGLE_SHOT = 128 * 1024 * 1024; // 128 MiB
-
-// Retry config for Twirp RPC
-const RETRY_SCHEDULE = Schedule.intersect(Schedule.exponential("3 seconds", 1.5), Schedule.recurs(4)).pipe(
-	Schedule.whileInput((error: ActionCacheError) => {
-		const reason = error.reason;
-		return (
-			reason.includes("HTTP 500") ||
-			reason.includes("HTTP 502") ||
-			reason.includes("HTTP 503") ||
-			reason.includes("HTTP 504") ||
-			reason.includes("ECONNRESET") ||
-			reason.includes("ECONNREFUSED") ||
-			reason.includes("ETIMEDOUT")
-		);
-	}),
-);
+// Retry config for Twirp RPC (shared with ArtifactLive via internal/twirp.ts).
+const RETRY_SCHEDULE = makeTwirpRetrySchedule((error: ActionCacheError) => error.reason);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,16 +64,11 @@ const getCacheEnv = (operation: "save" | "restore", key: string) =>
 	});
 
 /**
- * Sentinel value returned by twirpCall when the server responds with
- * HTTP 409 (Conflict), indicating the resource already exists.
- */
-const CONFLICT = Symbol.for("twirp/conflict");
-type TwirpResult<T> = T | typeof CONFLICT;
-
-/**
- * Make a Twirp RPC call (POST with JSON body/response).
- * Returns the CONFLICT sentinel on HTTP 409 instead of failing,
- * allowing callers to treat "already exists" as a success.
+ * Make a Twirp RPC call against the cache service via the shared client.
+ * Returns the {@link CONFLICT} sentinel on HTTP 409 instead of failing,
+ * allowing callers to treat "already exists" as a success. The error `reason`
+ * substrings are preserved by `twirpCallShared` so the retry schedule and the
+ * existing test assertions continue to match.
  */
 const twirpCall = <T>(
 	http: HttpClient.HttpClient,
@@ -99,54 +78,16 @@ const twirpCall = <T>(
 	body: Record<string, unknown>,
 	operation: "save" | "restore",
 	key: string,
-): Effect.Effect<TwirpResult<T>, ActionCacheError> =>
-	Effect.gen(function* () {
-		const request = HttpClientRequest.post(`${baseUrl}${TWIRP_PREFIX}/${method}`).pipe(
-			// Unwrap the runtime token only here, at the request boundary (S9).
-			HttpClientRequest.bearerToken(Redacted.value(token)),
-			HttpClientRequest.bodyUnsafeJson(body),
-		);
-		// Transport faults surface as `<method> failed: <message>`; the message
-		// preserves the underlying `ECONNRESET`/`ETIMEDOUT` substring the retry
-		// schedule keys off.
-		const response = yield* http.execute(request).pipe(
-			Effect.mapError(
-				(cause) =>
-					new ActionCacheError({
-						key,
-						operation,
-						reason: `${method} failed: ${cause.message}`,
-					}),
-			),
-		);
-		if (response.status === 409) {
-			return CONFLICT;
-		}
-		if (response.status < 200 || response.status >= 300) {
-			// Preserve the exact reason the raw-`fetch` implementation produced
-			// (`<method> failed: HTTP <status> from <method>`): the leading
-			// `<method> failed` keeps existing assertions valid and the embedded
-			// `HTTP <status>` keeps the retry schedule's `reason.includes("HTTP
-			// 503")` predicate firing.
-			return yield* Effect.fail(
-				new ActionCacheError({
-					key,
-					operation,
-					reason: `${method} failed: HTTP ${response.status} from ${method}`,
-				}),
-			);
-		}
-		return (yield* HttpClientResponse.schemaBodyJson(Schema.Unknown)(response).pipe(
-			Effect.mapError(
-				(cause) =>
-					new ActionCacheError({
-						key,
-						operation,
-						reason: `${method} failed: ${cause.message ?? String(cause)}`,
-					}),
-			),
-		)) as T;
-	});
+) =>
+	twirpCallShared<T, ActionCacheError>(
+		http,
+		baseUrl,
+		TWIRP_SERVICE,
+		token,
+		method,
+		body,
+		(reason) => new ActionCacheError({ key, operation, reason }),
+	);
 
 /**
  * Create a tar.gz archive of the given paths.

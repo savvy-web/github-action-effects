@@ -14,6 +14,7 @@ export { ActionEnvironmentError } from "./errors/ActionEnvironmentError.js";
 export { ActionInputError } from "./errors/ActionInputError.js";
 export { ActionOutputError } from "./errors/ActionOutputError.js";
 export { ActionStateError } from "./errors/ActionStateError.js";
+export { ArtifactError } from "./errors/ArtifactError.js";
 export { AttestError } from "./errors/AttestError.js";
 export { ChangesetError } from "./errors/ChangesetError.js";
 export { CheckRunError } from "./errors/CheckRunError.js";
@@ -63,6 +64,9 @@ export { ActionOutputsTest } from "./layers/ActionOutputsTest.js";
 export { ActionStateLive } from "./layers/ActionStateLive.js";
 export type { ActionStateTestState } from "./layers/ActionStateTest.js";
 export { ActionStateTest } from "./layers/ActionStateTest.js";
+export { ArtifactLive } from "./layers/ArtifactLive.js";
+export type { ArtifactTestState } from "./layers/ArtifactTest.js";
+export { ArtifactTest } from "./layers/ArtifactTest.js";
 export { AttestLive } from "./layers/AttestLive.js";
 export type { AttestTestState } from "./layers/AttestTest.js";
 export { AttestTest, AttestTestFullLayer, makeAttestTestState } from "./layers/AttestTest.js";
@@ -218,6 +222,14 @@ export { ActionEnvironment } from "./services/ActionEnvironment.js";
 export { ActionLogger } from "./services/ActionLogger.js";
 export { ActionOutputs } from "./services/ActionOutputs.js";
 export { ActionState } from "./services/ActionState.js";
+export type {
+	ArtifactItem,
+	DownloadOptions,
+	FindBy,
+	UploadOptions,
+	UploadResult,
+} from "./services/Artifact.js";
+export { Artifact } from "./services/Artifact.js";
 export type { AttestationListEntry, ProvenanceAttestationInput, SbomAttestationInput } from "./services/Attest.js";
 export { Attest } from "./services/Attest.js";
 export { ChangesetAnalyzer } from "./services/ChangesetAnalyzer.js";
