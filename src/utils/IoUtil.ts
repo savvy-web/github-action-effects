@@ -163,7 +163,7 @@ export const IoUtil = {
 	 * executable match, `Option.none()` when not found. On Windows, tries each
 	 * `PATHEXT` extension. Maps `@actions/io`'s `which(tool, false)` → `""`.
 	 */
-	which: (tool: string): Effect.Effect<Option.Option<string>, IoError, FileSystem.FileSystem> =>
+	which: (tool: string): Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem> =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			const matches = yield* collectMatches(fs, tool);
@@ -196,7 +196,7 @@ export const IoUtil = {
 	 * `[]` when none. When `tool` contains a path separator it is resolved
 	 * directly rather than searched on `PATH`.
 	 */
-	findInPath: (tool: string): Effect.Effect<ReadonlyArray<string>, IoError, FileSystem.FileSystem> =>
+	findInPath: (tool: string): Effect.Effect<ReadonlyArray<string>, never, FileSystem.FileSystem> =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			return yield* collectMatches(fs, tool);

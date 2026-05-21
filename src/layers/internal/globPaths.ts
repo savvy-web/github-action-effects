@@ -29,8 +29,9 @@ export const expandTilde = (raw: string): string => {
  * 3. Filter out paths that don't exist on disk
  * 4. Deduplicate entries where a parent directory already covers a child
  *
- * This is the shared source of truth for path resolution used by both
- * `ActionCacheLive` (archive creation) and `GlobLive` (glob/hashFiles).
+ * Used by `ActionCacheLive` for archive creation. (`GlobLive` shares only
+ * `expandTilde` from this module; its glob resolution calls `globSync`
+ * directly via its own `resolveMatches`.)
  *
  * @internal
  */

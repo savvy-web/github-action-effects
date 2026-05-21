@@ -9,13 +9,18 @@ import type { GlobError } from "../errors/GlobError.js";
  * `node:fs.globSync` has a narrower option surface than `@actions/glob`. The
  * options here are accepted for API parity; those `globSync` does not support
  * natively are documented no-ops rather than silently dropped behavior:
- * `implicitDescendants`, `matchDirectories` and `omitBrokenSymbolicLinks` are
- * not enforced by the underlying `globSync` walk.
+ * `followSymbolicLinks`, `implicitDescendants`, `matchDirectories` and
+ * `omitBrokenSymbolicLinks` are not enforced by the underlying `globSync` walk.
  *
  * @public
  */
 export interface GlobOptions {
-	/** Follow symlinks while walking. Default true (matches `@actions/glob`). */
+	/**
+	 * Follow symlinks while walking. Default true (matches `@actions/glob`).
+	 *
+	 * @remarks No-op: `node:fs.globSync` exposes no symlink-follow control;
+	 * symlinks are always followed.
+	 */
 	readonly followSymbolicLinks?: boolean;
 	/**
 	 * Expand a directory match to its descendants. Default true.
@@ -48,7 +53,12 @@ export interface HashFilesOptions {
 	 * `process.env.GITHUB_WORKSPACE`, matching `@actions/glob`'s `hashFiles`.
 	 */
 	readonly workspace?: string;
-	/** Follow symlinks while walking. Default true. */
+	/**
+	 * Follow symlinks while walking. Default true.
+	 *
+	 * @remarks No-op: `node:fs.globSync` exposes no symlink-follow control;
+	 * symlinks are always followed.
+	 */
 	readonly followSymbolicLinks?: boolean;
 }
 
