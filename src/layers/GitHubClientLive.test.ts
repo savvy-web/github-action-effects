@@ -1,3 +1,4 @@
+import { HttpClient, HttpClientResponse } from "@effect/platform";
 import {
 	Cause,
 	Chunk,
@@ -6,6 +7,7 @@ import {
 	Exit,
 	Fiber,
 	Layer,
+	Metric,
 	Option,
 	Redacted,
 	Ref,
@@ -14,9 +16,29 @@ import {
 	TestContext,
 } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { githubApiCalls } from "../runtime/Telemetry.js";
 import { GitHubClient } from "../services/GitHubClient.js";
 import { RateLimitState } from "../services/RateLimitState.js";
 import { GitHubClientLive } from "./GitHubClientLive.js";
+
+/**
+ * Mock `HttpClient` for the `fromApp` revoke path (DELETE /installation/token).
+ * Records the requests so tests can assert the revoke fired, and returns the
+ * given status without touching the network.
+ */
+const mockHttpClient = (
+	record: (method: string, url: string) => void,
+	status = 204,
+): Layer.Layer<HttpClient.HttpClient> =>
+	Layer.succeed(
+		HttpClient.HttpClient,
+		HttpClient.make((request, url) =>
+			Effect.sync(() => {
+				record(request.method, url.toString());
+				return HttpClientResponse.fromWeb(request, new Response(null, { status }));
+			}),
+		),
+	);
 
 const { octokitAuthCalls, mockAuth } = vi.hoisted(() => ({
 	octokitAuthCalls: [] as unknown[],
@@ -216,24 +238,14 @@ describe("GitHubClientLive", () => {
 	});
 
 	describe("fromToken", () => {
-		it("builds a client from a plain string token", async () => {
-			const result = await Effect.runPromise(
-				Effect.provide(
-					Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: { ok: true } }))),
-					GitHubClientLive.fromToken("explicit-token"),
-				),
-			);
-			expect(result).toEqual({ ok: true });
-		});
-
 		it("builds a client from a Redacted token", async () => {
 			const result = await Effect.runPromise(
 				Effect.provide(
-					Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: 7 }))),
-					GitHubClientLive.fromToken(Redacted.make("secret-token")),
+					Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: { ok: true } }))),
+					GitHubClientLive.fromToken(Redacted.make("explicit-token")),
 				),
 			);
-			expect(result).toBe(7);
+			expect(result).toEqual({ ok: true });
 		});
 
 		it("does not require GITHUB_TOKEN to be set", async () => {
@@ -241,13 +253,13 @@ describe("GitHubClientLive", () => {
 			const result = await Effect.runPromise(
 				Effect.provide(
 					Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: "ok" }))),
-					GitHubClientLive.fromToken("explicit"),
+					GitHubClientLive.fromToken(Redacted.make("explicit")),
 				),
 			);
 			expect(result).toBe("ok");
 		});
 
-		it("forwards the unwrapped token to Octokit", async () => {
+		it("unwraps the Redacted token only at the Octokit boundary (S6/S11)", async () => {
 			octokitAuthCalls.length = 0;
 			await Effect.runPromise(
 				Effect.provide(
@@ -260,17 +272,16 @@ describe("GitHubClientLive", () => {
 	});
 
 	describe("fromApp", () => {
-		// fromApp is now a scoped layer that revokes its token (DELETE
-		// /installation/token via fetch) on scope close. Stub fetch so the revoke
-		// finalizer never touches the network, and wrap provides in Effect.scoped.
-		let fromAppFetchSpy: ReturnType<typeof vi.spyOn>;
-		beforeEach(() => {
-			fromAppFetchSpy = vi
-				.spyOn(globalThis, "fetch")
-				.mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+		// fromApp is a scoped layer that revokes its token (DELETE
+		// /installation/token via HttpClient) on scope close. Provide a mock
+		// HttpClient so the revoke never touches the network, and wrap provides
+		// in Effect.scoped.
+		const revokes: Array<{ method: string; url: string }> = [];
+		const httpLayer = mockHttpClient((method, url) => {
+			revokes.push({ method, url });
 		});
-		afterEach(() => {
-			fromAppFetchSpy.mockRestore();
+		beforeEach(() => {
+			revokes.length = 0;
 		});
 
 		it("generates an installation token and builds a client", async () => {
@@ -284,7 +295,10 @@ describe("GitHubClientLive", () => {
 				Effect.scoped(
 					Effect.provide(
 						Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: "done" }))),
-						GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+						Layer.provide(
+							GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: Redacted.make("key"), installationId: 42 }),
+							httpLayer,
+						),
 					),
 				),
 			);
@@ -302,11 +316,14 @@ describe("GitHubClientLive", () => {
 				Effect.scoped(
 					Effect.provide(
 						Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: 1 }))),
-						GitHubClientLive.fromApp({
-							clientId: "Iv1.abc",
-							privateKey: Redacted.make("key"),
-							installationId: 42,
-						}),
+						Layer.provide(
+							GitHubClientLive.fromApp({
+								clientId: "Iv1.abc",
+								privateKey: Redacted.make("key"),
+								installationId: 42,
+							}),
+							httpLayer,
+						),
 					),
 				),
 			);
@@ -320,7 +337,10 @@ describe("GitHubClientLive", () => {
 					Effect.scoped(
 						Effect.provide(
 							Effect.flatMap(GitHubClient, (client) => client.repo),
-							GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+							Layer.provide(
+								GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: Redacted.make("key"), installationId: 42 }),
+								httpLayer,
+							),
 						),
 					),
 				),
@@ -355,7 +375,7 @@ describe("GitHubClientLive", () => {
 							return Promise.resolve({ data: "ok" });
 						}),
 					),
-					GitHubClientLive.fromToken("t"),
+					GitHubClientLive.fromToken(Redacted.make("t")),
 				),
 			);
 			expect(exit._tag).toBe("Success");
@@ -372,7 +392,7 @@ describe("GitHubClientLive", () => {
 							return Promise.reject(Object.assign(new Error("unavailable"), { status: 503 }));
 						}),
 					),
-					GitHubClientLive.fromToken("t", { enabled: false }),
+					GitHubClientLive.fromToken(Redacted.make("t"), { enabled: false }),
 				),
 			);
 			expect(exit._tag).toBe("Failure");
@@ -389,7 +409,7 @@ describe("GitHubClientLive", () => {
 							return Promise.reject(Object.assign(new Error("not found"), { status: 404 }));
 						}),
 					),
-					GitHubClientLive.fromToken("t"),
+					GitHubClientLive.fromToken(Redacted.make("t")),
 				),
 			);
 			expect(exit._tag).toBe("Failure");
@@ -415,7 +435,7 @@ describe("GitHubClientLive", () => {
 								return Promise.resolve({ data: "recovered" });
 							}),
 						),
-						GitHubClientLive.fromToken("t"),
+						GitHubClientLive.fromToken(Redacted.make("t")),
 					),
 				);
 				// Less than the advised 5s: still pending.
@@ -441,7 +461,7 @@ describe("GitHubClientLive", () => {
 			const exit = await runWithClock(
 				Effect.provide(
 					Effect.flatMap(GitHubClient, (client) => client.graphql("{ viewer { login } }")),
-					GitHubClientLive.fromToken("t"),
+					GitHubClientLive.fromToken(Redacted.make("t")),
 				),
 			);
 			expect(exit._tag).toBe("Failure");
@@ -466,7 +486,7 @@ describe("GitHubClientLive", () => {
 						),
 					);
 					return yield* Ref.get(ref);
-				}).pipe(Effect.provide(GitHubClientLive.fromToken("t")), Effect.provide(RateLimitState.Default)),
+				}).pipe(Effect.provide(GitHubClientLive.fromToken(Redacted.make("t"))), Effect.provide(RateLimitState.Default)),
 			);
 			expect(Option.isSome(snapshot)).toBe(true);
 			if (Option.isSome(snapshot)) {
@@ -482,7 +502,7 @@ describe("GitHubClientLive", () => {
 					const ref = yield* RateLimitState;
 					yield* Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: "ok" })));
 					return yield* Ref.get(ref);
-				}).pipe(Effect.provide(GitHubClientLive.fromToken("t")), Effect.provide(RateLimitState.Default)),
+				}).pipe(Effect.provide(GitHubClientLive.fromToken(Redacted.make("t"))), Effect.provide(RateLimitState.Default)),
 			);
 			expect(Option.isNone(snapshot)).toBe(true);
 		});
@@ -508,7 +528,7 @@ describe("GitHubClientLive", () => {
 								.pipe(Stream.take(1)),
 						).pipe(Effect.map(Chunk.toReadonlyArray)),
 					),
-					GitHubClientLive.fromToken("t"),
+					GitHubClientLive.fromToken(Redacted.make("t")),
 				),
 			);
 			expect(result).toEqual([1]);
@@ -531,7 +551,7 @@ describe("GitHubClientLive", () => {
 							),
 						).pipe(Effect.map(Chunk.toReadonlyArray)),
 					),
-					GitHubClientLive.fromToken("t"),
+					GitHubClientLive.fromToken(Redacted.make("t")),
 				),
 			);
 			expect(callCount).toBe(2);
@@ -547,7 +567,7 @@ describe("GitHubClientLive", () => {
 			const eager = await Effect.runPromise(
 				Effect.provide(
 					Effect.flatMap(GitHubClient, (client) => client.paginate("op", fn, { perPage: 3 })),
-					GitHubClientLive.fromToken("t"),
+					GitHubClientLive.fromToken(Redacted.make("t")),
 				),
 			);
 			const streamed = await Effect.runPromise(
@@ -555,7 +575,7 @@ describe("GitHubClientLive", () => {
 					Effect.flatMap(GitHubClient, (client) =>
 						Stream.runCollect(client.paginateStream("op", fn, { perPage: 3 })).pipe(Effect.map(Chunk.toReadonlyArray)),
 					),
-					GitHubClientLive.fromToken("t"),
+					GitHubClientLive.fromToken(Redacted.make("t")),
 				),
 			);
 			expect(streamed).toEqual(eager);
@@ -582,7 +602,7 @@ describe("GitHubClientLive", () => {
 								.pipe(Stream.takeWhile((x) => x < 5)),
 						).pipe(Effect.map(Chunk.toReadonlyArray)),
 					),
-					GitHubClientLive.fromToken("t"),
+					GitHubClientLive.fromToken(Redacted.make("t")),
 				),
 			);
 			expect(result).toEqual([1, 2, 3, 4]);
@@ -597,11 +617,62 @@ describe("GitHubClientLive", () => {
 						Effect.flatMap(GitHubClient, (client) =>
 							Stream.runCollect(client.paginateStream("op", () => Promise.reject(new Error("page fail")))),
 						),
-						GitHubClientLive.fromToken("t"),
+						GitHubClientLive.fromToken(Redacted.make("t")),
 					),
 				),
 			);
 			expect(exit._tag).toBe("Failure");
+		});
+	});
+
+	describe("telemetry (item 5, on WS2's resilient client)", () => {
+		it("increments the GitHub-API counter per rest call, tagged by operation + outcome", async () => {
+			const successCounter = githubApiCalls.pipe(
+				Metric.tagged("kind", "rest"),
+				Metric.tagged("operation", "tagged.op"),
+				Metric.tagged("outcome", "success"),
+			);
+			const before = await Effect.runPromise(Metric.value(successCounter));
+			await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) => client.rest("tagged.op", () => Promise.resolve({ data: 1 }))),
+					GitHubClientLive.fromToken(Redacted.make("t")),
+				),
+			);
+			const after = await Effect.runPromise(Metric.value(successCounter));
+			expect(after.count - before.count).toBe(1);
+		});
+
+		it("increments the failure-tagged counter once even across resilient retries", async () => {
+			const failureCounter = githubApiCalls.pipe(
+				Metric.tagged("kind", "rest"),
+				Metric.tagged("operation", "retry.op"),
+				Metric.tagged("outcome", "failure"),
+			);
+			const before = await Effect.runPromise(Metric.value(failureCounter));
+			let attempts = 0;
+			// Always-503 so WS2's resilience retries internally; the span/counter
+			// must wrap the OUTERMOST effect so the counter ticks exactly once.
+			const exit = await Effect.gen(function* () {
+				const fiber = yield* Effect.fork(
+					Effect.provide(
+						Effect.flatMap(GitHubClient, (client) =>
+							client.rest("retry.op", () => {
+								attempts++;
+								return Promise.reject(Object.assign(new Error("unavailable"), { status: 503 }));
+							}),
+						),
+						GitHubClientLive.fromToken(Redacted.make("t")),
+					),
+				);
+				yield* TestClock.adjust(Duration.seconds(600));
+				return yield* Fiber.join(fiber);
+			}).pipe(Effect.exit, Effect.provide(TestContext.TestContext), Effect.runPromise);
+
+			expect(exit._tag).toBe("Failure");
+			expect(attempts).toBeGreaterThan(1);
+			const after = await Effect.runPromise(Metric.value(failureCounter));
+			expect(after.count - before.count).toBe(1);
 		});
 	});
 
@@ -614,25 +685,26 @@ describe("GitHubClientLive", () => {
 				installationId: 42,
 				permissions: {},
 			});
-			// Spy on the revoke fetch (DELETE /installation/token).
-			const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
-				if (typeof url === "string" && url.includes("/installation/token") && init?.method === "DELETE") {
+			// The revoke (DELETE /installation/token) now goes through HttpClient.
+			const httpLayer = mockHttpClient((method, url) => {
+				if (method === "DELETE" && url.includes("/installation/token")) {
 					revoked.push(url);
 				}
-				return Promise.resolve(new Response(null, { status: 204 }));
 			});
 
 			await Effect.runPromise(
 				Effect.scoped(
 					Effect.provide(
 						Effect.flatMap(GitHubClient, (client) => client.rest("op", () => Promise.resolve({ data: "done" }))),
-						GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+						Layer.provide(
+							GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: Redacted.make("key"), installationId: 42 }),
+							httpLayer,
+						),
 					),
 				),
 			);
 
 			expect(revoked.length).toBe(1);
-			fetchSpy.mockRestore();
 		});
 
 		it("Layer.memoize builds the App client once across multiple provides", async () => {
@@ -643,14 +715,15 @@ describe("GitHubClientLive", () => {
 				permissions: {},
 			});
 			const before = mockAuth.mock.calls.length;
-			const fetchSpy = vi
-				.spyOn(globalThis, "fetch")
-				.mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+			const httpLayer = mockHttpClient(() => {});
 
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const shared = yield* Layer.memoize(
-						GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: "key", installationId: 42 }),
+						Layer.provide(
+							GitHubClientLive.fromApp({ clientId: "Iv1.abc", privateKey: Redacted.make("key"), installationId: 42 }),
+							httpLayer,
+						),
 					);
 					yield* Effect.flatMap(GitHubClient, (client) => client.rest("a", () => Promise.resolve({ data: 1 }))).pipe(
 						Effect.provide(shared),
@@ -663,7 +736,6 @@ describe("GitHubClientLive", () => {
 
 			// generateToken (which calls mockAuth) ran exactly once for both provides.
 			expect(mockAuth.mock.calls.length - before).toBe(1);
-			fetchSpy.mockRestore();
 		});
 	});
 });

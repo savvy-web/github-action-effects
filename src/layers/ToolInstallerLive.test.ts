@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { get as httpsGet } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Option } from "effect";
+import { Duration, Effect, Fiber, Option, Schedule, TestClock, TestContext } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ToolInstallerError } from "../errors/ToolInstallerError.js";
+import { ToolInstallerError } from "../errors/ToolInstallerError.js";
 import { ToolInstaller } from "../services/ToolInstaller.js";
-import { ToolInstallerLive } from "./ToolInstallerLive.js";
+import { ToolInstallerLive, isRetryableDownloadError } from "./ToolInstallerLive.js";
 
 vi.mock("node:https", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:https")>();
@@ -566,6 +566,137 @@ describe("ToolInstallerLive", () => {
 			expect(error.tool).toBe("mytool");
 			expect(error.version).toBe("1.0.0");
 			expect(error.reason).toContain("Failed to cache file");
+		});
+	});
+
+	describe("interruption", () => {
+		it("aborts the download request on interrupt", async () => {
+			const { PassThrough } = await import("node:stream");
+
+			let destroyed = false;
+
+			const mockedGet = vi.mocked(httpsGet);
+			mockedGet.mockImplementation((..._args: unknown[]) => {
+				// Never deliver the response — keep the download in-flight so the
+				// only way it ends is the interruption finalizer aborting `req`.
+				const req = new PassThrough();
+				Object.assign(req, {
+					setTimeout: vi.fn(),
+					on: vi.fn().mockReturnThis(),
+					destroy: vi.fn(() => {
+						destroyed = true;
+					}),
+				});
+				return req as unknown as import("node:http").ClientRequest;
+			});
+
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const fiber = yield* Effect.fork(
+						Effect.flatMap(ToolInstaller, (svc) => svc.download("https://example.com/tool.tar.gz")).pipe(
+							Effect.provide(ToolInstallerLive),
+						),
+					);
+					yield* Effect.sleep(Duration.millis(100));
+					yield* Fiber.interrupt(fiber);
+				}),
+			);
+
+			// The finalizer called `req.destroy()` to abort the in-flight socket.
+			expect(destroyed).toBe(true);
+		}, 10_000);
+	});
+
+	describe("retry predicate + backoff (TestClock)", () => {
+		const make503 = (): ToolInstallerError =>
+			new ToolInstallerError({
+				tool: "unknown",
+				version: "unknown",
+				operation: "download",
+				reason: "Failed to download x: HTTP 503",
+				statusCode: 503,
+			});
+
+		const make404 = (): ToolInstallerError =>
+			new ToolInstallerError({
+				tool: "unknown",
+				version: "unknown",
+				operation: "download",
+				reason: "Failed to download x: HTTP 404",
+				statusCode: 404,
+			});
+
+		const downloadSchedule = Schedule.intersect(Schedule.exponential("1 second"), Schedule.recurs(2)).pipe(
+			Schedule.whileInput(isRetryableDownloadError),
+		);
+
+		it("treats 5xx / 408 / 429 / transient transport errors as retryable", () => {
+			expect(isRetryableDownloadError(make503())).toBe(true);
+			expect(
+				isRetryableDownloadError(
+					new ToolInstallerError({
+						tool: "x",
+						version: "x",
+						operation: "download",
+						reason: "HTTP 408",
+						statusCode: 408,
+					}),
+				),
+			).toBe(true);
+			expect(
+				isRetryableDownloadError(
+					new ToolInstallerError({ tool: "x", version: "x", operation: "download", reason: "boom", statusCode: 429 }),
+				),
+			).toBe(true);
+			expect(
+				isRetryableDownloadError(
+					new ToolInstallerError({ tool: "x", version: "x", operation: "download", reason: "read ECONNRESET" }),
+				),
+			).toBe(true);
+		});
+
+		it("treats 4xx (except 408/429) and unknown reasons as non-retryable", () => {
+			expect(isRetryableDownloadError(make404())).toBe(false);
+			expect(
+				isRetryableDownloadError(
+					new ToolInstallerError({ tool: "x", version: "x", operation: "download", reason: "something else" }),
+				),
+			).toBe(false);
+		});
+
+		it("retries the download with exponential backoff then succeeds", async () => {
+			let attempts = 0;
+			const effect = Effect.suspend(() => {
+				attempts++;
+				return attempts < 3 ? Effect.fail(make503()) : Effect.succeed("/tmp/tool");
+			}).pipe(Effect.retry(downloadSchedule));
+
+			const exit = await Effect.gen(function* () {
+				const fiber = yield* Effect.fork(effect);
+				// Cover 1s + 2s of backoff.
+				yield* TestClock.adjust(Duration.seconds(5));
+				return yield* Fiber.join(fiber);
+			}).pipe(Effect.exit, Effect.provide(TestContext.TestContext), Effect.runPromise);
+
+			expect(exit._tag).toBe("Success");
+			expect(attempts).toBe(3);
+		});
+
+		it("gives up after the retry budget (recurs 2 → 3 total attempts)", async () => {
+			let attempts = 0;
+			const effect = Effect.suspend(() => {
+				attempts++;
+				return Effect.fail(make503());
+			}).pipe(Effect.retry(downloadSchedule));
+
+			const exit = await Effect.gen(function* () {
+				const fiber = yield* Effect.fork(effect);
+				yield* TestClock.adjust(Duration.seconds(10));
+				return yield* Fiber.join(fiber);
+			}).pipe(Effect.exit, Effect.provide(TestContext.TestContext), Effect.runPromise);
+
+			expect(exit._tag).toBe("Failure");
+			expect(attempts).toBe(3);
 		});
 	});
 });

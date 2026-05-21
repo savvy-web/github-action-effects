@@ -4,7 +4,8 @@ import { existsSync, globSync, statSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
-import { Effect, Layer, Option, Schedule } from "effect";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "@effect/platform";
+import { Effect, Layer, Option, Redacted, Schedule, Schema } from "effect";
 import { ActionCacheError } from "../errors/ActionCacheError.js";
 import { ActionCache } from "../services/ActionCache.js";
 
@@ -65,7 +66,9 @@ const getCacheEnv = (operation: "save" | "restore", key: string) =>
 				);
 			}
 			const baseUrl = resultsUrl.endsWith("/") ? resultsUrl : `${resultsUrl}/`;
-			return { baseUrl, token };
+			// Hold the runtime token redacted; it is unwrapped only inside the
+			// HttpClient request builder.
+			return { baseUrl, token: Redacted.make(token) };
 		},
 		catch: (error) =>
 			new ActionCacheError({
@@ -88,38 +91,60 @@ type TwirpResult<T> = T | typeof CONFLICT;
  * allowing callers to treat "already exists" as a success.
  */
 const twirpCall = <T>(
+	http: HttpClient.HttpClient,
 	baseUrl: string,
-	token: string,
+	token: Redacted.Redacted<string>,
 	method: string,
 	body: Record<string, unknown>,
 	operation: "save" | "restore",
 	key: string,
 ): Effect.Effect<TwirpResult<T>, ActionCacheError> =>
-	Effect.tryPromise({
-		try: async () => {
-			const url = `${baseUrl}${TWIRP_PREFIX}/${method}`;
-			const response = await fetch(url, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${token}`,
-				},
-				body: JSON.stringify(body),
-			});
-			if (response.status === 409) {
-				return CONFLICT;
-			}
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status} from ${method}`);
-			}
-			return (await response.json()) as T;
-		},
-		catch: (error) =>
-			new ActionCacheError({
-				key,
-				operation,
-				reason: `${method} failed: ${error instanceof Error ? error.message : String(error)}`,
-			}),
+	Effect.gen(function* () {
+		const request = HttpClientRequest.post(`${baseUrl}${TWIRP_PREFIX}/${method}`).pipe(
+			// Unwrap the runtime token only here, at the request boundary (S9).
+			HttpClientRequest.bearerToken(Redacted.value(token)),
+			HttpClientRequest.bodyUnsafeJson(body),
+		);
+		// Transport faults surface as `<method> failed: <message>`; the message
+		// preserves the underlying `ECONNRESET`/`ETIMEDOUT` substring the retry
+		// schedule keys off.
+		const response = yield* http.execute(request).pipe(
+			Effect.mapError(
+				(cause) =>
+					new ActionCacheError({
+						key,
+						operation,
+						reason: `${method} failed: ${cause.message}`,
+					}),
+			),
+		);
+		if (response.status === 409) {
+			return CONFLICT;
+		}
+		if (response.status < 200 || response.status >= 300) {
+			// Preserve the exact reason the raw-`fetch` implementation produced
+			// (`<method> failed: HTTP <status> from <method>`): the leading
+			// `<method> failed` keeps existing assertions valid and the embedded
+			// `HTTP <status>` keeps the retry schedule's `reason.includes("HTTP
+			// 503")` predicate firing.
+			return yield* Effect.fail(
+				new ActionCacheError({
+					key,
+					operation,
+					reason: `${method} failed: HTTP ${response.status} from ${method}`,
+				}),
+			);
+		}
+		return (yield* HttpClientResponse.schemaBodyJson(Schema.Unknown)(response).pipe(
+			Effect.mapError(
+				(cause) =>
+					new ActionCacheError({
+						key,
+						operation,
+						reason: `${method} failed: ${cause.message ?? String(cause)}`,
+					}),
+			),
+		)) as T;
 	});
 
 /**
@@ -267,135 +292,148 @@ interface FinalizeCacheEntryResponse {
  * Live implementation of ActionCache using the V2 Twirp cache protocol
  * and Azure Blob Storage for uploads/downloads.
  *
+ * Requires {@link HttpClient.HttpClient} for the Twirp RPCs; the
+ * `ActionsRuntime.Default` / `Action.run` path provides it via
+ * `FetchHttpClient.layer`. Manual-wiring consumers must provide it themselves.
+ *
  * @public
  */
-export const ActionCacheLive: Layer.Layer<ActionCache> = Layer.succeed(ActionCache, {
-	save: (paths, key) =>
-		Effect.gen(function* () {
-			const { baseUrl, token } = yield* getCacheEnv("save", key);
-			const version = computeVersion(paths);
+export const ActionCacheLive: Layer.Layer<ActionCache, never, HttpClient.HttpClient> = Layer.effect(
+	ActionCache,
+	Effect.gen(function* () {
+		const http = yield* HttpClient.HttpClient;
+		return {
+			save: (paths, key) =>
+				Effect.gen(function* () {
+					const { baseUrl, token } = yield* getCacheEnv("save", key);
+					const version = computeVersion(paths);
 
-			yield* Effect.acquireUseRelease(
-				createArchive(paths, key),
-				(archivePath) =>
-					Effect.gen(function* () {
-						const archiveSize = yield* Effect.try({
-							try: () => statSync(archivePath).size,
-							catch: (error) =>
-								new ActionCacheError({
-									key,
-									operation: "save",
-									reason: `Failed to stat archive: ${error instanceof Error ? error.message : String(error)}`,
-								}),
-						});
-
-						// Step 1: Create cache entry
-						const createResult = yield* twirpCall<CreateCacheEntryResponse>(
-							baseUrl,
-							token,
-							"CreateCacheEntry",
-							{ key, version },
-							"save",
-							key,
-						).pipe(Effect.retry(RETRY_SCHEDULE));
-
-						// HTTP 409 = cache already exists for this key — treat as success
-						if (createResult === CONFLICT) {
-							return;
-						}
-
-						if (!createResult.ok || !createResult.signed_upload_url) {
-							return yield* Effect.fail(
-								new ActionCacheError({
-									key,
-									operation: "save",
-									reason: "CreateCacheEntry did not return a signed upload URL",
-								}),
-							);
-						}
-
-						// Step 2: Upload archive to signed URL via Azure SDK
-						yield* Effect.tryPromise({
-							try: async () => {
-								const client = new BlockBlobClient(createResult.signed_upload_url as string);
-								await client.uploadFile(archivePath, {
-									blockSize: UPLOAD_CHUNK_SIZE,
-									concurrency: UPLOAD_CONCURRENCY,
-									maxSingleShotSize: UPLOAD_MAX_SINGLE_SHOT,
+					yield* Effect.acquireUseRelease(
+						createArchive(paths, key),
+						(archivePath) =>
+							Effect.gen(function* () {
+								const archiveSize = yield* Effect.try({
+									try: () => statSync(archivePath).size,
+									catch: (error) =>
+										new ActionCacheError({
+											key,
+											operation: "save",
+											reason: `Failed to stat archive: ${error instanceof Error ? error.message : String(error)}`,
+										}),
 								});
+
+								// Step 1: Create cache entry
+								const createResult = yield* twirpCall<CreateCacheEntryResponse>(
+									http,
+									baseUrl,
+									token,
+									"CreateCacheEntry",
+									{ key, version },
+									"save",
+									key,
+								).pipe(Effect.retry(RETRY_SCHEDULE));
+
+								// HTTP 409 = cache already exists for this key — treat as success
+								if (createResult === CONFLICT) {
+									return;
+								}
+
+								if (!createResult.ok || !createResult.signed_upload_url) {
+									return yield* Effect.fail(
+										new ActionCacheError({
+											key,
+											operation: "save",
+											reason: "CreateCacheEntry did not return a signed upload URL",
+										}),
+									);
+								}
+
+								// Step 2: Upload archive to signed URL via Azure SDK
+								yield* Effect.tryPromise({
+									try: async () => {
+										const client = new BlockBlobClient(createResult.signed_upload_url as string);
+										await client.uploadFile(archivePath, {
+											blockSize: UPLOAD_CHUNK_SIZE,
+											concurrency: UPLOAD_CONCURRENCY,
+											maxSingleShotSize: UPLOAD_MAX_SINGLE_SHOT,
+										});
+									},
+									catch: (error) =>
+										new ActionCacheError({
+											key,
+											operation: "save",
+											reason: `Archive upload failed: ${error instanceof Error ? error.message : String(error)}`,
+										}),
+								});
+
+								// Step 3: Finalize cache entry
+								const finalizeResult = yield* twirpCall<FinalizeCacheEntryResponse>(
+									http,
+									baseUrl,
+									token,
+									"FinalizeCacheEntryUpload",
+									{ key, version, size_bytes: String(archiveSize) },
+									"save",
+									key,
+								).pipe(Effect.retry(RETRY_SCHEDULE));
+
+								if (finalizeResult === CONFLICT || !finalizeResult.ok) {
+									return yield* Effect.fail(
+										new ActionCacheError({
+											key,
+											operation: "save",
+											reason: "FinalizeCacheEntryUpload did not confirm success",
+										}),
+									);
+								}
+							}),
+						(archivePath) => cleanupFile(archivePath),
+					);
+				}),
+
+			restore: (paths, primaryKey, restoreKeys = []) =>
+				Effect.gen(function* () {
+					const { baseUrl, token } = yield* getCacheEnv("restore", primaryKey);
+					const version = computeVersion(paths);
+
+					// Step 1: Look up cache entry
+					const lookupResult = yield* twirpCall<GetCacheEntryResponse>(
+						http,
+						baseUrl,
+						token,
+						"GetCacheEntryDownloadURL",
+						{ key: primaryKey, restore_keys: [...restoreKeys], version },
+						"restore",
+						primaryKey,
+					).pipe(Effect.retry(RETRY_SCHEDULE));
+
+					if (lookupResult === CONFLICT || !lookupResult.ok || !lookupResult.signed_download_url) {
+						return Option.none<string>();
+					}
+
+					// Step 2: Download archive from signed URL via Azure SDK
+					const archivePath = join(tmpdir(), `cache-restore-${randomUUID()}.tar.gz`);
+
+					yield* Effect.acquireUseRelease(
+						Effect.tryPromise({
+							try: async () => {
+								const client = new BlobClient(lookupResult.signed_download_url as string);
+								await client.downloadToFile(archivePath);
+								return archivePath;
 							},
 							catch: (error) =>
 								new ActionCacheError({
-									key,
-									operation: "save",
-									reason: `Archive upload failed: ${error instanceof Error ? error.message : String(error)}`,
+									key: primaryKey,
+									operation: "restore",
+									reason: `Archive download failed: ${error instanceof Error ? error.message : String(error)}`,
 								}),
-						});
-
-						// Step 3: Finalize cache entry
-						const finalizeResult = yield* twirpCall<FinalizeCacheEntryResponse>(
-							baseUrl,
-							token,
-							"FinalizeCacheEntryUpload",
-							{ key, version, size_bytes: String(archiveSize) },
-							"save",
-							key,
-						).pipe(Effect.retry(RETRY_SCHEDULE));
-
-						if (finalizeResult === CONFLICT || !finalizeResult.ok) {
-							return yield* Effect.fail(
-								new ActionCacheError({
-									key,
-									operation: "save",
-									reason: "FinalizeCacheEntryUpload did not confirm success",
-								}),
-							);
-						}
-					}),
-				(archivePath) => cleanupFile(archivePath),
-			);
-		}),
-
-	restore: (paths, primaryKey, restoreKeys = []) =>
-		Effect.gen(function* () {
-			const { baseUrl, token } = yield* getCacheEnv("restore", primaryKey);
-			const version = computeVersion(paths);
-
-			// Step 1: Look up cache entry
-			const lookupResult = yield* twirpCall<GetCacheEntryResponse>(
-				baseUrl,
-				token,
-				"GetCacheEntryDownloadURL",
-				{ key: primaryKey, restore_keys: [...restoreKeys], version },
-				"restore",
-				primaryKey,
-			).pipe(Effect.retry(RETRY_SCHEDULE));
-
-			if (lookupResult === CONFLICT || !lookupResult.ok || !lookupResult.signed_download_url) {
-				return Option.none<string>();
-			}
-
-			// Step 2: Download archive from signed URL via Azure SDK
-			const archivePath = join(tmpdir(), `cache-restore-${randomUUID()}.tar.gz`);
-
-			yield* Effect.acquireUseRelease(
-				Effect.tryPromise({
-					try: async () => {
-						const client = new BlobClient(lookupResult.signed_download_url as string);
-						await client.downloadToFile(archivePath);
-						return archivePath;
-					},
-					catch: (error) =>
-						new ActionCacheError({
-							key: primaryKey,
-							operation: "restore",
-							reason: `Archive download failed: ${error instanceof Error ? error.message : String(error)}`,
 						}),
-				}),
-				(downloadedPath) => extractArchive(downloadedPath, primaryKey),
-				(downloadedPath) => cleanupFile(downloadedPath),
-			);
+						(downloadedPath) => extractArchive(downloadedPath, primaryKey),
+						(downloadedPath) => cleanupFile(downloadedPath),
+					);
 
-			return Option.some(lookupResult.matched_key ?? primaryKey);
-		}),
-});
+					return Option.some(lookupResult.matched_key ?? primaryKey);
+				}),
+		};
+	}),
+);

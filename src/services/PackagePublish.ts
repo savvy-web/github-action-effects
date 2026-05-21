@@ -1,4 +1,4 @@
-import type { Effect } from "effect";
+import type { Effect, Redacted } from "effect";
 import { Context } from "effect";
 import type { PackagePublishError } from "../errors/PackagePublishError.js";
 
@@ -51,7 +51,7 @@ export interface PackResult {
  */
 export interface RegistryTarget {
 	readonly registry: string;
-	readonly token: string;
+	readonly token: Redacted.Redacted<string>;
 	readonly tag?: string;
 	readonly access?: "public" | "restricted";
 	/**
@@ -132,7 +132,10 @@ export class PackagePublish extends Context.Tag("github-action-effects/PackagePu
 	PackagePublish,
 	{
 		/** Configure npm authentication for a registry. */
-		readonly setupAuth: (registry: string, token: string) => Effect.Effect<void, PackagePublishError>;
+		readonly setupAuth: (
+			registry: string,
+			token: Redacted.Redacted<string>,
+		) => Effect.Effect<void, PackagePublishError>;
 
 		/** Pack a package directory into a tarball and capture its size, file count, and integrity digest. */
 		readonly pack: (packageDir: string) => Effect.Effect<PackResult, PackagePublishError>;

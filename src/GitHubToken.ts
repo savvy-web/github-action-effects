@@ -1,18 +1,19 @@
-import type { ConfigError, Redacted } from "effect";
-import { Config, Effect, Exit, Layer, Option } from "effect";
+import type { ConfigError } from "effect";
+import { Config, Effect, Exit, Layer, Option, Redacted } from "effect";
 import type { ActionStateError } from "./errors/ActionStateError.js";
 import type { GitHubAppError } from "./errors/GitHubAppError.js";
 import type { TokenPermissionError } from "./errors/TokenPermissionError.js";
 import { GitHubClientLive } from "./layers/GitHubClientLive.js";
 import { TokenPermissionCheckerLive } from "./layers/TokenPermissionCheckerLive.js";
 import type { PermissionLevel } from "./schemas/TokenPermission.js";
+import { ActionOutputs } from "./services/ActionOutputs.js";
 import { ActionState } from "./services/ActionState.js";
 import type { BotIdentity } from "./services/GitHubApp.js";
 import { GitHubApp, InstallationToken } from "./services/GitHubApp.js";
 import type { GitHubClient } from "./services/GitHubClient.js";
 import { TokenPermissionChecker } from "./services/TokenPermissionChecker.js";
 import { formatBotIdentity } from "./utils/botIdentity.js";
-import { unwrapRedacted } from "./utils/unwrapRedacted.js";
+import { toRedacted } from "./utils/unwrapRedacted.js";
 
 /** Internal ActionState key for the persisted installation-token envelope. */
 const STATE_KEY = "github-action-effects/installation-token";
@@ -34,13 +35,17 @@ const provision = (
 ): Effect.Effect<
 	InstallationToken,
 	GitHubAppError | TokenPermissionError | ActionStateError | ConfigError.ConfigError,
-	ActionState | GitHubApp
+	ActionState | GitHubApp | ActionOutputs
 > =>
 	Effect.gen(function* () {
 		const clientId = options?.clientId ?? (yield* Config.string("app-client-id"));
-		const privateKey = unwrapRedacted(options?.privateKey ?? (yield* Config.redacted("app-private-key")));
+		// Keep the private key redacted end-to-end: normalize an optional override
+		// (which may be a bare string) to `Redacted` and never unwrap it here.
+		const privateKey: Redacted.Redacted<string> =
+			options?.privateKey === undefined ? yield* Config.redacted("app-private-key") : toRedacted(options.privateKey);
 
 		const app = yield* GitHubApp;
+		const outputs = yield* ActionOutputs;
 
 		// Generate the token, then verify its scopes and persist it. If either
 		// step fails, revoke the token so a rejected token is not left orphaned
@@ -49,6 +54,12 @@ const provision = (
 			app.generateToken(clientId, privateKey, options?.installationId),
 			(token) =>
 				Effect.gen(function* () {
+					// Mask the generated installation token in the runner log
+					// (`::add-mask::`). It is persisted to the runner-local
+					// `GITHUB_STATE` env file as plaintext (GitHub's protocol), so
+					// masking is the GitHub-native defense for that unavoidable case.
+					yield* outputs.setSecret(Redacted.value(token.token));
+
 					const required = options?.permissions;
 					if (required !== undefined) {
 						yield* Effect.flatMap(TokenPermissionChecker, (checker) => checker.assertSufficient(required)).pipe(

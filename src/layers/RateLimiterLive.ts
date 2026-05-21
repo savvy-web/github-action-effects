@@ -1,6 +1,7 @@
-import { Duration, Effect, Layer, Option, Ref, Schedule } from "effect";
+import { Duration, Effect, Layer, Metric, Option, Ref, Schedule } from "effect";
 import type { GitHubClientError } from "../errors/GitHubClientError.js";
 import { RateLimitError } from "../errors/RateLimitError.js";
+import { rateLimitHits } from "../runtime/Telemetry.js";
 import type { RateLimitStatus } from "../schemas/RateLimit.js";
 import { GitHubClient } from "../services/GitHubClient.js";
 import { RateLimiter } from "../services/RateLimiter.js";
@@ -81,8 +82,12 @@ export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = La
 			checkRest,
 			checkGraphQL,
 
-			withRateLimit: <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E | RateLimitError, R> =>
-				Effect.flatMap(Ref.get(snapshotRef), (cached): Effect.Effect<A, E | RateLimitError, R> => {
+			withRateLimit: <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E | RateLimitError, R> => {
+				/** Count a low-quota event, tagged by the reaction taken. */
+				const countHit = (action: "slept" | "failed") =>
+					Metric.update(rateLimitHits.pipe(Metric.tagged("api", "rest"), Metric.tagged("action", action)), 1);
+
+				return Effect.flatMap(Ref.get(snapshotRef), (cached): Effect.Effect<A, E | RateLimitError, R> => {
 					// Never observed yet → run directly; the first real call will
 					// populate the snapshot for subsequent guards (no wasted probe).
 					if (Option.isNone(cached)) {
@@ -96,17 +101,25 @@ export const RateLimiterLive: Layer.Layer<RateLimiter, never, GitHubClient> = La
 					const resetDate = new Date(snapshot.resetEpochSeconds * 1000);
 					const waitMs = Math.max(0, resetDate.getTime() - Date.now());
 					if (waitMs > 60000) {
-						return Effect.fail(
-							new RateLimitError({
-								api: "rest",
-								remaining: snapshot.remaining,
-								resetAt: resetDate.toISOString(),
-								reason: `Rate limit nearly exhausted (${snapshot.remaining}/${snapshot.limit}). Resets at ${resetDate.toISOString()}`,
-							}),
+						return countHit("failed").pipe(
+							Effect.flatMap(() =>
+								Effect.fail(
+									new RateLimitError({
+										api: "rest",
+										remaining: snapshot.remaining,
+										resetAt: resetDate.toISOString(),
+										reason: `Rate limit nearly exhausted (${snapshot.remaining}/${snapshot.limit}). Resets at ${resetDate.toISOString()}`,
+									}),
+								),
+							),
 						);
 					}
-					return Effect.sleep(Duration.millis(waitMs)).pipe(Effect.flatMap(() => effect));
-				}),
+					return countHit("slept").pipe(
+						Effect.flatMap(() => Effect.sleep(Duration.millis(waitMs))),
+						Effect.flatMap(() => effect),
+					);
+				}).pipe(Effect.withSpan("RateLimiter.withRateLimit"));
+			},
 
 			withRetry: <A, E, R>(
 				effect: Effect.Effect<A, E, R>,

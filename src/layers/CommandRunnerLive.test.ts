@@ -1,7 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { Effect, Schema } from "effect";
+import * as path from "node:path";
+import { Effect, Fiber, Metric, Schema } from "effect";
 import { describe, expect, it } from "vitest";
+import { commandExecutions } from "../runtime/Telemetry.js";
 import { CommandRunner } from "../services/CommandRunner.js";
 import { CommandRunnerLive } from "./CommandRunnerLive.js";
 
@@ -147,6 +149,73 @@ describe("CommandRunnerLive", () => {
 				const errStr = String(defect);
 				expect(errStr).toContain("CommandRunnerError");
 			}
+		});
+	});
+
+	describe("interruption", () => {
+		it("kills the child process when interrupted by timeout", async () => {
+			const isAlive = (pid: number): boolean => {
+				try {
+					process.kill(pid, 0);
+					return true;
+				} catch {
+					return false;
+				}
+			};
+
+			// The child writes its own PID to a temp file the instant it boots,
+			// then sleeps for a minute. We read the file after interrupting so we
+			// can probe whether the finalizer actually killed the process.
+			const pidFile = path.join(os.tmpdir(), `cmd-runner-pid-${Math.random().toString(36).slice(2)}`);
+			const script = `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 60000)`;
+
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const fiber = yield* Effect.fork(
+						Effect.flatMap(CommandRunner, (svc) => svc.exec("node", ["-e", script])).pipe(
+							Effect.provide(CommandRunnerLive),
+						),
+					);
+					// Poll until the child has booted and written its PID — robust to
+					// scheduling jitter under the full (forks-pool) suite.
+					yield* Effect.async<void>((resume) => {
+						const start = Date.now();
+						const tick = setInterval(() => {
+							if (fs.existsSync(pidFile) || Date.now() - start > 5000) {
+								clearInterval(tick);
+								resume(Effect.void);
+							}
+						}, 20);
+					});
+					yield* Fiber.interrupt(fiber);
+				}),
+			);
+
+			expect(fs.existsSync(pidFile)).toBe(true);
+			const pid = Number(fs.readFileSync(pidFile, "utf8"));
+			expect(Number.isInteger(pid)).toBe(true);
+
+			// After the interruption finalizer ran the child must be reaped.
+			// Poll because SIGTERM delivery is asynchronous.
+			for (let i = 0; i < 50 && isAlive(pid); i++) {
+				await new Promise((resolve) => setTimeout(resolve, 20));
+			}
+			expect(isAlive(pid)).toBe(false);
+
+			fs.rmSync(pidFile, { force: true });
+		}, 10_000);
+	});
+
+	describe("telemetry", () => {
+		it("increments the command-execution counter once per exec", async () => {
+			// The counter is incremented on the per-command tagged variant, so the
+			// snapshot must read the same tagged metric.
+			const tagged = commandExecutions.pipe(Metric.tagged("command", "echo"));
+			const before = await Effect.runPromise(Metric.value(tagged));
+			await run(Effect.flatMap(CommandRunner, (svc) => svc.exec("echo", ["one"])));
+			await run(Effect.flatMap(CommandRunner, (svc) => svc.exec("echo", ["two"])));
+			const after = await Effect.runPromise(Metric.value(tagged));
+			expect(after.count - before.count).toBe(2);
 		});
 	});
 });

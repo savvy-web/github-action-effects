@@ -1,6 +1,7 @@
-import { Duration, Effect, Exit, Fiber, Layer, Option, Ref, Stream, TestClock, TestContext } from "effect";
+import { Duration, Effect, Exit, Fiber, Layer, Metric, Option, Ref, Stream, TestClock, TestContext } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHubClientError } from "../errors/GitHubClientError.js";
+import { rateLimitHits } from "../runtime/Telemetry.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- value needed for Layer.succeed
 import { GitHubClient } from "../services/GitHubClient.js";
 import { RateLimiter } from "../services/RateLimiter.js";
@@ -141,23 +142,33 @@ describe("RateLimiterLive", () => {
 
 		it("waits then runs when cached remaining is below the threshold and reset is near", async () => {
 			const nearReset = Math.floor(Date.now() / 1000) + 10; // 10s out
-			const exit = await Effect.gen(function* () {
+			const outcome = await Effect.gen(function* () {
 				const ref = yield* RateLimitState;
 				yield* Ref.set(
 					ref,
 					Option.some({ remaining: 10, limit: 5000, resetEpochSeconds: nearReset, observedAt: Date.now() }),
 				);
+				let ran = 0;
 				const fiber = yield* Effect.fork(
-					Effect.flatMap(RateLimiter, (svc) => svc.withRateLimit(Effect.succeed("done"))),
+					Effect.flatMap(RateLimiter, (svc) =>
+						svc.withRateLimit(
+							Effect.sync(() => {
+								ran++;
+								return "done";
+							}),
+						),
+					),
 				);
+				// Before advancing the clock the guarded effect must not have run.
+				const pollBefore = yield* Fiber.poll(fiber);
 				yield* TestClock.adjust(Duration.seconds(11));
-				return yield* Fiber.join(fiber);
-			}).pipe(Effect.exit, Effect.provide(baseLayer), Effect.provide(TestContext.TestContext), Effect.runPromise);
+				const result = yield* Fiber.join(fiber);
+				return { pollBefore, result, ran };
+			}).pipe(Effect.provide(baseLayer), Effect.provide(TestContext.TestContext), Effect.runPromise);
 
-			expect(exit._tag).toBe("Success");
-			if (Exit.isSuccess(exit)) {
-				expect(exit.value).toBe("done");
-			}
+			expect(Option.isNone(outcome.pollBefore)).toBe(true);
+			expect(outcome.result).toBe("done");
+			expect(outcome.ran).toBe(1);
 		});
 
 		it("fails with RateLimitError when below threshold and wait exceeds 60s", async () => {
@@ -176,6 +187,47 @@ describe("RateLimiterLive", () => {
 			}
 			// Policy is cache-driven; no probe issued.
 			expect(restOperations).not.toContain("rate_limit");
+		});
+	});
+
+	describe("telemetry", () => {
+		const sleptCounter = rateLimitHits.pipe(Metric.tagged("api", "rest"), Metric.tagged("action", "slept"));
+		const failedCounter = rateLimitHits.pipe(Metric.tagged("api", "rest"), Metric.tagged("action", "failed"));
+
+		it("counts a rate-limit hit when it sleeps", async () => {
+			const nearReset = Math.floor(Date.now() / 1000) + 10;
+			const delta = await Effect.gen(function* () {
+				const before = (yield* Metric.value(sleptCounter)).count;
+				const ref = yield* RateLimitState;
+				yield* Ref.set(
+					ref,
+					Option.some({ remaining: 10, limit: 5000, resetEpochSeconds: nearReset, observedAt: Date.now() }),
+				);
+				const fiber = yield* Effect.fork(
+					Effect.flatMap(RateLimiter, (svc) => svc.withRateLimit(Effect.succeed("done"))),
+				);
+				yield* TestClock.adjust(Duration.seconds(11));
+				yield* Fiber.join(fiber);
+				const after = (yield* Metric.value(sleptCounter)).count;
+				return after - before;
+			}).pipe(Effect.provide(baseLayer), Effect.provide(TestContext.TestContext), Effect.runPromise);
+
+			expect(delta).toBe(1);
+		});
+
+		it("counts a rate-limit hit when it fails fast", async () => {
+			const farReset = Math.floor(Date.now() / 1000) + 120;
+			const before = await Effect.runPromise(Metric.value(failedCounter));
+			await Effect.runPromise(
+				Effect.exit(
+					withSeededSnapshot(
+						{ remaining: 10, limit: 5000, resetEpochSeconds: farReset, observedAt: Date.now() },
+						Effect.flatMap(RateLimiter, (svc) => svc.withRateLimit(Effect.succeed("ok"))),
+					),
+				),
+			);
+			const after = await Effect.runPromise(Metric.value(failedCounter));
+			expect(after.count - before.count).toBe(1);
 		});
 	});
 

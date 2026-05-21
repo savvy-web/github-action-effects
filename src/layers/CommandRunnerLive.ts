@@ -1,7 +1,8 @@
 import type { SpawnOptions } from "node:child_process";
 import { spawn } from "node:child_process";
-import { Effect, Layer, Schema } from "effect";
-import { CommandRunnerError } from "../errors/CommandRunnerError.js";
+import { Effect, Layer, Metric, Schema } from "effect";
+import { CommandRunnerError, scrubAuthArgs } from "../errors/CommandRunnerError.js";
+import { commandExecutions } from "../runtime/Telemetry.js";
 import type { ExecOptions, ExecOutput } from "../services/CommandRunner.js";
 import { CommandRunner } from "../services/CommandRunner.js";
 
@@ -63,7 +64,7 @@ const spawnCapture = (
 				Effect.fail(
 					new CommandRunnerError({
 						command,
-						args,
+						args: scrubAuthArgs(args),
 						exitCode: undefined,
 						stderr: undefined,
 						reason: `Command execution failed: ${err.message}`,
@@ -75,7 +76,22 @@ const spawnCapture = (
 		child.on("close", (code: number | null) => {
 			resume(Effect.succeed({ exitCode: code ?? 1, stdout, stderr }));
 		});
-	});
+
+		// Returned on interruption (e.g. under `Effect.timeout`/`race`/
+		// `Fiber.interrupt`): SIGTERM the child so the process is not leaked.
+		// `child.kill()` is a safe no-op if the process already exited, and the
+		// finalizer never runs on a normal `close`, so the happy path is
+		// unchanged.
+		return Effect.sync(() => {
+			child.kill();
+		});
+	}).pipe(
+		// Count one execution per spawn (the funnel for all four public methods)
+		// and wrap the call in a span. Both are inert without a metric reader /
+		// tracer; the counter increments regardless of success or failure.
+		Effect.ensuring(Metric.update(commandExecutions.pipe(Metric.tagged("command", command)), 1)),
+		Effect.withSpan("CommandRunner.exec", { attributes: { command, argc: args.length } }),
+	);
 
 const failOnNonZero = (
 	command: string,
@@ -87,7 +103,7 @@ const failOnNonZero = (
 		: Effect.fail(
 				new CommandRunnerError({
 					command,
-					args,
+					args: scrubAuthArgs(args),
 					exitCode: output.exitCode,
 					stderr: output.stderr,
 					// Surface stdout too — npm emits progress, notices, and

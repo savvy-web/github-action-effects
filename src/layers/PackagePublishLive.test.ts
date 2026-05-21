@@ -1,12 +1,36 @@
-import { Effect, Exit, Layer } from "effect";
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Effect, Exit, Layer, Redacted } from "effect";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CommandRunnerError } from "../errors/CommandRunnerError.js";
 import { PackagePublishError } from "../errors/PackagePublishError.js";
 import type { ExecOptions, ExecOutput } from "../services/CommandRunner.js";
 import { CommandRunner } from "../services/CommandRunner.js";
 import { PackagePublish } from "../services/PackagePublish.js";
+import { ActionOutputsTest } from "./ActionOutputsTest.js";
 import { NpmRegistryTest } from "./NpmRegistryTest.js";
 import { PackagePublishLive } from "./PackagePublishLive.js";
+
+// `setupAuth`/`publishToRegistries` now write the auth token to a `.npmrc`
+// (off-argv) instead of `npm config set`. Point the user `.npmrc` at a temp
+// file so we can assert the token lands there and never in the command args.
+let npmrcPath: string;
+let npmrcDir: string;
+
+beforeEach(() => {
+	npmrcDir = mkdtempSync(join(tmpdir(), "pkgpub-npmrc-"));
+	npmrcPath = join(npmrcDir, ".npmrc");
+	process.env.NPM_CONFIG_USERCONFIG = npmrcPath;
+});
+
+afterEach(() => {
+	delete process.env.NPM_CONFIG_USERCONFIG;
+	rmSync(npmrcDir, { recursive: true, force: true });
+});
+
+const outputsState = ActionOutputsTest.empty();
+const outputsLayer = ActionOutputsTest.layer(outputsState);
 
 const makeMockRunner = (handlers: {
 	exec?: (
@@ -28,7 +52,7 @@ const makeMockRunner = (handlers: {
 	} as typeof CommandRunner.Service);
 
 describe("PackagePublishLive", () => {
-	it("setupAuth runs npm config set with registry token", async () => {
+	it("setupAuth writes the auth token to .npmrc off-argv and masks it via setSecret (S7)", async () => {
 		const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
 		const runner = makeMockRunner({
 			exec: (command, args) => {
@@ -37,41 +61,39 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
-				Effect.flatMap((svc) => svc.setupAuth("npm.pkg.github.com", "ghp_token")),
+				Effect.flatMap((svc) => svc.setupAuth("npm.pkg.github.com", Redacted.make("ghp_token"))),
 				Effect.provide(layer),
 			),
 		);
 
-		expect(calls).toHaveLength(1);
-		expect(calls[0]?.command).toBe("npm");
-		expect(calls[0]?.args).toEqual(["config", "set", "//npm.pkg.github.com:_authToken", "ghp_token"]);
+		// The token is NEVER passed as a command argument.
+		expect(calls.flatMap((c) => c.args)).not.toContain("ghp_token");
+		// It is written to the user .npmrc with the correct key.
+		expect(existsSync(npmrcPath)).toBe(true);
+		expect(readFileSync(npmrcPath, "utf8")).toContain("//npm.pkg.github.com:_authToken=ghp_token");
+		// And masked in the runner log.
+		expect(outputsState.secrets).toContain("ghp_token");
 	});
 
 	it("setupAuth strips the URL scheme when given a full registry URL", async () => {
-		const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
-		const runner = makeMockRunner({
-			exec: (command, args) => {
-				calls.push({ command, args });
-				return Effect.succeed(0);
-			},
-		});
+		const runner = makeMockRunner({});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
-				Effect.flatMap((svc) => svc.setupAuth("https://npm.pkg.github.com/", "ghp_token")),
+				Effect.flatMap((svc) => svc.setupAuth("https://npm.pkg.github.com/", Redacted.make("ghp_token"))),
 				Effect.provide(layer),
 			),
 		);
 
 		// npm matches `//npm.pkg.github.com/:_authToken`; keeping the scheme
 		// (`//https://…`) yields a key npm never matches → ENEEDAUTH.
-		expect(calls[0]?.args).toEqual(["config", "set", "//npm.pkg.github.com/:_authToken", "ghp_token"]);
+		expect(readFileSync(npmrcPath, "utf8")).toContain("//npm.pkg.github.com/:_authToken=ghp_token");
 	});
 
 	it("publish runs npm publish with flags", async () => {
@@ -83,7 +105,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -129,7 +151,7 @@ describe("PackagePublishLive", () => {
 				],
 			]),
 		});
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const result = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -156,7 +178,7 @@ describe("PackagePublishLive", () => {
 				],
 			]),
 		});
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const result = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -177,7 +199,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -199,7 +221,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -220,7 +242,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -241,7 +263,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -262,7 +284,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -283,7 +305,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -309,7 +331,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -350,7 +372,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -372,7 +394,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -396,7 +418,7 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
@@ -423,7 +445,7 @@ describe("PackagePublishLive", () => {
 				),
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -451,7 +473,7 @@ describe("PackagePublishLive", () => {
 			exec: () => Effect.fail(sourceError),
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -482,7 +504,7 @@ describe("PackagePublishLive", () => {
 				),
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -497,25 +519,21 @@ describe("PackagePublishLive", () => {
 		expect(error.registry).toBeUndefined();
 	});
 
-	it("setupAuth wraps CommandRunnerError into PackagePublishError", async () => {
-		const runner = makeMockRunner({
-			exec: () =>
-				Effect.fail(
-					new CommandRunnerError({
-						command: "npm",
-						args: ["config", "set"],
-						exitCode: 1,
-						stderr: "",
-						reason: "config set failed",
-					}),
-				),
-		});
+	it("setupAuth surfaces a PackagePublishError when the .npmrc write fails", async () => {
+		const runner = makeMockRunner({});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
+
+		// Point the userconfig at a path whose parent is a regular file so the
+		// append fails (ENOTDIR/EEXIST), exercising the error mapping.
+		const blocking = join(npmrcDir, "blocking");
+		const { writeFileSync } = await import("node:fs");
+		writeFileSync(blocking, "i am a file");
+		process.env.NPM_CONFIG_USERCONFIG = join(blocking, ".npmrc");
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
-				Effect.flatMap((svc) => svc.setupAuth("npm.pkg.github.com", "token")),
+				Effect.flatMap((svc) => svc.setupAuth("npm.pkg.github.com", Redacted.make("token"))),
 				Effect.provide(layer),
 				Effect.flip,
 			),
@@ -524,7 +542,6 @@ describe("PackagePublishLive", () => {
 		expect(error).toBeInstanceOf(PackagePublishError);
 		expect(error.operation).toBe("setupAuth");
 		expect(error.registry).toBe("npm.pkg.github.com");
-		expect(error.reason).toBe("config set failed");
 	});
 
 	it("pack fails with PackagePublishError when npm pack returns invalid JSON", async () => {
@@ -532,7 +549,7 @@ describe("PackagePublishLive", () => {
 			execCapture: () => Effect.succeed({ exitCode: 0, stdout: "not json", stderr: "" }),
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -552,7 +569,7 @@ describe("PackagePublishLive", () => {
 			execCapture: () => Effect.succeed({ exitCode: 0, stdout: "[]", stderr: "" }),
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -581,7 +598,7 @@ describe("PackagePublishLive", () => {
 				),
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -599,7 +616,7 @@ describe("PackagePublishLive", () => {
 	it("verifyIntegrity wraps NpmRegistryError into PackagePublishError", async () => {
 		const runner = makeMockRunner({});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
@@ -624,23 +641,34 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
 				Effect.flatMap((svc) =>
 					svc.publishToRegistries("/pkg", [
-						{ registry: "https://registry.npmjs.org", token: "npm-token", tag: "latest", access: "public" },
-						{ registry: "https://npm.pkg.github.com", token: "ghp-token" },
+						{
+							registry: "https://registry.npmjs.org",
+							token: Redacted.make("npm-token"),
+							tag: "latest",
+							access: "public",
+						},
+						{ registry: "https://npm.pkg.github.com", token: Redacted.make("ghp-token") },
 					]),
 				),
 				Effect.provide(layer),
 			),
 		);
 
-		// First registry: auth + publish with tag and access
-		expect(calls[0]?.args).toEqual(["config", "set", "//registry.npmjs.org:_authToken", "npm-token"]);
-		expect(calls[1]?.args).toEqual([
+		// Auth is written to .npmrc off-argv — only publish commands hit exec.
+		expect(calls.flatMap((c) => c.args)).not.toContain("npm-token");
+		expect(calls.flatMap((c) => c.args)).not.toContain("ghp-token");
+		const npmrc = readFileSync(npmrcPath, "utf8");
+		expect(npmrc).toContain("//registry.npmjs.org:_authToken=npm-token");
+		expect(npmrc).toContain("//npm.pkg.github.com:_authToken=ghp-token");
+
+		// First registry: publish with tag and access.
+		expect(calls[0]?.args).toEqual([
 			"publish",
 			"--registry",
 			"https://registry.npmjs.org",
@@ -651,12 +679,11 @@ describe("PackagePublishLive", () => {
 			"--loglevel",
 			"verbose",
 		]);
-		expect(calls[1]?.cwd).toBe("/pkg");
+		expect(calls[0]?.cwd).toBe("/pkg");
 
-		// Second registry: auth + publish without tag/access
-		expect(calls[2]?.args).toEqual(["config", "set", "//npm.pkg.github.com:_authToken", "ghp-token"]);
-		expect(calls[3]?.args).toEqual(["publish", "--registry", "https://npm.pkg.github.com", "--loglevel", "verbose"]);
-		expect(calls[3]?.cwd).toBe("/pkg");
+		// Second registry: publish without tag/access.
+		expect(calls[1]?.args).toEqual(["publish", "--registry", "https://npm.pkg.github.com", "--loglevel", "verbose"]);
+		expect(calls[1]?.cwd).toBe("/pkg");
 	});
 
 	it("publishToRegistries routes the publish through the target's package manager", async () => {
@@ -668,25 +695,23 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		await Effect.runPromise(
 			PackagePublish.pipe(
 				Effect.flatMap((svc) =>
 					svc.publishToRegistries("/pkg", [
-						{ registry: "https://registry.npmjs.org", token: "npm-token", packageManager: "pnpm" },
+						{ registry: "https://registry.npmjs.org", token: Redacted.make("npm-token"), packageManager: "pnpm" },
 					]),
 				),
 				Effect.provide(layer),
 			),
 		);
 
-		// Auth still goes through bare npm (writes .npmrc)...
-		expect(calls[0]?.command).toBe("npm");
-		expect(calls[0]?.args).toEqual(["config", "set", "//registry.npmjs.org:_authToken", "npm-token"]);
-		// ...but the publish dispatches through `pnpm dlx npm`.
-		expect(calls[1]?.command).toBe("pnpm");
-		expect(calls[1]?.args).toEqual([
+		// Auth is written to .npmrc off-argv; the publish dispatches through
+		// `pnpm dlx npm`.
+		expect(calls[0]?.command).toBe("pnpm");
+		expect(calls[0]?.args).toEqual([
 			"dlx",
 			"npm",
 			"publish",
@@ -715,12 +740,12 @@ describe("PackagePublishLive", () => {
 			},
 		});
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
 				Effect.flatMap((svc) =>
-					svc.publishToRegistries("/pkg", [{ registry: "https://registry.npmjs.org", token: "token" }]),
+					svc.publishToRegistries("/pkg", [{ registry: "https://registry.npmjs.org", token: Redacted.make("token") }]),
 				),
 				Effect.provide(layer),
 				Effect.flip,
@@ -745,12 +770,12 @@ describe("PackagePublishLive", () => {
 			execLines: () => Effect.die("not used"),
 		} as unknown as typeof CommandRunner.Service);
 		const registry = NpmRegistryTest.empty();
-		const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+		const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 		const error = await Effect.runPromise(
 			PackagePublish.pipe(
 				Effect.flatMap((svc) =>
-					svc.publishToRegistries("/pkg", [{ registry: "https://registry.npmjs.org", token: "token" }]),
+					svc.publishToRegistries("/pkg", [{ registry: "https://registry.npmjs.org", token: Redacted.make("token") }]),
 				),
 				Effect.provide(layer),
 				Effect.flip,
@@ -778,7 +803,7 @@ describe("PackagePublishLive", () => {
 				},
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const result = await Effect.runPromise(
 				PackagePublish.pipe(
@@ -825,7 +850,7 @@ describe("PackagePublishLive", () => {
 					}),
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const result = await Effect.runPromise(
 				PackagePublish.pipe(
@@ -854,7 +879,7 @@ describe("PackagePublishLive", () => {
 					),
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const result = await Effect.runPromise(
 				PackagePublish.pipe(
@@ -872,7 +897,7 @@ describe("PackagePublishLive", () => {
 				execCapture: () => Effect.succeed({ exitCode: 0, stdout: "not valid json", stderr: "" }),
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const error = await Effect.runPromise(
 				PackagePublish.pipe(
@@ -899,7 +924,7 @@ describe("PackagePublishLive", () => {
 			const registry = NpmRegistryTest.layer({
 				packages: new Map([["my-pkg", { versions: [], latest: "", distTags: {} }]]),
 			});
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const result = await Effect.runPromise(
 				PackagePublish.pipe(
@@ -936,7 +961,7 @@ describe("PackagePublishLive", () => {
 					],
 				]),
 			});
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const result = await Effect.runPromise(
 				PackagePublish.pipe(
@@ -971,7 +996,7 @@ describe("PackagePublishLive", () => {
 					],
 				]),
 			});
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const exit = await Effect.runPromiseExit(
 				PackagePublish.pipe(
@@ -1027,7 +1052,7 @@ describe("PackagePublishLive", () => {
 				execCapture: () => Effect.succeed({ exitCode: 0, stdout: fixture, stderr: "" }),
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const result = await Effect.runPromise(
 				PackagePublish.pipe(
@@ -1066,7 +1091,7 @@ describe("PackagePublishLive", () => {
 				execCapture: () => Effect.succeed({ exitCode: 0, stdout: fixture, stderr: "" }),
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const error = await Effect.runPromise(
 				PackagePublish.pipe(
@@ -1091,7 +1116,7 @@ describe("PackagePublishLive", () => {
 				},
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			await Effect.runPromise(
 				PackagePublish.pipe(
@@ -1135,7 +1160,7 @@ describe("PackagePublishLive", () => {
 				},
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			await Effect.runPromise(
 				PackagePublish.pipe(
@@ -1163,7 +1188,7 @@ describe("PackagePublishLive", () => {
 				},
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			await Effect.runPromise(
 				PackagePublish.pipe(
@@ -1204,7 +1229,7 @@ describe("PackagePublishLive", () => {
 					),
 			});
 			const registry = NpmRegistryTest.empty();
-			const layer = PackagePublishLive.pipe(Layer.provide(Layer.merge(runner, registry)));
+			const layer = PackagePublishLive.pipe(Layer.provide(Layer.mergeAll(runner, registry, outputsLayer)));
 
 			const error = await Effect.runPromise(
 				PackagePublish.pipe(

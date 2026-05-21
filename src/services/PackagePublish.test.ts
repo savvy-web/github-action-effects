@@ -1,4 +1,4 @@
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Redacted } from "effect";
 import { describe, expect, it } from "vitest";
 import { PackagePublishTest } from "../layers/PackagePublishTest.js";
 import { PackagePublish } from "./PackagePublish.js";
@@ -8,11 +8,13 @@ describe("PackagePublish", () => {
 		const { state, layer } = PackagePublishTest.empty();
 		await Effect.runPromise(
 			PackagePublish.pipe(
-				Effect.flatMap((svc) => svc.setupAuth("npm.pkg.github.com", "ghp_abc123")),
+				Effect.flatMap((svc) => svc.setupAuth("npm.pkg.github.com", Redacted.make("ghp_abc123"))),
 				Effect.provide(layer),
 			),
 		);
-		expect(state.setupAuthCalls).toEqual([{ registry: "npm.pkg.github.com", token: "ghp_abc123" }]);
+		expect(state.setupAuthCalls).toHaveLength(1);
+		expect(state.setupAuthCalls[0]?.registry).toBe("npm.pkg.github.com");
+		expect(Redacted.value(state.setupAuthCalls[0]?.token as Redacted.Redacted<string>)).toBe("ghp_abc123");
 	});
 
 	it("pack returns tarballPath, digest, and pack metadata", async () => {
@@ -88,8 +90,8 @@ describe("PackagePublish", () => {
 	it("publishToRegistries calls per registry", async () => {
 		const { state, layer } = PackagePublishTest.empty();
 		const registries = [
-			{ registry: "https://registry.npmjs.org", token: "npm_abc" },
-			{ registry: "https://npm.pkg.github.com", token: "ghp_def", tag: "next" },
+			{ registry: "https://registry.npmjs.org", token: Redacted.make("npm_abc") },
+			{ registry: "https://npm.pkg.github.com", token: Redacted.make("ghp_def"), tag: "next" },
 		];
 		await Effect.runPromise(
 			PackagePublish.pipe(
