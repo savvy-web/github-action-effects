@@ -42,13 +42,14 @@ jobs:
         uses: savvy-web/workflow-runtime-action@main
       - name: Update Config Dependencies
         id: update
-        uses: savvy-web/pnpm-config-dependency-action@main
+        uses: savvy-web/pnpm-config-dependency-action@v1
         with:
-          app-id: ${{ secrets.APP_ID }}
+          app-client-id: ${{ vars.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
           branch: ${{ inputs.branch || 'pnpm/config-deps' }}
           dry-run: ${{ inputs.dry-run || false }}
           log-level: ${{ inputs.log-level || 'info' }}
+          changesets: true
           auto-merge: "squash"
           config-dependencies: |
             @savvy-web/pnpm-plugin-silk

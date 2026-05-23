@@ -68,7 +68,7 @@ const listResponse = (
 /** Build a synthetic GitHubClient that returns a fixed REST response and ignores graphql/paginate. */
 const fixedGitHubClient = (
 	restData: unknown,
-	repo = { owner: "savvy-web", repo: "workflow-release-action" },
+	repo = { owner: "savvy-web", repo: "silk-release-action" },
 ): Layer.Layer<GitHubClient> =>
 	Layer.succeed(GitHubClient, {
 		rest: <T>(_op: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
@@ -103,7 +103,7 @@ const throwingGitHubClient = (status: number): Layer.Layer<GitHubClient> =>
 		graphql: () => Effect.die("graphql not used"),
 		paginate: () => Effect.die("paginate not used"),
 		paginateStream: () => Stream.die("paginateStream not used"),
-		repo: Effect.succeed({ owner: "savvy-web", repo: "workflow-release-action" }),
+		repo: Effect.succeed({ owner: "savvy-web", repo: "silk-release-action" }),
 	});
 
 const noopOidc: Layer.Layer<OidcTokenIssuer> = Layer.succeed(OidcTokenIssuer, {
