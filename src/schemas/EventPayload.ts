@@ -7,20 +7,25 @@ import { Schema } from "effect";
  */
 const Repository = Schema.Struct({
 	name: Schema.String,
-	full_name: Schema.optional(Schema.String),
+	full_name: Schema.optional(Schema.NullOr(Schema.String)),
 	owner: Schema.Struct({ login: Schema.String }),
-	html_url: Schema.optional(Schema.String),
+	html_url: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
 /**
  * An issue / pull-request reference on a webhook payload (typed subset).
  *
+ * @remarks
+ * `body` and `html_url` accept `null` because GitHub webhook payloads carry
+ * those fields as `null` (not absent) when the issue or PR has no description,
+ * or for events whose payload omits the rendered URL.
+ *
  * @internal
  */
 const IssueRef = Schema.Struct({
 	number: Schema.Number,
-	html_url: Schema.optional(Schema.String),
-	body: Schema.optional(Schema.String),
+	html_url: Schema.optional(Schema.NullOr(Schema.String)),
+	body: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
 /**
