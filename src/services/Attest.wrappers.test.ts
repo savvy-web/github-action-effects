@@ -112,7 +112,7 @@ describe("Attest.provenance — step 6", () => {
 
 		const slsaPredicate = {
 			buildDefinition: {
-				buildType: "https://github.com/savvy-web/workflow-release-action/release/v1",
+				buildType: "https://github.com/savvy-web/silk-release-action/release/v1",
 				externalParameters: { workflow: { ref: "refs/heads/main" } },
 			},
 			runDetails: {

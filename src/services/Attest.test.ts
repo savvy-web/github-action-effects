@@ -48,7 +48,7 @@ const noopOidcLayer: Layer.Layer<OidcTokenIssuer> = Layer.succeed(OidcTokenIssue
 
 const makeGitHubClientLayer = (
 	restResponse: { data: unknown } | undefined,
-	repo = { owner: "savvy-web", repo: "workflow-release-action" },
+	repo = { owner: "savvy-web", repo: "silk-release-action" },
 ): Layer.Layer<GitHubClient> =>
 	GitHubClientTest.layer({
 		restResponses: restResponse ? new Map([["repos.createAttestation", restResponse]]) : new Map(),

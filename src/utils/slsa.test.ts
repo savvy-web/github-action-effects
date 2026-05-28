@@ -32,7 +32,7 @@ const fullClaims: OidcClaims = {
 	sha: "deadbeef".repeat(5),
 	repository: "savvy-web/silk-integration",
 	event_name: "push",
-	job_workflow_ref: "savvy-web/workflow-release-action/.github/workflows/release.yml@refs/heads/main",
+	job_workflow_ref: "savvy-web/silk-release-action/.github/workflows/release.yml@refs/heads/main",
 	workflow_ref: "savvy-web/silk-integration/.github/workflows/release.yml@refs/heads/main",
 	repository_id: "123456",
 	repository_owner_id: "654321",
@@ -101,7 +101,7 @@ describe("buildSLSAProvenancePredicate — step 8a", () => {
 			digest: { gitCommit: "deadbeef".repeat(5) },
 		});
 		expect(predicate.runDetails.builder.id).toBe(
-			"https://github.com/savvy-web/workflow-release-action/.github/workflows/release.yml@refs/heads/main",
+			"https://github.com/savvy-web/silk-release-action/.github/workflows/release.yml@refs/heads/main",
 		);
 		expect(predicate.runDetails.metadata.invocationId).toBe(
 			"https://github.com/savvy-web/silk-integration/actions/runs/987654/attempts/1",
@@ -128,7 +128,7 @@ describe("buildSLSAProvenancePredicate — step 8a", () => {
 			"https://github.example.com/savvy-web/silk-integration",
 		);
 		expect(predicate.runDetails.builder.id).toBe(
-			"https://github.example.com/savvy-web/workflow-release-action/.github/workflows/release.yml@refs/heads/main",
+			"https://github.example.com/savvy-web/silk-release-action/.github/workflows/release.yml@refs/heads/main",
 		);
 	});
 

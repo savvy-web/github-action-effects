@@ -14,6 +14,24 @@ describe("WebhookPayload", () => {
 		expect(result.repository?.owner.login).toBe("owner");
 	});
 
+	it("decodes a pull_request with null body and null html_url", () => {
+		const result = decode({
+			pull_request: { number: 7, body: null, html_url: null },
+		});
+		expect(result.pull_request?.number).toBe(7);
+		expect(result.pull_request?.body).toBeNull();
+		expect(result.pull_request?.html_url).toBeNull();
+	});
+
+	it("decodes a repository with null full_name and null html_url", () => {
+		const result = decode({
+			repository: { name: "repo", full_name: null, html_url: null, owner: { login: "owner" } },
+		});
+		expect(result.repository?.name).toBe("repo");
+		expect(result.repository?.full_name).toBeNull();
+		expect(result.repository?.html_url).toBeNull();
+	});
+
 	it("decodes an issues payload", () => {
 		const result = decode({ issue: { number: 12 } });
 		expect(result.issue?.number).toBe(12);
