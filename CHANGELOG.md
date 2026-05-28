@@ -1,5 +1,11 @@
 # @savvy-web/pnpm-module-template
 
+## 2.0.1
+
+### Bug Fixes
+
+* [`56ea730`](https://github.com/savvy-web/github-action-effects/commit/56ea730e014b1873ae69022c41ae228567943a0c) Accept `null` in `WebhookPayload`'s `IssueRef.body`, `IssueRef.html_url`, `Repository.full_name`, and `Repository.html_url` fields. GitHub webhook payloads carry these as `null` (not absent) when the issue or PR has no description, or when an event payload omits the rendered URL. Previously decoding any such payload through `ActionEnvironment.payload` failed with `ActionEnvironmentError: Event payload did not match the expected shape: WebhookPayload — Expected string, actual null`.
+
 ## 2.0.0
 
 ### Breaking Changes
