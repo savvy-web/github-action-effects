@@ -55,7 +55,14 @@ const silentOctokitLog = {
 	},
 };
 
-const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
+/**
+ * Whether a failed response should be retried. `429` and any `5xx` are always
+ * retryable. A `403` is retryable only when it carries a server-advised retry
+ * delay (GitHub secondary rate limit) — a bare `403` is a genuine permission
+ * denial and must fail fast rather than loop.
+ */
+const isRetryable = (status: number, retryAfterMs: number | undefined): boolean =>
+	status === 429 || status >= 500 || (status === 403 && retryAfterMs !== undefined);
 
 /**
  * Structural shape of the response headers Octokit returns at runtime. The
@@ -116,12 +123,13 @@ const wrapError = (operation: string, error: unknown): GitHubClientError => {
 			status !== undefined ? `GitHub API returned ${status} (server error)` : "GitHub API returned an HTML error page";
 	}
 
+	const retryAfterMs = parseRetryAfterMs(error);
 	return new GitHubClientError({
 		operation,
 		status,
 		reason: message,
-		retryable: status !== undefined && isRetryableStatus(status),
-		retryAfterMs: parseRetryAfterMs(error),
+		retryable: status !== undefined && isRetryable(status, retryAfterMs),
+		retryAfterMs,
 	});
 };
 

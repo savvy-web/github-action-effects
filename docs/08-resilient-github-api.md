@@ -1,10 +1,10 @@
 # Resilient GitHub API calls
 
-The GitHub API returns 429s under rate pressure and 5xxs when something on its side hiccups. An action that does not retry those will fail a run that a single retry would have saved. `GitHubClient` retries them for you — resilience is on by default on every call — and exposes the knobs to tune or disable it. This guide covers the default retry policy, the `ResilienceOptions` you pass per constructor, the `RateLimiter` service and the streaming pagination that lets a scan stop early.
+The GitHub API returns 429s under rate pressure, 403s with a retry hint under secondary rate limits and 5xxs when something on its side hiccups. An action that does not retry those will fail a run that a single retry would have saved. `GitHubClient` retries them for you — resilience is on by default on every call — and exposes the knobs to tune or disable it. This guide covers the default retry policy, the `ResilienceOptions` you pass per constructor, the `RateLimiter` service and the streaming pagination that lets a scan stop early.
 
 ## Retry is on by default
 
-Every `GitHubClient` call — `rest`, `graphql`, `paginate`, `paginateStream` — runs through `withResilience`. On a retryable error it waits, then tries again, up to a bounded number of attempts. An error is retryable when the response status is `429` or `>= 500`; the client sets that flag when it wraps the underlying error into a `GitHubClientError`. Non-retryable errors (a `404`, a `422`, a malformed request) fail immediately — retrying them would only waste time.
+Every `GitHubClient` call — `rest`, `graphql`, `paginate`, `paginateStream` — runs through `withResilience`. On a retryable error it waits, then tries again, up to a bounded number of attempts. An error is retryable when the response status is `429`, is `>= 500`, or is a `403` that carries a server-advised retry signal — a `Retry-After` header, or `x-ratelimit-remaining: 0` plus an `x-ratelimit-reset` timestamp — which is how GitHub reports a secondary rate limit. A bare `403` with no such hint is a genuine permission failure and is not retried. The client sets the flag when it wraps the underlying error into a `GitHubClientError`. Non-retryable errors (a bare `403`, a `404`, a `422`, a malformed request) fail immediately — retrying them would only waste time.
 
 You do not opt in. `GitHubClientLive.fromEnv()` already gives you the resilient client:
 
