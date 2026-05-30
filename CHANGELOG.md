@@ -1,5 +1,15 @@
 # @savvy-web/pnpm-module-template
 
+## 2.0.2
+
+### Bug Fixes
+
+* [`364c7a9`](https://github.com/savvy-web/github-action-effects/commit/364c7a94891afb76e38c25eb2836594edda08c63) `Attest.listForSubject` now pins `X-GitHub-Api-Version: 2026-03-10` on requests to the GitHub repository attestations endpoint. The previously used default API version has been deprecated (Sunset 2028-03-10) and produced a deprecation warning on every call.
+
+Under the new version the inline Sigstore `bundle` field is absent from list responses. When a `predicateType` filter is supplied, the server-side `predicate_type` query parameter narrows results without any per-entry bundle fetch. When no filter is supplied, each entry's `bundle_url` is fetched to recover the `predicateType`. The public `AttestationListEntry` type is unchanged.
+
+* [`6abe152`](https://github.com/savvy-web/github-action-effects/commit/6abe15277edc848cab5aaa16b5e19b653859aa10) `GitHubClientLive` now correctly treats GitHub secondary rate-limit responses as retryable. A 403 carrying a `Retry-After` header, or a 403 with `x-ratelimit-remaining: 0` and an `x-ratelimit-reset` timestamp, is retried with back-off rather than surfacing as a permanent failure. A bare 403 with no rate-limit signals remains non-retryable so genuine permission denials are not looped on.
+
 ## 2.0.1
 
 ### Bug Fixes
