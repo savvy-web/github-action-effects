@@ -1,3 +1,6 @@
+> [!WARNING]
+> This package is still actively maintained, but this repo has been archived. Development has been moved to the [savvy-web/systems](https://github.com/savvy-web/systems/tree/main/packages/github-action-effects) monorepo.
+
 # @savvy-web/github-action-effects
 
 [![npm](https://img.shields.io/npm/v/@savvy-web%2Fgithub-action-effects?label=npm&color=cb3837)](https://www.npmjs.com/package/@savvy-web/github-action-effects)
