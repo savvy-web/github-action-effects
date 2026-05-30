@@ -76,7 +76,7 @@
 		"@savvy-web/changesets": "^0.10.0",
 		"@savvy-web/commitlint": "^0.10.0",
 		"@savvy-web/lint-staged": "^1.2.1",
-		"@savvy-web/rslib-builder": "^0.20.10",
+		"@savvy-web/rslib-builder": "^0.20.11",
 		"@savvy-web/vitest": "^1.3.2",
 		"effect": "catalog:silk"
 	},
