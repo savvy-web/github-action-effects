@@ -919,7 +919,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-`Attest.provenance` / `.sbom` / `.attest` require `SigstoreSigner | OidcTokenIssuer | GitHubClient`; `.sbom` also requires `Sbom` when it builds the BOM. `listForSubject`'s `predicateType` filter is applied client-side — see the [attestations guide](./10-slsa-attestations.md#idempotent-recovery).
+`Attest.provenance` / `.sbom` / `.attest` require `SigstoreSigner | OidcTokenIssuer | GitHubClient`; `.sbom` also requires `Sbom` when it builds the BOM. `listForSubject`'s `predicateType` filter is applied server-side when supplied — see the [attestations guide](./10-slsa-attestations.md#idempotent-recovery).
 
 ### Sbom
 

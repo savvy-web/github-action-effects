@@ -22,6 +22,25 @@ import { buildStatement, subject as makeSubject, npmPurl, serializeStatement } f
 
 const CREATE_ATTESTATION_REQUEST = "POST /repos/{owner}/{repo}/attestations" as const;
 const LIST_ATTESTATIONS_REQUEST = "GET /repos/{owner}/{repo}/attestations/{subject_digest}" as const;
+/** Octokit route template for fetching a Sigstore bundle by its absolute `bundle_url`. */
+const FETCH_BUNDLE_REQUEST = "GET {bundle_url}" as const;
+
+/**
+ * Pinned REST API version for the attestations list endpoint.
+ *
+ * @remarks
+ * Octokit's default API version still serves the legacy list response
+ * shape, which GitHub has deprecated (Sunset 2028-03-10) and now flags
+ * with a `Deprecation` response header that Octokit logs on every call.
+ * Pinning `2026-03-10` opts into the supported shape: the inline `bundle`
+ * is dropped in favour of a `bundle_url`, so we recover the in-toto
+ * `predicateType` either from the server-side `predicate_type` filter
+ * (when the caller supplies one) or by fetching the bundle.
+ *
+ * @see {@link https://docs.github.com/en/rest/about-the-rest-api/breaking-changes?apiVersion=2026-03-10}
+ * @internal
+ */
+const ATTESTATIONS_API_VERSION = "2026-03-10" as const;
 
 interface OctokitLike {
 	readonly request: (route: string, params: Record<string, unknown>) => Promise<{ data: unknown }>;
@@ -44,25 +63,21 @@ const attestationIdFromResponse = (raw: unknown): number => {
 };
 
 /**
- * Shape of one `attestations[]` entry on `GET /repos/.../attestations/{subject_digest}`.
+ * Shape of one `attestations[]` entry on `GET /repos/.../attestations/{subject_digest}`
+ * under API version `2026-03-10`.
  *
  * @remarks
- * Mirrors the Octokit OpenAPI surface: `bundle.dsseEnvelope.payload`
- * is a base64-encoded in-toto statement, `repository_id` /
- * `bundle_url` / `initiator` are advisory metadata. The real GitHub
- * API also includes an `id` field on each entry that the OpenAPI
- * types omit — we read it defensively when present so the result's
+ * The `2026-03-10` response omits the inline `bundle` carried by the
+ * legacy shape; `bundle_url` points at the full Sigstore bundle and
+ * `repository_id` / `initiator` are advisory metadata. The real GitHub
+ * API also includes an `id` field on each entry that the OpenAPI types
+ * omit — we read it defensively when present so the result's
  * `attestationUrl` can point at the GitHub UI.
  *
  * @internal
  */
 interface RawListedAttestation {
 	readonly id?: number;
-	readonly bundle?: {
-		readonly dsseEnvelope?: {
-			readonly payload?: string;
-		};
-	};
 	readonly bundle_url?: string;
 }
 
@@ -74,13 +89,11 @@ interface RawListedAttestation {
  * The DSSE payload is a base64-encoded JSON in-toto statement; the
  * statement carries `predicateType` as a top-level string. Returns
  * `null` when the payload is missing, undecodable, or non-JSON —
- * callers treat that as "unknown predicate type" and filter the
- * entry out of any predicate-type-filtered result.
+ * callers treat that as "unknown predicate type" and drop the entry.
  *
  * @internal
  */
-const predicateTypeFromBundle = (entry: RawListedAttestation): string | null => {
-	const payload = entry.bundle?.dsseEnvelope?.payload;
+const predicateTypeFromPayload = (payload: unknown): string | null => {
 	if (typeof payload !== "string" || payload.length === 0) return null;
 	try {
 		const decoded = Buffer.from(payload, "base64").toString("utf-8");
@@ -93,37 +106,69 @@ const predicateTypeFromBundle = (entry: RawListedAttestation): string | null => 
 
 /**
  * Parse the raw `GET /repos/.../attestations/{subject_digest}` body
- * into a list of {@link AttestationListEntry} rows.
- *
- * @remarks
- * Owner/repo are needed to construct the GitHub UI URL when the
- * response carries a numeric `id`. When `id` is missing, we fall
- * back to `bundle_url` (the raw-bundle endpoint) so callers always
- * receive a non-empty URL to surface.
+ * into its list of entries.
  *
  * @internal
  */
-const parseListedAttestations = (raw: unknown, owner: string, repo: string): ReadonlyArray<AttestationListEntry> => {
+const parseRawAttestations = (raw: unknown): ReadonlyArray<RawListedAttestation> => {
 	const data = typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
 	const attestations =
 		data && typeof data === "object" && "attestations" in data
 			? (data as { attestations: ReadonlyArray<RawListedAttestation> | undefined }).attestations
 			: undefined;
-	if (!Array.isArray(attestations)) return [];
+	return Array.isArray(attestations) ? attestations : [];
+};
 
-	const entries: AttestationListEntry[] = [];
-	for (const entry of attestations) {
-		const predicateType = predicateTypeFromBundle(entry);
-		if (predicateType === null) continue;
-		const attestationUrl =
-			typeof entry.id === "number"
-				? `https://github.com/${owner}/${repo}/attestations/${entry.id}`
-				: typeof entry.bundle_url === "string" && entry.bundle_url.length > 0
-					? entry.bundle_url
-					: `https://github.com/${owner}/${repo}/attestations`;
-		entries.push({ attestationUrl, predicateType });
+/**
+ * Build the GitHub UI URL for a listed attestation.
+ *
+ * @remarks
+ * Prefers the numeric `id` when present; otherwise falls back to
+ * `bundle_url` (the raw-bundle endpoint) so callers always receive a
+ * non-empty URL to surface.
+ *
+ * @internal
+ */
+const attestationUrlFor = (entry: RawListedAttestation, owner: string, repo: string): string =>
+	typeof entry.id === "number"
+		? `https://github.com/${owner}/${repo}/attestations/${entry.id}`
+		: typeof entry.bundle_url === "string" && entry.bundle_url.length > 0
+			? entry.bundle_url
+			: `https://github.com/${owner}/${repo}/attestations`;
+
+/**
+ * Fetch a `bundle_url` and recover the in-toto `predicateType` from the
+ * Sigstore bundle's DSSE payload.
+ *
+ * @remarks
+ * The `2026-03-10` list response omits the inline `bundle`, so the
+ * no-filter path resolves each entry's predicate type by fetching its
+ * bundle. Returns `null` when the URL is missing or the payload cannot
+ * be decoded — the entry is then dropped, matching the legacy
+ * "undecodable bundle" behaviour.
+ *
+ * @internal
+ */
+const predicateTypeFromBundleUrl = async (
+	octokit: OctokitLike,
+	bundleUrl: string | undefined,
+): Promise<string | null> => {
+	if (typeof bundleUrl !== "string" || bundleUrl.length === 0) return null;
+	try {
+		const response = await octokit.request(FETCH_BUNDLE_REQUEST, {
+			bundle_url: bundleUrl,
+			headers: { "X-GitHub-Api-Version": ATTESTATIONS_API_VERSION },
+		});
+		const data = typeof response.data === "string" ? (JSON.parse(response.data) as unknown) : response.data;
+		const payload =
+			data && typeof data === "object"
+				? ((data as { dsseEnvelope?: { payload?: unknown } }).dsseEnvelope?.payload ??
+					(data as { bundle?: { dsseEnvelope?: { payload?: unknown } } }).bundle?.dsseEnvelope?.payload)
+				: undefined;
+		return predicateTypeFromPayload(payload);
+	} catch {
+		return null;
 	}
-	return entries;
 };
 
 /**
@@ -385,20 +430,46 @@ export const AttestLive = Layer.succeed(Attest, {
 						throw new Error("GitHubClient did not provide an Octokit-compatible client");
 					}
 					try {
-						// `predicate_type` query parameter is deprecated as of
-						// 2026-03-10 and scheduled for removal 2028-03-10. We
-						// already filter client-side below (the canonical match
-						// because some predicates carry the freeform URI rather
-						// than the short alias the server accepts), so we omit
-						// the query entirely — the endpoint returns every
-						// attestation for the subject digest and the loop
-						// downstream selects the matching one.
+						// Pin the supported API version. Octokit's default still
+						// serves the legacy list shape that GitHub flags as
+						// deprecated (Sunset 2028-03-10); `2026-03-10` drops the
+						// inline `bundle` in favour of a `bundle_url`. When the
+						// caller filters by predicate type we let the server
+						// narrow the list (`predicate_type` accepts the freeform
+						// URI), so every returned entry matches the requested
+						// type. Without a filter we fetch each `bundle_url` to
+						// recover its predicate type.
 						const response = await octokit.request(LIST_ATTESTATIONS_REQUEST, {
 							owner,
 							repo,
 							subject_digest: `sha256:${subjectSha256}`,
+							headers: { "X-GitHub-Api-Version": ATTESTATIONS_API_VERSION },
+							...(predicateTypeFilter !== undefined ? { predicate_type: predicateTypeFilter } : {}),
 						});
-						return { data: parseListedAttestations(response.data, owner, repo) };
+						const raw = parseRawAttestations(response.data);
+
+						if (predicateTypeFilter !== undefined) {
+							return {
+								data: raw.map((entry) => ({
+									attestationUrl: attestationUrlFor(entry, owner, repo),
+									predicateType: predicateTypeFilter,
+								})),
+							};
+						}
+
+						// Fetch the bundles concurrently; `Promise.all` preserves
+						// input order, and `predicateTypeFromBundleUrl` swallows its
+						// own errors (returning `null`) so one bad bundle never
+						// rejects the batch — undecodable entries are dropped below.
+						const resolved = await Promise.all(
+							raw.map(async (entry) => {
+								const predicateType = await predicateTypeFromBundleUrl(octokit, entry.bundle_url);
+								return predicateType === null
+									? null
+									: { attestationUrl: attestationUrlFor(entry, owner, repo), predicateType };
+							}),
+						);
+						return { data: resolved.filter((entry): entry is AttestationListEntry => entry !== null) };
 					} catch (cause) {
 						if (isEmptyListError(cause)) {
 							return { data: [] as ReadonlyArray<AttestationListEntry> };
@@ -417,11 +488,6 @@ export const AttestLive = Layer.succeed(Attest, {
 					),
 				);
 
-			// Server-side `predicate_type` is advisory — some attestations
-			// carry the freeform URI variant that the short-alias filter
-			// does not catch. Re-filter client-side on the parsed in-toto
-			// predicateType for an authoritative match.
-			if (predicateTypeFilter === undefined) return entries;
-			return entries.filter((e) => e.predicateType === predicateTypeFilter);
+			return entries;
 		}),
 });

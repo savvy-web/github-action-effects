@@ -36,34 +36,80 @@ import {
 const dssePayload = (statement: Record<string, unknown>): string =>
 	Buffer.from(JSON.stringify(statement), "utf-8").toString("base64");
 
-/**
- * Build a synthetic attestations-list response shaped like
- * `GET /repos/{owner}/{repo}/attestations/{digest}` returns.
- */
-const listResponse = (
-	entries: ReadonlyArray<{ readonly id: number; readonly predicateType: string; readonly subjectName?: string }>,
-) => ({
-	attestations: entries.map((e) => ({
-		id: e.id,
-		bundle: {
-			mediaType: "application/vnd.dev.sigstore.bundle.v0.3+json",
-			verificationMaterial: {},
-			dsseEnvelope: {
-				payload: dssePayload({
-					_type: "https://in-toto.io/Statement/v1",
-					subject: [{ name: e.subjectName ?? "pkg:npm/x@1.0.0", digest: { sha256: "a".repeat(64) } }],
-					predicateType: e.predicateType,
-					predicate: {},
-				}),
-				payloadType: "application/vnd.in-toto+json",
-				signatures: [],
-			},
-		},
-		repository_id: 1234,
-		bundle_url: `https://example.test/bundles/${e.id}`,
-		initiator: "test",
-	})),
+/** Build the Sigstore bundle that `bundle_url` returns under API version 2026-03-10. */
+const bundleFor = (predicateType: string) => ({
+	mediaType: "application/vnd.dev.sigstore.bundle.v0.3+json",
+	verificationMaterial: {},
+	dsseEnvelope: {
+		payload: dssePayload({
+			_type: "https://in-toto.io/Statement/v1",
+			subject: [{ name: "pkg:npm/x@1.0.0", digest: { sha256: "a".repeat(64) } }],
+			predicateType,
+			predicate: {},
+		}),
+		payloadType: "application/vnd.in-toto+json",
+		signatures: [],
+	},
 });
+
+interface CapturedRequest {
+	readonly route: string;
+	readonly params: Record<string, unknown>;
+}
+
+/**
+ * Faithful simulation of the `2026-03-10` attestations API: the list
+ * route honours the server-side `predicate_type` filter and returns
+ * entries WITHOUT the inline `bundle` (only `bundle_url`); fetching a
+ * `bundle_url` returns the full Sigstore bundle. Optionally records every
+ * request for assertions on the pinned API version and query parameters.
+ */
+const attestationServer = (
+	all: ReadonlyArray<{ readonly id: number; readonly predicateType: string }>,
+	opts: { readonly repo?: { owner: string; repo: string }; readonly calls?: CapturedRequest[] } = {},
+): Layer.Layer<GitHubClient> => {
+	const repo = opts.repo ?? { owner: "savvy-web", repo: "silk-release-action" };
+	const byUrl = new Map<string, { readonly id: number; readonly predicateType: string }>(
+		all.map((a) => [`https://example.test/bundles/${a.id}`, a]),
+	);
+	const handle = (route: string, params: Record<string, unknown>): unknown => {
+		opts.calls?.push({ route, params });
+		if (route.includes("{subject_digest}")) {
+			const filter = params.predicate_type as string | undefined;
+			const selected = filter === undefined ? all : all.filter((a) => a.predicateType === filter);
+			return {
+				attestations: selected.map((a) => ({
+					id: a.id,
+					repository_id: 1234,
+					bundle_url: `https://example.test/bundles/${a.id}`,
+					initiator: "test",
+				})),
+			};
+		}
+		const found = byUrl.get(params.bundle_url as string);
+		if (found === undefined) {
+			const error = new Error("HTTP 404") as Error & { status: number };
+			error.status = 404;
+			throw error;
+		}
+		return bundleFor(found.predicateType);
+	};
+	return Layer.succeed(GitHubClient, {
+		rest: <T>(_op: string, fn: (octokit: unknown) => Promise<{ data: T }>) =>
+			Effect.tryPromise({
+				try: () =>
+					fn({
+						request: (route: string, params: Record<string, unknown>) =>
+							Promise.resolve({ data: handle(route, params) }),
+					}),
+				catch: (e) => e as never,
+			}).pipe(Effect.map((r) => r.data)),
+		graphql: () => Effect.die("graphql not used"),
+		paginate: () => Effect.die("paginate not used"),
+		paginateStream: () => Stream.die("paginateStream not used"),
+		repo: Effect.succeed(repo),
+	});
+};
 
 /** Build a synthetic GitHubClient that returns a fixed REST response and ignores graphql/paginate. */
 const fixedGitHubClient = (
@@ -119,17 +165,17 @@ const noopSigner: Layer.Layer<SigstoreSigner> = Layer.succeed(SigstoreSigner, {
 describe("Attest.listForSubject — live implementation", () => {
 	const SUBJECT = "abc123".padEnd(64, "0");
 
-	it("returns every attestation when no predicateType filter is provided", async () => {
+	it("returns every attestation when no predicateType filter is provided (decoding each bundle_url)", async () => {
 		const layer = Layer.mergeAll(
 			AttestLive,
 			noopSigner,
 			noopOidc,
-			fixedGitHubClient(
-				listResponse([
+			attestationServer(
+				[
 					{ id: 1, predicateType: SLSA_PROVENANCE_V1 },
 					{ id: 2, predicateType: CYCLONEDX_BOM },
-				]),
-				{ owner: "acme", repo: "widgets" },
+				],
+				{ repo: { owner: "acme", repo: "widgets" } },
 			),
 		);
 
@@ -147,18 +193,16 @@ describe("Attest.listForSubject — live implementation", () => {
 		expect(entries[1]?.predicateType).toBe(CYCLONEDX_BOM);
 	});
 
-	it("filters by predicateType client-side", async () => {
+	it("filters by predicateType via the server-side predicate_type query", async () => {
 		const layer = Layer.mergeAll(
 			AttestLive,
 			noopSigner,
 			noopOidc,
-			fixedGitHubClient(
-				listResponse([
-					{ id: 1, predicateType: SLSA_PROVENANCE_V1 },
-					{ id: 2, predicateType: CYCLONEDX_BOM },
-					{ id: 3, predicateType: SLSA_PROVENANCE_V1 },
-				]),
-			),
+			attestationServer([
+				{ id: 1, predicateType: SLSA_PROVENANCE_V1 },
+				{ id: 2, predicateType: CYCLONEDX_BOM },
+				{ id: 3, predicateType: SLSA_PROVENANCE_V1 },
+			]),
 		);
 
 		const entries = await Effect.runPromise(
@@ -170,6 +214,61 @@ describe("Attest.listForSubject — live implementation", () => {
 
 		expect(entries).toHaveLength(2);
 		expect(entries.every((e) => e.predicateType === SLSA_PROVENANCE_V1)).toBe(true);
+		expect(entries.map((e) => e.attestationUrl)).toEqual([
+			"https://github.com/savvy-web/silk-release-action/attestations/1",
+			"https://github.com/savvy-web/silk-release-action/attestations/3",
+		]);
+	});
+
+	it("pins X-GitHub-Api-Version 2026-03-10 and forwards predicate_type without fetching bundles", async () => {
+		const calls: CapturedRequest[] = [];
+		const layer = Layer.mergeAll(
+			AttestLive,
+			noopSigner,
+			noopOidc,
+			attestationServer([{ id: 1, predicateType: SLSA_PROVENANCE_V1 }], { calls }),
+		);
+
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const attest = yield* Attest;
+				return yield* attest.listForSubject(SUBJECT, { predicateType: SLSA_PROVENANCE_V1 });
+			}).pipe(Effect.provide(layer)),
+		);
+
+		// Only the list request fires — the server-side filter means no
+		// per-entry bundle_url fetch on the filtered path.
+		expect(calls).toHaveLength(1);
+		const list = calls[0];
+		expect(list?.route).toBe("GET /repos/{owner}/{repo}/attestations/{subject_digest}");
+		expect(list?.params.subject_digest).toBe(`sha256:${SUBJECT}`);
+		expect(list?.params.predicate_type).toBe(SLSA_PROVENANCE_V1);
+		expect((list?.params.headers as Record<string, string>)["X-GitHub-Api-Version"]).toBe("2026-03-10");
+	});
+
+	it("pins X-GitHub-Api-Version 2026-03-10 on both the list and the bundle_url fetch", async () => {
+		const calls: CapturedRequest[] = [];
+		const layer = Layer.mergeAll(
+			AttestLive,
+			noopSigner,
+			noopOidc,
+			attestationServer([{ id: 1, predicateType: SLSA_PROVENANCE_V1 }], { calls }),
+		);
+
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const attest = yield* Attest;
+				return yield* attest.listForSubject(SUBJECT);
+			}).pipe(Effect.provide(layer)),
+		);
+
+		// List + one bundle fetch, both pinned and the list unfiltered.
+		expect(calls).toHaveLength(2);
+		expect(calls[0]?.params.predicate_type).toBeUndefined();
+		expect(calls[1]?.route).toBe("GET {bundle_url}");
+		for (const call of calls) {
+			expect((call.params.headers as Record<string, string>)["X-GitHub-Api-Version"]).toBe("2026-03-10");
+		}
 	});
 
 	it("returns [] when the API responds with an empty attestations array", async () => {

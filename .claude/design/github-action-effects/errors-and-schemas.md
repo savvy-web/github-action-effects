@@ -354,10 +354,10 @@ Attest.sbom(input)
   -> Attest.attest({ subjects, predicateType: CYCLONEDX_BOM, predicate })
 
 Attest.listForSubject(sha256Hex, options?)
-  -> GET /repos/{owner}/{repo}/attestations/sha256:{hex}
+  -> GET /repos/{owner}/{repo}/attestations/sha256:{hex}  (X-GitHub-Api-Version: 2026-03-10)
   -> 404 -> return []
-  -> parse each bundle's dsseEnvelope to extract predicateType
-  -> client-side filter by options.predicateType if provided
+  -> if options.predicateType: pass predicate_type query param, trust server narrowing
+  -> else: fetch each entry's bundle_url, decode its in-toto predicateType, drop undecodable entries
   -> returns Array<AttestationListEntry>
 ```
 

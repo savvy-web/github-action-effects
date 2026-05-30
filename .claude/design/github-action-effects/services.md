@@ -628,7 +628,7 @@ End-to-end attestation: build in-toto statements, sign via Sigstore, upload to G
 - `attest(input)` -- Full end-to-end: build statement, sign, POST to `POST /repos/{owner}/{repo}/attestations`. Returns `AttestationRecord`. Requires `SigstoreSigner | OidcTokenIssuer | GitHubClient`
 - `sbom(input)` -- Generate a CycloneDX SBOM and attest it (`CYCLONEDX_BOM` predicateType). `input` accepts either `dependencies` (the service builds the BOM) or a pre-built `bomDocument` (attested verbatim). Requires `Sbom | SigstoreSigner | OidcTokenIssuer | GitHubClient`
 - `provenance(input)` -- Attest with a caller-supplied SLSA Provenance v1 predicate. Requires `SigstoreSigner | OidcTokenIssuer | GitHubClient`
-- `listForSubject(subjectSha256, options?)` -- List existing attestations for a tarball digest (`GET /repos/{owner}/{repo}/attestations/sha256:{hex}`). `options.predicateType` filters client-side. Returns an empty array on 404 (never-attested subject). Requires `GitHubClient`
+- `listForSubject(subjectSha256, options?)` -- List existing attestations for a tarball digest (`GET /repos/{owner}/{repo}/attestations/sha256:{hex}`), pinned to `X-GitHub-Api-Version: 2026-03-10`. Under that version the inline Sigstore `bundle` is dropped, so `predicateType` is recovered server-side via the `predicate_type` query parameter when `options.predicateType` is supplied, or by fetching each entry's `bundle_url` and decoding its in-toto statement when no filter is given. Returns an empty array on 404 (never-attested subject). Requires `GitHubClient`
 
 **Types:** `SbomAttestationInput`, `ProvenanceAttestationInput`, `AttestationListEntry { attestationUrl, predicateType }`, `AttestationRecord` (see `schemas/Attestation.ts`)
 

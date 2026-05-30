@@ -183,17 +183,23 @@ export class Attest extends Context.Tag("github-action-effects/Attest")<
 		 * List existing attestations for a tarball digest.
 		 *
 		 * @remarks
-		 * Hits `GET /repos/{owner}/{repo}/attestations/sha256:{hex}`. The
-		 * GitHub REST API returns one entry per existing attestation; each
-		 * entry's Sigstore bundle is parsed to recover the in-toto
-		 * statement's `predicateType` (e.g. `https://slsa.dev/provenance/v1`
-		 * for provenance, `https://cyclonedx.org/bom` for SBOM).
+		 * Hits `GET /repos/{owner}/{repo}/attestations/sha256:{hex}` pinned
+		 * to REST API version `2026-03-10` (the legacy shape is deprecated;
+		 * Sunset 2028-03-10). That version omits the inline Sigstore bundle,
+		 * so `predicateType` is recovered one of two ways:
 		 *
-		 * `options.predicateType` filters the result client-side so callers
-		 * can ask "is there a provenance attestation already?" or "is there
-		 * an SBOM attestation already?" without re-fetching. Returns an
-		 * empty array when the subject has no attestations or the API
-		 * returns a 404 — only true errors (auth, network, rate limit)
+		 * - When `options.predicateType` is supplied the server narrows the
+		 *   list via the `predicate_type` query parameter (which accepts the
+		 *   freeform URI), and every returned entry is that type — no bundle
+		 *   fetch needed. This is the orchestrator's path ("is there a
+		 *   provenance attestation already?" / "...an SBOM attestation?").
+		 * - Without a filter each entry's `bundle_url` is fetched and its
+		 *   in-toto `predicateType` decoded (e.g. `https://slsa.dev/provenance/v1`
+		 *   for provenance, `https://cyclonedx.org/bom` for SBOM); entries
+		 *   whose bundle cannot be decoded are dropped.
+		 *
+		 * Returns an empty array when the subject has no attestations or the
+		 * API returns a 404 — only true errors (auth, network, rate limit)
 		 * surface as {@link AttestError}.
 		 *
 		 * The orchestrator uses presence to decide whether to skip a
