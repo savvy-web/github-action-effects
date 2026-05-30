@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-20
-last-synced: 2026-05-20
+updated: 2026-05-29
+last-synced: 2026-05-29
 completeness: 95
 related:
   - ./index.md
@@ -306,8 +306,11 @@ instance from `@octokit/rest`. See `src/layers/GitHubClientLive.ts`.
 
 REST calls use `Effect.tryPromise`, GraphQL uses `octokit.graphql()`.
 Pagination handles page incrementing and empty-page termination. Error mapping
-extracts HTTP status and sets the `retryable` flag for 429/5xx. Detects HTML
-error pages (GitHub "Unicorn" pages). The `repo` accessor still resolves
+extracts HTTP status and sets the `retryable` flag for 429, any 5xx and a 403
+that carries a server-advised retry signal (`Retry-After` header, or
+`x-ratelimit-remaining: 0` plus `x-ratelimit-reset` — a GitHub secondary rate
+limit); a bare 403 is a genuine permission denial and stays non-retryable.
+Detects HTML error pages (GitHub "Unicorn" pages). The `repo` accessor still resolves
 `GITHUB_REPOSITORY` at call time and fails with `GitHubClientError` regardless
 of construction mode.
 

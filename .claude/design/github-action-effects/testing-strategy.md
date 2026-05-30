@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-20
-last-synced: 2026-05-20
+updated: 2026-05-29
+last-synced: 2026-05-29
 completeness: 95
 related:
   - ./index.md
@@ -192,7 +192,7 @@ via `sha: null` entries.
 token generation + `GitHubAppError` propagation), REST callback, GraphQL query
 execution, pagination (page incrementing, empty-page termination, maxPages),
 repo context from GITHUB_REPOSITORY, error wrapping with HTTP status
-extraction, retryable flag for 429/5xx, HTML error page detection.
+extraction, retryable classification (429, 5xx, 403 secondary rate limit vs bare 403 permission denial), HTML error page detection.
 
 **GitHubToken** -- `provision` (Config defaults + override, permission check
 pass/fail, persistence), `client` (success + missing-state failure), `dispose`

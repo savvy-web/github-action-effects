@@ -121,6 +121,50 @@ describe("GitHubClientLive", () => {
 				}
 			});
 
+			it("marks a 403 carrying Retry-After as retryable (secondary rate limit)", async () => {
+				const error = Object.assign(new Error("secondary limit"), {
+					status: 403,
+					response: { headers: { "retry-after": "5" } },
+				});
+				const exit = await runExit(
+					Effect.flatMap(GitHubClient, (client) => client.rest("test.403.retryAfter", () => Promise.reject(error))),
+				);
+				expect(exit._tag).toBe("Failure");
+				if (Exit.isFailure(exit)) {
+					const err = Cause.squash(exit.cause) as { retryable: boolean; retryAfterMs: number };
+					expect(err.retryable).toBe(true);
+					expect(err.retryAfterMs).toBe(5000);
+				}
+			});
+
+			it("marks a 403 with x-ratelimit-remaining: 0 as retryable (secondary rate limit)", async () => {
+				const reset = Math.floor(Date.now() / 1000) + 30;
+				const error = Object.assign(new Error("secondary limit"), {
+					status: 403,
+					response: { headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(reset) } },
+				});
+				const exit = await runExit(
+					Effect.flatMap(GitHubClient, (client) => client.rest("test.403.ratelimit", () => Promise.reject(error))),
+				);
+				expect(exit._tag).toBe("Failure");
+				if (Exit.isFailure(exit)) {
+					const err = Cause.squash(exit.cause) as { retryable: boolean };
+					expect(err.retryable).toBe(true);
+				}
+			});
+
+			it("marks a bare 403 (permission denial) as non-retryable", async () => {
+				const error = Object.assign(new Error("forbidden"), { status: 403 });
+				const exit = await runExit(
+					Effect.flatMap(GitHubClient, (client) => client.rest("test.403.bare", () => Promise.reject(error))),
+				);
+				expect(exit._tag).toBe("Failure");
+				if (Exit.isFailure(exit)) {
+					const err = Cause.squash(exit.cause) as { retryable: boolean };
+					expect(err.retryable).toBe(false);
+				}
+			});
+
 			it("sanitizes HTML error responses", async () => {
 				const htmlError = Object.assign(new Error("<!DOCTYPE html><html><body>Unicorn!</body></html>"), {
 					status: 500,
@@ -407,6 +451,48 @@ describe("GitHubClientLive", () => {
 						client.rest("op", () => {
 							attempts++;
 							return Promise.reject(Object.assign(new Error("not found"), { status: 404 }));
+						}),
+					),
+					GitHubClientLive.fromToken(Redacted.make("t")),
+				),
+			);
+			expect(exit._tag).toBe("Failure");
+			expect(attempts).toBe(1);
+		});
+
+		it("rest retries a 403 secondary rate limit that carries Retry-After, then succeeds", async () => {
+			let attempts = 0;
+			const exit = await runWithClock(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.rest("op", () => {
+							attempts++;
+							if (attempts < 2) {
+								return Promise.reject(
+									Object.assign(new Error("secondary limit"), {
+										status: 403,
+										response: { headers: { "retry-after": "5" } },
+									}),
+								);
+							}
+							return Promise.resolve({ data: "recovered" });
+						}),
+					),
+					GitHubClientLive.fromToken(Redacted.make("t")),
+				),
+			);
+			expect(exit._tag).toBe("Success");
+			expect(attempts).toBe(2);
+		});
+
+		it("rest does not retry a bare 403 (permission denial)", async () => {
+			let attempts = 0;
+			const exit = await runWithClock(
+				Effect.provide(
+					Effect.flatMap(GitHubClient, (client) =>
+						client.rest("op", () => {
+							attempts++;
+							return Promise.reject(Object.assign(new Error("forbidden"), { status: 403 }));
 						}),
 					),
 					GitHubClientLive.fromToken(Redacted.make("t")),

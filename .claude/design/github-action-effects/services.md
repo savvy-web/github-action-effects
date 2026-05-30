@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-20
-last-synced: 2026-05-20
+updated: 2026-05-29
+last-synced: 2026-05-29
 completeness: 97
 related:
   - ./index.md
@@ -279,7 +279,7 @@ Uses `@octokit/rest` directly.
 - `paginate(operation, fn, options?)` -- Paginate a REST API call, collecting all results. Options: `{ perPage?, maxPages? }`
 - `repo` -- Get the repository context (`{ owner, repo }`) from `GITHUB_REPOSITORY` env var
 
-**Error type:** `GitHubClientError` -- includes `retryable` flag for 429/5xx
+**Error type:** `GitHubClientError` -- `retryable` flag true for 429, any 5xx and a 403 carrying a retry signal (secondary rate limit); bare 403 stays non-retryable
 
 **Construction.** The `GitHubClientLive` layer is a namespace object, not a
 plain const — the construction surface chooses the client's identity. See

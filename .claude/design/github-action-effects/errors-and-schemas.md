@@ -3,8 +3,8 @@ status: current
 module: github-action-effects
 category: architecture
 created: 2026-03-06
-updated: 2026-05-20
-last-synced: 2026-05-20
+updated: 2026-05-29
+last-synced: 2026-05-29
 completeness: 95
 related:
   - ./index.md
@@ -115,7 +115,7 @@ to their own domain-specific error type:
 - `GitHubArtifactMetadataError` wraps with artifact-metadata context
 - `AttestError` wraps with attestation context
 
-The `retryable` flag on `GitHubClientError` is `true` for 429 (rate limit) and 5xx status codes, enabling consumers to implement retry logic.
+The `retryable` flag on `GitHubClientError` is `true` for 429 (rate limit), any 5xx and a 403 that carries a server-advised retry signal (a `Retry-After` header, or `x-ratelimit-remaining: 0` plus `x-ratelimit-reset` — a GitHub secondary rate limit); a bare 403 (genuine permission denial) stays non-retryable. The accompanying `retryAfterMs` carries the server-advised delay when present. This enables consumers to implement retry logic.
 
 `NpmRegistryError` and `PackagePublishError` both carry a `message` getter so caught errors remain readable at the surface (e.g. in `console.error` or workflow command output) without forcing callers to destructure the tagged error. `PackagePublishError` also carries the source error as `cause` and surfaces the tail of long stderr output to aid diagnostics in CI logs. HTTP errors from `OidcTokenIssuerLive` route through `Effect.logDebug` so they appear in the step's debug buffer (visible on failure) rather than cluttering the success log.
 
